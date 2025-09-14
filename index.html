@@ -3,36 +3,311 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>MatchSqr • Diagnostic</title>
+  <title>MatchSqr</title>
   <style>
-    body{margin:0;font:16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial}
-    .wrap{max-width:720px;margin:40px auto;padding:16px}
-    .ok{background:#eaffea;border:1px solid #86d27b;padding:16px;border-radius:10px}
-    .err{background:#fff3cd;border:1px solid #ffe69c;padding:16px;border-radius:10px}
-    button{padding:10px 14px;border-radius:8px;border:1px solid #ccc;background:#19A33C;color:#fff;font-weight:600;cursor:pointer}
-    pre{white-space:pre-wrap;background:#f6f8fa;border:1px solid #e5e7eb;padding:12px;border-radius:8px}
+    :root{--ms-green:#19A33C;--ms-border:#D7D7D7;--ms-text:#1D1D1D;--ms-sub:#5F6368;--radius:16px}
+    *{box-sizing:border-box}html,body{height:100%}body{margin:0;font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:var(--ms-text);background:#fff}
+    .container{max-width:1000px;margin:0 auto;padding:0 20px}
+    .topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 0}
+    .brand{display:flex;align-items:center;gap:8px;font-weight:600}
+    .brand .logo{width:32px;height:32px;border-radius:8px;background:var(--ms-green);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+    .btn{display:inline-flex;align-items:center;gap:8px;border:none;border-radius:999px;padding:12px 20px;background:var(--ms-green);color:#fff;font-weight:600;cursor:pointer}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .btn-outline{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--ms-border);border-radius:999px;padding:12px 20px;background:#fff;color:var(--ms-text);font-weight:600;cursor:pointer}
+    .card{border:1px solid var(--ms-border);border-radius:var(--radius);background:#fff}
+    .label{display:block;font-size:12px;color:var(--ms-sub);margin:0 0 4px}
+    .input,.textarea{width:100%;border:1px solid var(--ms-border);border-radius:var(--radius);padding:10px 12px;outline:none}
+    .textarea{min-height:96px;resize:vertical}
+    .hero{font-size:42px;font-weight:600;text-align:center;line-height:1.2;margin:0}
+    .muted{color:var(--ms-sub);font-size:14px}
+    .center{display:flex;flex-direction:column;align-items:center}
+    .grid{display:grid;gap:16px}@media(min-width:800px){.grid-2{grid-template-columns:1fr 1fr}}
+    .avatar{width:64px;height:64px;border:2px solid #2CCE4B;border-radius:999px;color:#2CCE4B;display:flex;align-items:center;justify-content:center;font-weight:700;margin:0 auto}
+    .timerbar{display:flex;gap:8px;justify-content:space-between;align-items:center;background:#3b3b3b;color:#fff;border-radius:8px;padding:8px 12px}
+    .stage-dots{display:flex;gap:18px;justify-content:center;margin:10px 0 0}
+    .stage-dots span{display:flex;align-items:center;gap:6px;color:#5c5c5c;font-size:12px}
+    .stage-dots i{width:10px;height:10px;border:2px solid #31C24D;border-radius:999px}.stage-dots .on i{background:#31C24D}
+    .question-card{width:320px;height:420px;border-radius:var(--radius);background:#1BB83E;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;font-weight:600;margin:0 auto}
+    .row{display:flex;gap:40px;justify-content:space-between;align-items:flex-start}.col{flex:1}
+    .hidden{display:none !important}.footerGap{height:24px}
+    .note{background:#F6F2E8;border:1px solid #E5E1D8;border-radius:var(--radius);padding:12px;text-align:center}
+    .toast{position:fixed;right:16px;bottom:16px;background:#111;color:#fff;padding:10px 14px;border-radius:10px;opacity:.95}
+    dialog{border:1px solid var(--ms-border);border-radius:12px}
+    .banner{background:#fff3cd;color:#664d03;border:1px solid #ffe69c;padding:10px 12px;border-radius:10px;margin:10px 0}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>Diagnostic</h1>
-    <div id="status" class="err">Loading…</div>
-    <p style="margin-top:12px"><button id="btn">Click me</button></p>
-    <h3>Details</h3>
-    <pre id="log"></pre>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand"><div class="logo">M</div> MatchSqr</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-outline" id="btnSettings">Project Settings</button>
+        <button class="btn-outline" id="btnLoginTop">Login</button>
+      </div>
+    </div>
+
+    <div id="route-home">
+      <div id="cfgBanner" class="banner hidden">Project Settings needed. Click <b>Project Settings</b> at the top right.</div>
+      <div class="center" style="padding:40px 0 10px">
+        <div style="width:110px;height:110px;border:1px solid var(--ms-border);border-radius:999px;display:flex;align-items:center;justify-content:center;margin-bottom:24px">
+          <div style="width:64px;height:64px;border-radius:999px;background:#e8e8e8"></div>
+        </div>
+        <h1 class="hero">Safe space to build<br/>meaningful connections.</h1>
+        <p class="muted" style="max-width:640px;text-align:center;margin-top:10px">
+          Play with other people interactive games designed to uncover shared values, emotional style, interests, and personality.
+        </p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:28px">
+          <button class="btn" id="goHost">👑 Host the Game</button>
+          <button class="btn" id="goJoin">▶ Join the Game</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="route-auth" class="hidden">
+      <h1 style="text-align:center;font-size:36px;font-weight:600;margin-top:40px">Hey, happy to see you!</h1>
+      <div class="grid grid-2" style="margin-top:24px">
+        <div>
+          <div style="color:var(--ms-green);font-weight:600;margin-bottom:8px">Create a new account</div>
+          <div class="card" style="padding:16px">
+            <label class="label">Name</label>
+            <input class="input" id="suName" />
+            <div style="display:flex;gap:16px;margin:12px 0">
+              <label style="font-size:14px"><input type="radio" name="gender" value="man"> Man</label>
+              <label style="font-size:14px"><input type="radio" name="gender" value="woman"> Woman</label>
+            </div>
+            <label class="label">Email</label>
+            <input class="input" id="suEmail" />
+            <label class="label" style="margin-top:12px">Password</label>
+            <input class="input" type="password" id="suPass" />
+            <button class="btn" style="width:100%;margin-top:14px" id="btnSignUp">Submit</button>
+          </div>
+        </div>
+        <div>
+          <div style="color:var(--ms-green);font-weight:600;margin-bottom:8px">I have an account</div>
+          <div class="card" style="padding:16px">
+            <label class="label">Date of birth</label>
+            <input class="input" type="date" id="siDob" />
+            <label class="label" style="margin-top:12px">Email</label>
+            <input class="input" id="siEmail" />
+            <label class="label" style="margin-top:12px">Password</label>
+            <input class="input" type="password" id="siPass" />
+            <button class="btn" style="width:100%;margin-top:14px" id="btnSignIn">Submit</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="route-join" class="hidden">
+      <h1 style="text-align:center;font-size:36px;font-weight:600;margin-top:40px">Hey, happy to see you!</h1>
+      <div style="text-align:center;color:var(--ms-green);font-weight:600;margin-top:6px">How we should call you?</div>
+      <div class="grid grid-2" style="margin-top:16px">
+        <input class="input" id="gName" placeholder="Name" />
+        <input class="input" id="gCode" placeholder="Enter Game ID" />
+      </div>
+      <div class="center" style="margin-top:16px">
+        <button class="btn" id="btnJoin">▶ Join the Game</button>
+      </div>
+      <p class="muted" style="text-align:center;margin-top:12px">
+        You can join as a guest or you can <span class="link" id="lnkCreateAccount">create an account</span>
+      </p>
+      <div id="joinNext" class="center hidden" style="margin-top:16px">
+        <button class="btn-outline" id="btnGoRoom">Continue to the room</button>
+      </div>
+    </div>
+
+    <div id="route-host" class="hidden">
+      <div class="center" style="margin-top:60px">
+        <button class="btn" id="btnCreateGame">👑 Start the Game</button>
+        <div id="hostInfo" class="hidden" style="margin-top:24px;text-align:center">
+          <div class="muted">Game ID</div>
+          <div id="hostCode" style="font-size:22px;font-weight:600;letter-spacing:1px;margin-top:4px"></div>
+          <p class="muted" style="margin-top:6px">Please share this Game ID with other players</p>
+          <button class="btn-outline" style="margin-top:10px" id="btnEnterRoom">Enter Room</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="route-game" class="hidden">
+      <div class="timerbar">
+        <div style="font-size:22px;font-variant-numeric:tabular-nums">0:59m</div>
+        <button class="btn-outline" id="btnExtend">Extend</button>
+        <button class="btn" id="btnEnd">End game & analyze</button>
+      </div>
+      <div class="stage-dots">
+        <span class="on"><i></i> Icebreaker</span>
+        <span><i></i> Get to know you</span>
+        <span><i></i> The real you</span>
+      </div>
+      <div class="note" style="margin-top:10px">
+        <div id="gHeader" class="muted">Share the Game ID with friends to join.</div>
+      </div>
+
+      <div class="card" style="margin-top:14px;padding:24px;background:#F6F2E8;border-color:#E5E1D8">
+        <div class="row">
+          <div class="col center" style="gap:60px">
+            <div><div class="avatar" id="p1i">NA</div><div style="text-align:center;margin-top:6px">Nader</div></div>
+            <div><div class="avatar">JE</div><div style="text-align:center;margin-top:6px">Jerar</div></div>
+          </div>
+          <div class="col">
+            <div class="question-card" id="qCard">If you would have a superpower, what would you choose and why?</div>
+            <div style="display:flex;gap:16px;justify-content:center;margin-top:18px;font-size:24px">
+              <span title="microphone">🎙️</span><span title="keyboard">⌨️</span>
+            </div>
+          </div>
+          <div class="col center" style="gap:60px">
+            <div><div class="avatar">EK</div><div style="text-align:center;margin-top:6px">Ekaterina</div></div>
+            <div><div class="avatar">SO</div><div style="text-align:center;margin-top:6px">Sofia</div></div>
+          </div>
+        </div>
+
+        <div class="center" style="margin-top:16px">
+          <textarea class="textarea" id="ansText" placeholder="Type your answer..."></textarea>
+          <div style="display:flex;justify-content:flex-end;width:100%;max-width:720px;margin-top:8px">
+            <button class="btn-outline" id="btnSubmit">Submit</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="padding:12px;margin-top:14px">
+        <div class="muted">Response</div>
+        <pre id="resp" style="white-space:pre-wrap"></pre>
+      </div>
+      <div class="footerGap"></div>
+    </div>
   </div>
+
+  <!-- Project Settings Modal -->
+  <dialog id="cfgModal">
+    <form method="dialog" style="padding:16px;min-width:320px">
+      <h3 style="margin-top:0">Project Settings</h3>
+      <p class="muted" style="margin-top:-6px">Saved in your browser only.</p>
+      <label class="label">MS_URL (Project URL)</label>
+      <input class="input" id="cfgUrl" placeholder="https://xxxx.supabase.co" />
+      <label class="label" style="margin-top:12px">MS_ANON_KEY (anon public key)</label>
+      <input class="input" id="cfgAnon" placeholder="eyJhbGci..." />
+      <label class="label" style="margin-top:12px">MS_FUNCTIONS_BASE</label>
+      <input class="input" id="cfgFn" placeholder="https://xxxx.functions.supabase.co" />
+      <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+        <button class="btn-outline" value="cancel">Cancel</button>
+        <button class="btn" value="save" id="cfgSave">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- UMD build (no modules) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
   <script>
     (function(){
-      const status = document.getElementById('status');
-      const log = document.getElementById('log');
-      function write(k,v){ log.textContent += k + ": " + v + "\\n"; }
-      write("Time", new Date().toISOString());
-      write("UserAgent", navigator.userAgent);
-      write("Location", location.href);
+      const g = id => document.getElementById(id);
+      const routes = ["home","auth","join","host","game"];
+      const show = (id)=>{ routes.forEach(r=>g('route-'+r).classList.add('hidden')); g('route-'+id).classList.remove('hidden'); window.scrollTo(0,0); };
+      const toast = (msg)=>{ const t=g("toast"); t.textContent=msg; t.classList.remove("hidden"); setTimeout(()=>t.classList.add("hidden"),3000); };
+      const getCfg = ()=>({ url: localStorage.getItem("MS_URL")||"", anon: localStorage.getItem("MS_ANON_KEY")||"", fnb: localStorage.getItem("MS_FUNCTIONS_BASE")||"" });
+      const needCfg = ()=>{ const c=getCfg(); return !(c.url && c.anon && c.fnb); };
+      const openCfg = ()=>{ const c=getCfg(); g("cfgUrl").value=c.url; g("cfgAnon").value=c.anon; g("cfgFn").value=c.fnb; g("cfgModal").showModal(); };
+      g("cfgSave").addEventListener("click",(e)=>{
+        const url=g("cfgUrl").value.trim(), anon=g("cfgAnon").value.trim(), fnb=g("cfgFn").value.trim();
+        if(!url||!anon||!fnb){ e.preventDefault(); toast("Please fill all fields"); return; }
+        localStorage.setItem("MS_URL",url); localStorage.setItem("MS_ANON_KEY",anon); localStorage.setItem("MS_FUNCTIONS_BASE",fnb);
+        g("cfgBanner").classList.add("hidden");
+      });
+      g("btnSettings").onclick = openCfg;
 
-      status.className = 'ok';
-      status.textContent = 'JS is running ✅';
-      document.getElementById('btn').onclick = function(){ alert('Button works. JS attached.'); };
+      if(needCfg()){ g("cfgBanner").classList.remove("hidden"); openCfg(); }
+
+      function sb(){ const c=getCfg(); return window.supabase.createClient(c.url, c.anon); }
+      function fnb(){ return getCfg().fnb.replace(/\\/$/,""); }
+
+      async function callFn(name, body, needAuth){
+        const headers = { "content-type":"application/json" };
+        if(needAuth){
+          const { data } = await sb().auth.getSession();
+          const tk = data?.session?.access_token;
+          if(!tk){ toast("Please login first"); throw new Error("No login"); }
+          headers["authorization"] = "Bearer "+tk;
+        }
+        const r = await fetch(`${fnb()}/${name}`, { method:"POST", headers, body: JSON.stringify(body||{}) });
+        const t = await r.text(); try { return JSON.parse(t) } catch { return t }
+      }
+
+      function route(){
+        const h = location.hash||"#/home";
+        const path = h.replace("#/","");
+        if(path.startsWith("home")) return show("home");
+        if(path.startsWith("auth")) return show("auth");
+        if(path.startsWith("join")) return show("join");
+        if(path.startsWith("host")) return show("host");
+        if(path.startsWith("game")){
+          show("game");
+          const id = (location.hash.match(/id=([^&]+)/)||[])[1] || "";
+          const temp = (location.hash.match(/temp=([^&]+)/)||[])[1] || "";
+          g("btnSubmit").onclick = async ()=>{
+            const text = g("ansText").value.trim(); if(!text) return;
+            try{
+              const r = await callFn("submit_answer", { game_id:id, question_id:"00000000-0000-0000-0000-000000000000", text, temp_player_id: temp || undefined }, false);
+              g("ansText").value = ""; g("resp").textContent = JSON.stringify(r,null,2);
+            }catch(e){ toast(String(e.message||e)); }
+          };
+          g("btnEnd").onclick = async ()=>{
+            try{
+              const r = await callFn("end_game_and_analyze", { game_id:id }, true);
+              g("resp").textContent = JSON.stringify(r,null,2);
+              toast("Game ended. Guests have 30 min to register.");
+            }catch(e){ toast(String(e.message||e)); }
+          };
+          g("btnExtend").onclick = ()=> toast("Extend coming next");
+          return;
+        }
+        show("home");
+      }
+      window.addEventListener("hashchange", route);
+
+      // Nav
+      g("btnLoginTop").onclick = ()=>{ location.hash="#/auth"; route(); };
+      g("goHost").onclick = ()=>{ location.hash="#/host"; route(); };
+      g("goJoin").onclick = ()=>{ location.hash="#/join"; route(); };
+      g("lnkCreateAccount") && (g("lnkCreateAccount").onclick = ()=>{ location.hash="#/auth"; route(); });
+
+      // Auth
+      g("btnSignUp").onclick = async ()=>{
+        const email = g("suEmail").value.trim(), password = g("suPass").value, name = g("suName").value.trim();
+        try{
+          const { error } = await sb().auth.signUp({ email, password, options:{ data: { name }} });
+          if(error) throw error; toast("Signed up.");
+        }catch(e){ toast(e.message||String(e)); }
+      };
+      g("btnSignIn").onclick = async ()=>{
+        const email = g("siEmail").value.trim(), password = g("siPass").value;
+        try{
+          const { error } = await sb().auth.signInWithPassword({ email, password });
+          if(error) throw error; toast("Signed in"); location.hash="#/host"; route();
+        }catch(e){ toast(e.message||String(e)); }
+      };
+
+      // Host
+      g("btnCreateGame").onclick = async ()=>{
+        try{
+          const r = await callFn("create_game", {}, true);
+          g("hostInfo").classList.remove("hidden");
+          g("hostCode").textContent = r.code || "";
+          g("btnEnterRoom").onclick = ()=>{ location.hash = "#/game?id="+r.game_id+"&host=1"; route(); };
+        }catch(e){ toast(String(e.message||e)); }
+      };
+
+      // Join
+      g("btnJoin").onclick = async ()=>{
+        try{
+          const name = g("gName").value.trim(); const code = g("gCode").value.trim();
+          const r = await callFn("join_game_guest", { code, guest_name: name }, false);
+          g("joinNext").classList.remove("hidden");
+          g("btnGoRoom").onclick = ()=>{ location.hash = "#/game?id="+r.game_id+"&temp="+r.temp_player_id; route(); };
+        }catch(e){ toast(String(e.message||e)); }
+      };
+
+      // First route
+      route();
     })();
   </script>
 </body>
