@@ -243,7 +243,10 @@
         });
       }
       function sb(){ const c=getCfg(); /* @ts-ignore */ return window.supabase.createClient(c.url, c.anon); }
-      function fnb(){ return getCfg().fnb.replace(/\\/$/,""); }
+      function fnb(){
+  const v = getCfg().fnb || "";
+  return v.endsWith("/") ? v.slice(0, -1) : v;
+}
 
       // Router (clicks should work even without Supabase)
       function route(){
