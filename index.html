@@ -205,149 +205,226 @@
 
   <!-- We load Supabase after settings are saved -->
   <script>
-    (function(){
-      const g = id => document.getElementById(id);
-      const routes = ["home","auth","join","host","game"];
-      const show = (id)=>{ routes.forEach(r=>g('route-'+r).classList.add('hidden')); g('route-'+id).classList.remove('hidden'); window.scrollTo(0,0); };
-      const toast = (msg)=>{ const t=g("toast"); t.textContent=msg; t.classList.remove("hidden"); setTimeout(()=>t.classList.add("hidden"),3500); };
-      const debug = (msg)=>{ const d=g("debug"); if(d){ d.textContent += (msg + "\\n"); } };
+(function(){
+  // ========== DOM helpers ==========
+  const g = (id)=>document.getElementById(id);
+  const routes = ["home","auth","join","host","game"];
+  const show = (id)=>{
+    routes.forEach(r=>{ const el=g('route-'+r); if(el) el.classList.add('hidden'); });
+    const tgt=g('route-'+id); if(tgt) tgt.classList.remove('hidden');
+    window.scrollTo(0,0);
+  };
+  const toast = (msg)=>{
+    const t=g("toast");
+    if(!t) return alert(msg);
+    t.textContent=msg; t.classList.remove("hidden");
+    setTimeout(()=>t.classList.add("hidden"),3500);
+  };
+  const debug = (msg)=>{
+    const d=g("debug");
+    if(d){ d.textContent += (msg + "\n"); }
+    // Always mirror to console for when you're on non-home routes
+    try { console.log("[MS]", msg); } catch(_){}
+  };
 
-      window.onerror = (m)=>{ debug("ERROR: "+(m?.toString?.()||m)); };
-      window.onunhandledrejection = (ev)=>{ debug("REJECTION: "+(ev.reason?.message||ev.reason||"unknown")); };
+  // Global errors -> debug panel
+  window.onerror = (m,s,l,c,e)=>{ debug("ERROR: "+(m?.toString?.()||m)); };
+  window.onunhandledrejection = (ev)=>{ debug("REJECTION: "+(ev?.reason?.message||ev?.reason||"unknown")); };
 
-      function getCfg(){ return {
-        url: localStorage.getItem("MS_URL")||"",
-        anon: localStorage.getItem("MS_ANON_KEY")||"",
-        fnb: localStorage.getItem("MS_FUNCTIONS_BASE")||""
-      }; }
-      function needCfg(){ const c=getCfg(); return !(c.url && c.anon && c.fnb); }
-      function openCfg(){ const c=getCfg(); g("cfgUrl").value=c.url; g("cfgAnon").value=c.anon; g("cfgFn").value=c.fnb; g("cfgModal").showModal(); }
-      g("btnSettings").onclick = openCfg;
-      g("cfgSave").addEventListener("click",(e)=>{
-        const url=(g("cfgUrl").value||"").trim(), anon=(g("cfgAnon").value||"").trim(), fnb=(g("cfgFn").value||"").trim();
-        if(!url||!anon||!fnb){ e.preventDefault(); toast("Please fill all fields"); return; }
-        localStorage.setItem("MS_URL",url); localStorage.setItem("MS_ANON_KEY",anon);
-        localStorage.setItem("MS_FUNCTIONS_BASE", fnb.endsWith("/") ? fnb.slice(0,-1) : fnb);
-        g("cfgBanner").classList.add("hidden");
-        ensureSupabaseLoaded().then(()=>toast("Settings saved")).catch(err=>debug("SB load err: "+(err?.message||err)));
-      });
-      if(needCfg()){ g("cfgBanner").classList.remove("hidden"); openCfg(); }
+  debug("boot");
 
-      let supabaseLoaded = false;
-      function ensureSupabaseLoaded(){
-        if (supabaseLoaded) return Promise.resolve();
-        const c = getCfg(); if(!c.url||!c.anon) return Promise.reject(new Error("Project settings missing"));
-        return new Promise((resolve,reject)=>{
-          const s = document.createElement("script");
-          s.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js";
-          s.onload = ()=>{ supabaseLoaded = true; debug("Supabase JS loaded"); resolve(); };
-          s.onerror = ()=> reject(new Error("Failed to load Supabase JS"));
-          document.head.appendChild(s);
-        });
-      }
-      function sb(){ const c=getCfg(); return window.supabase.createClient(c.url, c.anon); }
-      function fnb(){ const v = getCfg().fnb || ""; return v.endsWith("/") ? v.slice(0,-1) : v; }
+  // ========== Settings in localStorage ==========
+  function getCfg(){ return {
+    url: localStorage.getItem("MS_URL")||"",
+    anon: localStorage.getItem("MS_ANON_KEY")||"",
+    fnb: (localStorage.getItem("MS_FUNCTIONS_BASE")||"").replace(/\/+$/,"") // just trim trailing slashes safely
+  }; }
+  function needCfg(){ const c=getCfg(); return !(c.url && c.anon && c.fnb); }
+  function openCfg(){
+    const c=getCfg();
+    if(g("cfgUrl")) g("cfgUrl").value=c.url;
+    if(g("cfgAnon")) g("cfgAnon").value=c.anon;
+    if(g("cfgFn")) g("cfgFn").value=c.fnb;
+    if(g("cfgModal")) g("cfgModal").showModal();
+  }
+  if(g("btnSettings")) g("btnSettings").onclick = openCfg;
 
-      function getHashInfo(){
-        let h = location.hash || "#/home";
-        if(h.startsWith("#/")) h = h.slice(2); else if(h.startsWith("#")) h = h.slice(1);
-        let path = h, query = ""; const qIdx = h.indexOf("?");
-        if(qIdx>=0){ path = h.slice(0,qIdx); query = h.slice(qIdx+1); }
-        const params = new URLSearchParams(query);
-        return { path, params };
-      }
+  // Save settings
+  if(g("cfgSave")) g("cfgSave").addEventListener("click",(e)=>{
+    const url=(g("cfgUrl").value||"").trim();
+    const anon=(g("cfgAnon").value||"").trim();
+    const fnb=(g("cfgFn").value||"").trim().replace(/\/+$/,"");
+    if(!url||!anon||!fnb){ e.preventDefault(); toast("Please fill all fields"); return; }
+    localStorage.setItem("MS_URL",url);
+    localStorage.setItem("MS_ANON_KEY",anon);
+    localStorage.setItem("MS_FUNCTIONS_BASE",fnb);
+    if(g("cfgBanner")) g("cfgBanner").classList.add("hidden");
+    ensureSupabaseLoaded().then(()=>toast("Settings saved")).catch(err=>debug("SB load err: "+(err?.message||err)));
+  });
 
-      function route(){
-        const { path, params } = getHashInfo();
-        if(path.startsWith("home")) return show("home");
-        if(path.startsWith("auth")) return show("auth");
-        if(path.startsWith("join")) return show("join");
-        if(path.startsWith("host")) return show("host");
-        if(path.startsWith("game")){
-          show("game");
-          const id = params.get("id") || "";
-          const temp = params.get("temp") || "";
-          g("btnSubmit").onclick = async ()=>{
-            const text = (g("ansText").value||"").trim(); if(!text) return;
-            try{
-              await ensureSupabaseLoaded();
-              const r = await callFn("submit_answer", { game_id:id, question_id:"00000000-0000-0000-0000-000000000000", text, temp_player_id: temp || undefined }, false);
-              g("ansText").value = ""; g("resp").textContent = typeof r==="string" ? r : JSON.stringify(r,null,2);
-            }catch(e){ toast(String(e.message||e)); debug("submit err: "+(e.message||e)); }
-          };
-          g("btnEnd").onclick = async ()=>{
-            try{
-              await ensureSupabaseLoaded();
-              const r = await callFn("end_game_and_analyze", { game_id:id }, true);
-              g("resp").textContent = typeof r==="string" ? r : JSON.stringify(r,null,2);
-              toast("Game ended. Guests have 30 min to register.");
-            }catch(e){ toast(String(e.message||e)); debug("end err: "+(e.message||e)); }
-          };
-          g("btnExtend").onclick = ()=> toast("Extend coming next");
-          return;
-        }
-        show("home");
-      }
-      window.addEventListener("hashchange", route);
+  if(needCfg()){ if(g("cfgBanner")) g("cfgBanner").classList.remove("hidden"); openCfg(); }
 
-      // Nav
-      g("btnLoginTop").onclick = ()=>{ location.hash="#/auth"; route(); };
-      g("goHost").onclick = ()=>{ location.hash="#/host"; route(); };
-      g("goJoin").onclick = ()=>{ location.hash="#/join"; route(); };
-      const lnk = document.getElementById("lnkCreateAccount");
-      if(lnk) lnk.onclick = ()=>{ location.hash="#/auth"; route(); };
+  // ========== Supabase loader (UMD) ==========
+  let supabaseLoaded = false;
+  function ensureSupabaseLoaded(){
+    if (supabaseLoaded) return Promise.resolve();
+    const c = getCfg();
+    if (!c.url || !c.anon) return Promise.reject(new Error("Project settings missing"));
+    return new Promise((resolve,reject)=>{
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js";
+      s.onload = ()=>{ supabaseLoaded = true; debug("Supabase JS loaded"); resolve(); };
+      s.onerror = ()=> reject(new Error("Failed to load Supabase JS"));
+      document.head.appendChild(s);
+    });
+  }
+  function sb(){ const c=getCfg(); /* global supabase */ return window.supabase.createClient(c.url, c.anon); }
+  function fnb(){ return getCfg().fnb; }
 
-      // Auth
-      g("btnSignUp").onclick = async ()=>{
+  // ========== Helper: call Edge Function ==========
+  async function callFn(name, body, needAuth){
+    const headers = { "content-type":"application/json" };
+    if(needAuth){
+      await ensureSupabaseLoaded();
+      const s = sb();
+      const { data, error } = await s.auth.getSession();
+      if(error) throw error;
+      const tk = data?.session?.access_token;
+      if(!tk){ toast("Please login first"); throw new Error("No login"); }
+      headers["authorization"] = "Bearer "+tk;
+    }
+    const url = fnb() + "/" + name;
+    debug("fetching " + url);
+    const r = await fetch(url, { method:"POST", headers, body: JSON.stringify(body||{}) });
+    const t = await r.text();
+    try { return JSON.parse(t); } catch { return t; }
+  }
+
+  // ========== Router ==========
+  function getHashInfo(){
+    let h = location.hash || "#/home";
+    if(h.startsWith("#/")) h = h.slice(2); else if(h.startsWith("#")) h = h.slice(1);
+    let path = h, query = ""; const qIdx = h.indexOf("?");
+    if(qIdx>=0){ path = h.slice(0,qIdx); query = h.slice(qIdx+1); }
+    const params = new URLSearchParams(query);
+    return { path, params };
+  }
+
+  async function bindAuth(){
+    // Sign Up
+    if(g("btnSignUp")) g("btnSignUp").onclick = async ()=>{
+      try{
+        await ensureSupabaseLoaded();
+        const s = sb();
+        const email=(g("suEmail").value||"").trim();
+        const password=g("suPass").value||"";
+        const name=(g("suName").value||"").trim();
+        if(!email){ toast("Enter email in the Sign Up form."); debug("signup: email length=0"); return; }
+        if(!password){ toast("Enter password in the Sign Up form."); debug("signup: password length=0"); return; }
+        debug("signup: email length="+email.length+", password length="+password.length);
+        const { error } = await s.auth.signUp({ email, password, options:{ data: { name }} });
+        if(error) throw error;
+        toast("Signed up.");
+      }catch(e){ toast(e.message||String(e)); debug("signup err: "+(e.message||e)); }
+    };
+
+    // Sign In
+    if(g("btnSignIn")) g("btnSignIn").onclick = async ()=>{
+      try{
+        await ensureSupabaseLoaded();
+        const s = sb();
+        const email=(g("siEmail").value||"").trim();
+        const password=g("siPass").value||"";
+        if(!email){ toast("Enter email in the Sign In form."); debug("signin: email length=0"); return; }
+        if(!password){ toast("Enter password in the Sign In form."); debug("signin: password length=0"); return; }
+        debug("signin: email length="+email.length+", password length="+password.length);
+        const { error } = await s.auth.signInWithPassword({ email, password });
+        if(error) throw error;
+        toast("Signed in");
+        location.hash="#/host"; route();
+      }catch(e){ toast(e.message||String(e)); debug("signin err: "+(e.message||e)); }
+    };
+  }
+
+  function route(){
+    const { path, params } = getHashInfo();
+    if(path.startsWith("home")){ show("home"); return; }
+    if(path.startsWith("auth")){ show("auth"); bindAuth(); return; }
+    if(path.startsWith("join")){
+      show("join");
+      // Join actions
+      if(g("lnkCreateAccount")) g("lnkCreateAccount").onclick = ()=>{ location.hash="#/auth"; route(); };
+      if(g("btnJoin")) g("btnJoin").onclick = async ()=>{
         try{
-          await ensureSupabaseLoaded();
-          const s = sb();
-          const email = (g("suEmail").value||"").trim();
-          const password = g("suPass").value||"";
-          const name = (g("suName").value||"").trim();
-          if(!email){ toast("Enter email in the Sign Up form."); debug("signup: email length=0"); return; }
-          if(!password){ toast("Enter password in the Sign Up form."); debug("signup: password length=0"); return; }
-          debug("signup: email length="+email.length+", password length="+password.length);
-          const { error } = await s.auth.signUp({ email, password, options:{ data: { name }} });
-          if(error) throw error; toast("Signed up.");
-        }catch(e){ toast(e.message||String(e)); debug("signup err: "+(e.message||e)); }
+          const name = (g("gName").value||"").trim();
+          const code = (g("gCode").value||"").trim();
+          if(!name || !code){ toast("Enter your name and the Game ID."); return; }
+          const r = await callFn("join_game_guest", { code, guest_name: name }, false);
+          if(g("joinNext")) g("joinNext").classList.remove("hidden");
+          if(g("btnGoRoom")) g("btnGoRoom").onclick = ()=>{ location.hash = "#/game?id="+r.game_id+"&temp="+r.temp_player_id; route(); };
+        }catch(e){ toast(String(e?.message||e)); debug("join err: "+(e?.message||e)); }
       };
-      g("btnSignIn").onclick = async ()=>{
+      return;
+    }
+    if(path.startsWith("host")){
+      show("host");
+      debug("host: binding");
+      if(g("btnCreateGame")) g("btnCreateGame").onclick = async ()=>{
+        debug("host: click");
         try{
-          await ensureSupabaseLoaded();
-          const s = sb();
-          const email = (g("siEmail").value||"").trim();
-          const password = g("siPass").value||"";
-          if(!email){ toast("Enter email in the Sign In form."); debug("signin: email length=0"); return; }
-          if(!password){ toast("Enter password in the Sign In form."); debug("signin: password length=0"); return; }
-          debug("signin: email length="+email.length+", password length="+password.length);
-          const { error } = await s.auth.signInWithPassword({ email, password });
-          if(error) throw error; toast("Signed in"); location.hash="#/host"; route();
-        }catch(e){ toast(e.message||String(e)); debug("signin err: "+(e.message||e)); }
+          const r = await callFn("create_game", {}, true);
+          if(g("hostInfo")) g("hostInfo").classList.remove("hidden");
+          if(g("hostCode")) g("hostCode").textContent = r.code || "";
+          if(g("btnEnterRoom")) g("btnEnterRoom").onclick = ()=>{ location.hash = "#/game?id="+(r.game_id||"")+"&host=1"; route(); };
+        }catch(e){ toast(String(e?.message||e)); debug("create_game err: "+(e?.message||e)); }
       };
-
-      async function callFn(name, body, needAuth){
-        const headers = { "content-type":"application/json" };
-        if(needAuth){
-          const s = sb();
-          const { data } = await s.auth.getSession();
-          const tk = data?.session?.access_token;
-          if(!tk){ toast("Please login first"); throw new Error("No login"); }
-          headers["authorization"] = "Bearer "+tk;
-        }
-        const url = fnb()+"/"+name;
+      return;
+    }
+    if(path.startsWith("game")){
+      show("game");
+      const id = params.get("id") || "";
+      const temp = params.get("temp") || "";
+      if(g("btnSubmit")) g("btnSubmit").onclick = async ()=>{
+        const text = (g("ansText").value||"").trim(); if(!text) return;
         try{
-          const r = await fetch(url, { method:"POST", headers, body: JSON.stringify(body||{}) });
-          const t = await r.text(); try { return JSON.parse(t) } catch { return t }
-        }catch(e){
-          debug("fetch err → "+url+": "+(e.message||e));
-          throw e;
-        }
-      }
+          const r = await callFn("submit_answer", { game_id:id, question_id:"00000000-0000-0000-0000-000000000000", text, temp_player_id: temp || undefined }, false);
+          g("ansText").value = "";
+          if(g("resp")) g("resp").textContent = typeof r==="string" ? r : JSON.stringify(r,null,2);
+        }catch(e){ toast(String(e?.message||e)); debug("submit err: "+(e?.message||e)); }
+      };
+      if(g("btnEnd")) g("btnEnd").onclick = async ()=>{
+        try{
+          const r = await callFn("end_game_and_analyze", { game_id:id }, true);
+          if(g("resp")) g("resp").textContent = typeof r==="string" ? r : JSON.stringify(r,null,2);
+          toast("Game ended. Guests have 30 min to register.");
+        }catch(e){ toast(String(e?.message||e)); debug("end err: "+(e?.message||e)); }
+      };
+      if(g("btnExtend")) g("btnExtend").onclick = ()=> toast("Extend coming next");
+      return;
+    }
+    show("home");
+  }
+  window.addEventListener("hashchange", route);
 
-      // First load
-      route();
-    })();
-  </script>
+  // ========== Top navigation ==========
+  if(g("btnLoginTop")) g("btnLoginTop").onclick = ()=>{ location.hash="#/auth"; route(); };
+  if(g("goHost")) g("goHost").onclick = ()=>{ location.hash="#/host"; route(); };
+  if(g("goJoin")) g("goJoin").onclick = ()=>{ location.hash="#/join"; route(); };
+
+  // First load
+  route();
+
+  // Ensure favicon to avoid 404 noise
+  (function ensureFavicon(){
+    const link = document.querySelector('link[rel="icon"]');
+    if(!link){
+      const l = document.createElement("link");
+      l.rel = "icon"; l.href = "data:,";
+      document.head.appendChild(l);
+    }
+  })();
+})();
+</script>
+
 </body>
 </html>
