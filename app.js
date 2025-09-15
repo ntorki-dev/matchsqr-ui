@@ -1,5 +1,4 @@
 (function(){
-  // ---------- helpers ----------
   const $ = (id) => document.getElementById(id);
   const logEl = $('hostLog');
   const log = (msg) => {
@@ -10,26 +9,16 @@
   };
   const setText = (el, v) => { if (el) el.textContent = v; };
 
-  // ---------- elements ----------
   const els = {
-    // sections
     home: $('homeSection'), host: $('hostSection'), join: $('joinSection'),
-    // nav
     btnHome: $('btnHome'), hostBtn: $('hostBtn'), joinBtn: $('joinBtn'),
-    // host auth
     hostLoginForm: $('hostLoginForm'), hostEmail: $('hostEmail'), hostPassword: $('hostPassword'),
-    // actions
-    createOrResumeBtn: $('createOrResumeBtn'),
-    startGameBtn: $('startGameBtn'),
-    endAnalyzeBtn: $('endAnalyzeBtn'),
-    // outputs
+    createOrResumeBtn: $('createOrResumeBtn'), startGameBtn: $('startGameBtn'), endAnalyzeBtn: $('endAnalyzeBtn'),
     gameIdOut: $('gameIdOut'), gameCodeOut: $('gameCodeOut'),
     statusOut: $('statusOut'), endsAtOut: $('endsAtOut'), timeLeft: $('timeLeft'),
-    // join
     guestName: $('guestName'), joinCode: $('joinCode'), joinRoomBtn: $('joinRoomBtn'), joinLog: $('joinLog')
   };
 
-  // ---------- state ----------
   const state = {
     supa: null, session: null,
     functionsBase: null, config: null,
@@ -37,7 +26,6 @@
     timerHandle: null
   };
 
-  // ---------- section switching ----------
   const show = (el)=> el && el.classList.remove('hidden');
   const hide = (el)=> el && el.classList.add('hidden');
 
@@ -45,14 +33,11 @@
   if (els.hostBtn) els.hostBtn.onclick = () => { hide(els.home); show(els.host); hide(els.join); };
   if (els.joinBtn) els.joinBtn.onclick = () => { hide(els.home); hide(els.host); show(els.join); };
 
-  // ---------- config & supabase init ----------
   async function loadConfig(){
     const baseRaw = (window.CONFIG && window.CONFIG.FUNCTIONS_BASE) || '';
     const base = baseRaw.replace(/\/$/, '');
     if (!base) { log('Please set FUNCTIONS_BASE in config.js'); return; }
     state.functionsBase = base;
-
-    // Try /config
     try {
       const t0 = performance.now();
       const r = await fetch(base + '/config');
@@ -61,12 +46,9 @@
       log(`Config HTTP ${r.status} in ${dt}ms`);
       let cfg; try { cfg = JSON.parse(text); } catch { cfg = {}; }
       state.config = cfg;
-
       const url  = cfg.supabase_url || cfg.public_supabase_url || cfg.url  || (window.CONFIG && window.CONFIG.FALLBACK_SUPABASE_URL);
       const anon = cfg.supabase_anon_key || cfg.public_supabase_anon_key || cfg.anon || (window.CONFIG && window.CONFIG.FALLBACK_SUPABASE_ANON_KEY);
-
-      if (!url || !anon) throw new Error('Missing supabase url/anon in /config and fallbacks');
-
+      if (!url || !anon) throw new Error('Missing supabase url/anon');
       state.supa = window.supabase.createClient(url, anon);
       log('Supabase client initialized.');
     } catch (e) {
@@ -75,14 +57,15 @@
   }
   loadConfig();
 
-  // ---------- countdown ----------
+  function clearCountdown(){
+    if (state.timerHandle){ clearInterval(state.timerHandle); state.timerHandle = null; }
+    setText(els.timeLeft, '—'); state.endsAt = null;
+  }
   function startCountdown(iso){
-    if (state.timerHandle) { clearInterval(state.timerHandle); state.timerHandle = null; }
-    if (!iso) { setText(els.timeLeft, '—'); return; }
-
+    clearCountdown();
+    if (!iso) return;
     const endsAt = new Date(iso);
     state.endsAt = endsAt;
-
     function tick(){
       const ms = endsAt - Date.now();
       if (ms <= 0){
@@ -106,16 +89,15 @@
     state.gameId   = g.id || g.game_id || state.gameId;
     state.gameCode = g.code || state.gameCode;
     state.status   = g.status || state.status;
-
+    // Ignore ends_at when not running
+    const ends = (g.status === 'running') ? g.ends_at : null;
     setText(els.gameIdOut,   state.gameId  || '—');
     setText(els.gameCodeOut, state.gameCode|| '—');
     setText(els.statusOut,   state.status  || '—');
-    setText(els.endsAtOut,   g.ends_at     || '—');
-
-    if (g.ends_at) startCountdown(g.ends_at);
+    setText(els.endsAtOut,   ends          || '—');
+    if (ends) startCountdown(ends); else clearCountdown();
   }
 
-  // ---------- host login ----------
   if (els.hostLoginForm) els.hostLoginForm.addEventListener('submit', async (e)=>{
     e.preventDefault();
     if (!state.supa) { log('Supabase client not ready yet.'); return; }
@@ -129,7 +111,6 @@
     log(`Login ok (${dt}ms)`);
   });
 
-  // ---------- create or resume ----------
   async function createOrResume(){
     if (!state.session?.access_token) { log('Please login first'); return; }
     const url = state.functionsBase + '/create_game';
@@ -139,15 +120,11 @@
       const dt = Math.round(performance.now() - t0);
       const out = await r.json().catch(()=>({}));
       if (!r.ok) { log(`Create/resume failed (${dt}ms)`); log(out); return; }
-      log(`Create/resume ok (${dt}ms)`);
-      applyGame(out); log(out);
-    } catch (e) {
-      log('Create/resume error: ' + e.message);
-    }
+      log(`Create/resume ok (${dt}ms)`); applyGame(out); log(out);
+    } catch (e) { log('Create/resume error: ' + e.message); }
   }
   if (els.createOrResumeBtn) els.createOrResumeBtn.addEventListener('click', createOrResume);
 
-  // ---------- start game (server-bound) ----------
   async function startGame(){
     if (!state.session?.access_token) { log('Please login first'); return; }
     if (!state.gameId) { log('No game to start. Click Create/Resume first.'); return; }
@@ -156,53 +133,48 @@
       const t0 = performance.now();
       const r = await fetch(url, {
         method:'POST',
-        headers:{ 'authorization':'Bearer ' + state.session.access_token, 'content-type':'application/json' },
-        body: JSON.stringify({ gameId: state.gameId, id: state.gameId, game_id: state.gameId })
+        headers:{ 'authorization': 'Bearer ' + state.session.access_token, 'content-type':'application/json' },
+        body: JSON.stringify({ gameId: state.gameId })
       });
       const dt = Math.round(performance.now() - t0);
       const out = await r.json().catch(()=>({}));
       if (!r.ok) { log(`Start failed (${dt}ms)`); log(out); return; }
       log(`Start ok (${dt}ms)`); applyGame(out.game || out); log(out);
-    } catch (e) {
-      log('Start error: ' + e.message);
-    }
+    } catch (e) { log('Start error: ' + e.message); }
   }
   if (els.startGameBtn) els.startGameBtn.addEventListener('click', startGame);
 
-  // ---------- end game ----------
   async function endGame(){
     if (!state.session?.access_token) { log('Please login first'); return; }
     if (!state.gameId) { log('No game created'); return; }
     const base = state.functionsBase + '/end_game_and_analyze';
     try {
-      // try body
       let t0 = performance.now();
       let r = await fetch(base, {
         method:'POST',
         headers:{ 'authorization':'Bearer ' + state.session.access_token, 'content-type':'application/json' },
-        body: JSON.stringify({ gameId: state.gameId, id: state.gameId, game_id: state.gameId, code: state.gameCode })
+        body: JSON.stringify({ gameId: state.gameId })
       });
       let dt = Math.round(performance.now() - t0);
       let out = await r.json().catch(()=>({}));
       if (!r.ok && (out?.error||'').toLowerCase().includes('missing_game_id')){
-        // fallback via querystring
-        const qs = new URLSearchParams({ gameId:String(state.gameId), id:String(state.gameId), game_id:String(state.gameId), code:String(state.gameCode||'') });
+        const qs = new URLSearchParams({ gameId:String(state.gameId) });
         t0 = performance.now();
-        r = await fetch(base + '?' + qs.toString(), { method:'POST', headers:{ 'authorization':'Bearer ' + state.session.access_token } });
+        r = await fetch(base + '?' + qs.toString(), { method:'POST', headers:{ 'authorization': 'Bearer ' + state.session.access_token } });
         dt = Math.round(performance.now() - t0);
         out = await r.json().catch(()=>({}));
       }
       if (!r.ok) { log(`End failed (${dt}ms)`); log(out); return; }
       log(`End ok (${dt}ms)`); log(out);
-      if (state.timerHandle) { clearInterval(state.timerHandle); state.timerHandle = null; }
-      setText(els.timeLeft,'—'); setText(els.statusOut,'ended');
-    } catch (e) {
-      log('End error: ' + e.message);
-    }
+
+      // UI clean-up; after your function marks 'ended', next Create will give you a new id
+      clearCountdown(); setText(els.statusOut,'ended');
+      state.gameId = null; state.gameCode = null;
+      setText(els.gameIdOut,'—'); setText(els.gameCodeOut,'—');
+    } catch (e) { log('End error: ' + e.message); }
   }
   if (els.endAnalyzeBtn) els.endAnalyzeBtn.addEventListener('click', endGame);
 
-  // ---------- join as guest ----------
   if (els.joinRoomBtn) els.joinRoomBtn.addEventListener('click', async ()=>{
     const name = (els.guestName.value||'').trim();
     const code = (els.joinCode.value||'').trim();
