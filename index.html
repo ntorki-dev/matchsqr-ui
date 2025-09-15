@@ -4,7 +4,37 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>MatchSqr</title>
-  <link rel="stylesheet" href="./styles.css" />
+
+  <!-- Inline minimal styles so we don't need a third file -->
+  <style>
+    :root { --green:#16a34a; --ink:#0f172a; --text:#1f2937; --muted:#6b7280; }
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;color:var(--text);background:#fff;line-height:1.45;}
+    .nav{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--ink);color:#fff;}
+    .brand{font-weight:700;}
+    .right{display:flex;gap:8px;}
+    .container{max-width:960px;margin:24px auto;padding:0 16px;}
+    .hero{text-align:center;margin:48px 0;}
+    h1{font-size:32px;margin:0 0 8px 0;}
+    h2{margin:16px 0 8px;}
+    .sub{color:var(--muted);}
+    .cta{display:flex;gap:12px;justify-content:center;margin-top:18px;flex-wrap:wrap;}
+    .btn{border:1px solid var(--green);color:var(--green);background:#fff;padding:10px 16px;border-radius:10px;cursor:pointer;}
+    .btn.primary{background:var(--green);color:#fff;}
+    .btn.ghost{border-color:#475569;color:#e2e8f0;background:#1f2937;}
+    .btn.small{padding:8px 12px;}
+    .btn.danger{border-color:#ef4444;color:#ef4444;}
+    .hidden{display:none;}
+    .panel{border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin-top:12px;background:#fafafa;}
+    .grid{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin:10px 0;}
+    .grid input{padding:10px;border:1px solid #d1d5db;border-radius:8px;}
+    .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+    .mono{background:#f7f7f7;padding:10px;border-radius:8px;overflow:auto;min-height:60px;font-family:ui-monospace,Menlo,Consolas,monospace;}
+    .muted{color:var(--muted);font-size:14px;}
+    .foot{max-width:960px;margin:40px auto 24px auto;padding:0 16px;color:#94a3b8;}
+    @media (max-width:640px){.grid{grid-template-columns:1fr;}.nav{flex-wrap:wrap;gap:8px;}}
+  </style>
+
+  <!-- Supabase client and your config.js -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./config.js"></script>
 </head>
@@ -13,15 +43,15 @@
     <div class="brand">MatchSqr</div>
     <div class="right">
       <button id="btnHome" class="btn ghost">Home</button>
-      <button id="btnLogin" class="btn ghost">Login</button>
     </div>
   </header>
 
   <main class="container">
+    <!-- HOME -->
     <section id="homeSection">
       <div class="hero">
         <h1>Safe space to build meaningful connections.</h1>
-        <p class="sub">Play with others using light games that reveal values, style, and interests first.</p>
+        <p class="sub">Play short games that reveal values and style before looks.</p>
         <div class="cta">
           <button id="hostBtn" class="btn primary">Host the Game</button>
           <button id="joinBtn" class="btn">Join the Game</button>
@@ -29,18 +59,20 @@
       </div>
     </section>
 
+    <!-- HOST -->
     <section id="hostSection" class="hidden">
       <h2>Host a Room</h2>
-      <p class="muted">Login as host, then create a game room.</p>
+      <p class="muted">Login as host, then Create/Resume your room, then Start.</p>
+
       <form id="hostLoginForm" class="grid">
         <input id="hostEmail" type="email" placeholder="Email" autocomplete="email" required />
         <input id="hostPassword" type="password" placeholder="Password" autocomplete="current-password" required />
         <button class="btn small">Login</button>
       </form>
 
-      <div class="row gap">
-        <button id="createRoomBtn" class="btn primary small">Create Game Room</button>
-        <button id="startGameLocalBtn" class="btn small">Start Game (local timer)</button>
+      <div class="row">
+        <button id="createOrResumeBtn" class="btn small primary">Create or Resume Game</button>
+        <button id="startGameBtn" class="btn small">Start Game</button>
         <button id="endAnalyzeBtn" class="btn small danger">End game & analyze</button>
       </div>
 
@@ -50,13 +82,16 @@
         <div class="muted">Share the Game Code with players.</div>
       </div>
 
-      <div class="timer panel">
+      <div class="panel">
+        <div><strong>Status:</strong> <span id="statusOut">—</span></div>
+        <div><strong>Ends at:</strong> <span id="endsAtOut">—</span></div>
         <div><strong>Time left:</strong> <span id="timeLeft">—</span></div>
       </div>
 
-      <pre id="hostLog" class="mono"></pre>
+      <pre id="hostLog" class="mono">Ready.</pre>
     </section>
 
+    <!-- JOIN -->
     <section id="joinSection" class="hidden">
       <h2>Join a Room</h2>
       <div class="grid">
