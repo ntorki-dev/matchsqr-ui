@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MatchSqr</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./config.js"></script>
+</head>
+<body>
+  <header class="nav">
+    <div class="brand">MatchSqr</div>
+    <div class="right">
+      <button id="btnHome" class="btn ghost">Home</button>
+      <button id="btnLogin" class="btn ghost">Login</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section id="homeSection">
+      <div class="hero">
+        <h1>Safe space to build meaningful connections.</h1>
+        <p class="sub">Play with others using light games that reveal values, style, and interests first.</p>
+        <div class="cta">
+          <button id="hostBtn" class="btn primary">Host the Game</button>
+          <button id="joinBtn" class="btn">Join the Game</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="hostSection" class="hidden">
+      <h2>Host a Room</h2>
+      <p class="muted">Login as host, then create a game room.</p>
+      <form id="hostLoginForm" class="grid">
+        <input id="hostEmail" type="email" placeholder="Email" autocomplete="email" required />
+        <input id="hostPassword" type="password" placeholder="Password" autocomplete="current-password" required />
+        <button class="btn small">Login</button>
+      </form>
+
+      <div class="row gap">
+        <button id="createRoomBtn" class="btn primary small">Create Game Room</button>
+        <button id="startGameLocalBtn" class="btn small">Start Game (local timer)</button>
+        <button id="endAnalyzeBtn" class="btn small danger">End game & analyze</button>
+      </div>
+
+      <div class="panel">
+        <div><strong>Game Code:</strong> <span id="gameCodeOut">—</span></div>
+        <div><strong>Game Id:</strong> <span id="gameIdOut">—</span></div>
+        <div class="muted">Share the Game Code with players.</div>
+      </div>
+
+      <div class="timer panel">
+        <div><strong>Time left:</strong> <span id="timeLeft">—</span></div>
+      </div>
+
+      <pre id="hostLog" class="mono"></pre>
+    </section>
+
+    <section id="joinSection" class="hidden">
+      <h2>Join a Room</h2>
+      <div class="grid">
+        <input id="guestName" placeholder="Your name" />
+        <input id="joinCode" placeholder="Game ID" />
+        <button id="joinRoomBtn" class="btn small">Join the Game</button>
+      </div>
+      <pre id="joinLog" class="mono"></pre>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="muted">Beta MVP prototype UI</div>
+  </footer>
+
+  <script src="./app.js"></script>
+</body>
+</html>
