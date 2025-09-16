@@ -20,18 +20,19 @@
     joinLog: $('joinLog')
   };
 
-  // Set up robust navigation using body[data-view]
-  const setView = (v) => { document.body.setAttribute('data-view', v); };
-  if (els.btnHome) els.btnHome.addEventListener('click', (e)=>{ e.preventDefault(); setView('home'); });
-  if (els.hostBtn) els.hostBtn.addEventListener('click', (e)=>{ e.preventDefault(); setView('host'); });
-  if (els.joinBtn) els.joinBtn.addEventListener('click', (e)=>{ e.preventDefault(); setView('join'); });
+  // Simple show/hide (this was the working version)
+  const show = (el)=>{ if(el) el.style.display=''; };
+  const hide = (el)=>{ if(el) el.style.display='none'; };
+  if (els.btnHome) els.btnHome.onclick = ()=>{ show(els.home); hide(els.host); hide(els.join); };
+  if (els.hostBtn) els.hostBtn.onclick = ()=>{ hide(els.home); show(els.host); hide(els.join); };
+  if (els.joinBtn) els.joinBtn.onclick = ()=>{ hide(els.home); hide(els.host); show(els.join); };
 
   // State
   const state = {
     supa: null, session: null, functionsBase: null,
     gameId: null, gameCode: null, status: null, endsAt: null,
     hostCountdownHandle: null, heartbeatHandle: null,
-    roomPollHandle: null, // shared polling for participants + card + timer
+    roomPollHandle: null,
     isHostInJoin: false
   };
 
@@ -71,21 +72,21 @@
     state.heartbeatHandle=setInterval(beat,20000); beat();
   }
 
-  // Shared room polling (participants + card + timer)
+  // Shared room polling
   function stopRoomPolling(){ if(state.roomPollHandle){ clearInterval(state.roomPollHandle); state.roomPollHandle=null; } }
   async function pollRoomStateOnce(){
     if(!state.functionsBase || !state.gameCode) return;
     const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
     const out = await r.json().catch(()=>({}));
-    // Update card
+    // Card
     const q = out?.question; setText(els.questionText, q?.text || '—'); setText(els.questionClar, q?.clarification || '');
     setText(els.gQuestionText, q?.text || '—'); setText(els.gQuestionClar, q?.clarification || '');
-    // Update timer/status
+    // Timer/status
     const endsIso = out?.ends_at || null;
     setText(els.statusOut, out?.status || '—'); setText(els.endsAtOut, endsIso || '—');
     setText(els.gStatus, out?.status || '—'); setText(els.gEndsAt, endsIso || '—');
     if(endsIso){ startHostCountdown(endsIso); startGuestCountdown(endsIso); }
-    // Update participants on both panes + counts
+    // Participants + counts
     const ppl = out?.participants || [];
     els.hostPeople.innerHTML  = ppl.map(p=>`<li>${p.name} <span class="meta">(${p.role})</span></li>`).join('') || '<li class="meta">No one yet</li>';
     els.guestPeople.innerHTML = els.hostPeople.innerHTML;
@@ -120,10 +121,10 @@
     state.session = data.session; log('Login ok');
   });
 
-  // Auto-join as host helper (when Create says an active game exists)
+  // Auto-join as host helper
   async function autoJoinAsHost(code){
     if(!code){ log('No code to join.'); return; }
-    setView('join');
+    hide(els.home); hide(els.host); show(els.join);
     if (els.joinCode) els.joinCode.value = code;
 
     const headers = { 'content-type':'application/json' };
@@ -161,7 +162,6 @@
       log('Create failed'); log(out); return;
     }
     log('Create ok'); applyHostGame(out); startHeartbeat();
-    setView('host');
   });
 
   // Start
