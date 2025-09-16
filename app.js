@@ -17,7 +17,7 @@
     btnHome: $('btnHome'), hostBtn: $('hostBtn'), joinBtn: $('joinBtn'),
     // host auth / controls
     hostLoginForm: $('hostLoginForm'), hostEmail: $('hostEmail'), hostPassword: $('hostPassword'),
-    createGameBtn: $('createGameBtn') || $('createOrResumeBtn'), // support old id if not renamed yet
+    createGameBtn: $('createGameBtn') || $('createOrResumeBtn'), // keep compatibility if not renamed yet
     startGameBtn: $('startGameBtn'), endAnalyzeBtn: $('endAnalyzeBtn'),
     // host status UI
     gameIdOut: $('gameIdOut'), gameCodeOut: $('gameCodeOut'),
@@ -26,27 +26,29 @@
     nextCardBtn: $('nextCardBtn'), questionText: $('questionText'), questionClar: $('questionClar'),
     // guest join + UI
     guestName: $('guestName'), joinCode: $('joinCode'), joinRoomBtn: $('joinRoomBtn'), joinLog: $('joinLog'),
-    gQuestionText: $('gQuestionText'), gQuestionClar: $('gQuestionClar')
+    gQuestionText: $('gQuestionText'), gQuestionClar: $('gQuestionClar'), gTimeLeft: $('gTimeLeft')
   };
 
-  // State
+  // App state
   const state = {
     supa: null, session: null,
     functionsBase: null,
     gameId: null, gameCode: null, status: null, endsAt: null,
-    hostTimer: null, guestTimer: null,
-    heartbeatTimer: null,
-    guestCode: null
+    hostCountdownHandle: null,
+    heartbeatHandle: null,
+    guestCode: null,
+    guestPollHandle: null,         // <-- NEW: polling loop for guests
+    guestCountdownHandle: null     // <-- NEW: countdown for guests
   };
 
-  // Show/hide
+  // Show/hide helpers
   const show = (el)=> el && el.classList.remove('hidden');
   const hide = (el)=> el && el.classList.add('hidden');
   if (els.btnHome) els.btnHome.onclick = () => { show(els.home); hide(els.host); hide(els.join); };
   if (els.hostBtn) els.hostBtn.onclick = () => { hide(els.home); show(els.host); hide(els.join); };
   if (els.joinBtn) els.joinBtn.onclick = () => { hide(els.home); hide(els.host); show(els.join); };
 
-  // Config / Supabase init
+  // -------- Config / Supabase init --------
   async function loadConfig(){
     const baseRaw = (window.CONFIG && window.CONFIG.FUNCTIONS_BASE) || '';
     const base = baseRaw.replace(/\/$/, '');
@@ -71,39 +73,59 @@
   }
   loadConfig();
 
-  // ---- Countdown helpers (host & guest) ----
-  function clearTimer(which){
-    if (which === 'host') { if (state.hostTimer){ clearInterval(state.hostTimer); state.hostTimer = null; } setText(els.timeLeft, '—'); state.endsAt = null; }
-    if (which === 'guest'){ if (state.guestTimer){ clearInterval(state.guestTimer); state.guestTimer = null; } /* guest label rendered inline */ }
+  // -------- Countdown helpers (host & guest) --------
+  function clearHostCountdown(){
+    if (state.hostCountdownHandle){ clearInterval(state.hostCountdownHandle); state.hostCountdownHandle = null; }
+    setText(els.timeLeft, '—'); state.endsAt = null;
   }
-  function startTimer(which, iso, targetEl){
+  function clearGuestCountdown(){
+    if (state.guestCountdownHandle){ clearInterval(state.guestCountdownHandle); state.guestCountdownHandle = null; }
+    if (els.gTimeLeft) els.gTimeLeft.textContent = '—';
+  }
+
+  function startCountdown(which, iso){
     const ends = iso ? new Date(iso) : null;
-    if (which === 'host') { clearTimer('host'); state.endsAt = ends; }
-    if (!ends) { if (which === 'host') setText(els.timeLeft, '—'); return; }
+    if (which === 'host'){
+      clearHostCountdown();
+      state.endsAt = ends;
+    } else {
+      clearGuestCountdown();
+    }
+    if (!ends){
+      if (which === 'host') setText(els.timeLeft, '—');
+      if (which === 'guest' && els.gTimeLeft) els.gTimeLeft.textContent = '—';
+      return;
+    }
 
     function tick(){
       const ms = ends - Date.now();
-      if (ms <= 0){
-        if (which === 'host') { setText(els.timeLeft, '00:00:00'); clearTimer('host'); }
-        if (targetEl) targetEl.textContent = '00:00:00';
-        return;
-      }
-      const s = Math.floor(ms/1000);
-      const hh = String(Math.floor(s/3600)).padStart(2,'0');
-      const mm = String(Math.floor((s%3600)/60)).padStart(2,'0');
-      const ss = String(s%60).padStart(2,'0');
-      const out = `${hh}:${mm}:${ss}`;
+      const out = (ms <= 0)
+        ? '00:00:00'
+        : (() => {
+            const s = Math.floor(ms/1000);
+            const hh = String(Math.floor(s/3600)).padStart(2,'0');
+            const mm = String(Math.floor((s%3600)/60)).padStart(2,'0');
+            const ss = String(s%60).padStart(2,'0');
+            return `${hh}:${mm}:${ss}`;
+          })();
       if (which === 'host') setText(els.timeLeft, out);
-      if (targetEl) targetEl.textContent = out;
+      if (which === 'guest' && els.gTimeLeft) els.gTimeLeft.textContent = out;
+
+      if (ms <= 0){
+        if (which === 'host') clearHostCountdown();
+        else clearGuestCountdown();
+      }
     }
+
     const handle = setInterval(tick, 1000);
     tick();
-    if (which === 'host') state.hostTimer = handle;
-    else state.guestTimer = handle;
+    if (which === 'host') state.hostCountdownHandle = handle;
+    else state.guestCountdownHandle = handle;
   }
-  const timerIsActive = () => state.status === 'running' && state.endsAt && state.endsAt.getTime() > Date.now();
 
-  // ---- Heartbeat for host ----
+  const hostTimerActive = () => state.status === 'running' && state.endsAt && state.endsAt.getTime() > Date.now();
+
+  // -------- Heartbeat for host --------
   async function heartbeat(){
     if (!state.session?.access_token || !state.gameId) return;
     fetch(state.functionsBase + '/heartbeat', {
@@ -113,15 +135,15 @@
     }).catch(()=>{});
   }
   function startHeartbeat(){
-    if (state.heartbeatTimer) clearInterval(state.heartbeatTimer);
-    state.heartbeatTimer = setInterval(heartbeat, 20000); // 20s
+    if (state.heartbeatHandle) clearInterval(state.heartbeatHandle);
+    state.heartbeatHandle = setInterval(heartbeat, 20000); // 20s
     heartbeat();
   }
   function stopHeartbeat(){
-    if (state.heartbeatTimer) { clearInterval(state.heartbeatTimer); state.heartbeatTimer = null; }
+    if (state.heartbeatHandle){ clearInterval(state.heartbeatHandle); state.heartbeatHandle = null; }
   }
 
-  // ---- Apply game row to host UI ----
+  // -------- Apply game row to host UI --------
   function applyGame(g){
     if (!g) return;
     state.gameId   = g.id || g.game_id || state.gameId;
@@ -135,14 +157,14 @@
     setText(els.statusOut,   state.status || '—');
     setText(els.endsAtOut,   endsIso || '—');
 
-    if (endsIso) startTimer('host', endsIso);
-    else clearTimer('host');
+    if (endsIso) startCountdown('host', endsIso);
+    else clearHostCountdown();
 
-    if (els.startGameBtn) els.startGameBtn.disabled = timerIsActive();
+    if (els.startGameBtn) els.startGameBtn.disabled = hostTimerActive();
     if (els.nextCardBtn)  els.nextCardBtn.disabled  = (state.status !== 'running');
   }
 
-  // ---- Auth (host) ----
+  // -------- Auth (host) --------
   if (els.hostLoginForm) els.hostLoginForm.addEventListener('submit', async (e)=>{
     e.preventDefault();
     if (!state.supa) { log('Supabase client not ready yet.'); return; }
@@ -156,7 +178,7 @@
     log(`Login ok (${dt}ms)`);
   });
 
-  // ---- Create Game (no resume) ----
+  // -------- Create Game (no resume) --------
   async function createGame(){
     if (!state.session?.access_token) { log('Please login first'); return; }
     const url = state.functionsBase + '/create_game';
@@ -180,11 +202,11 @@
   }
   if (els.createGameBtn) els.createGameBtn.addEventListener('click', createGame);
 
-  // ---- Start Game (idempotent) ----
+  // -------- Start Game (idempotent) --------
   async function startGame(){
     if (!state.session?.access_token) { log('Please login first'); return; }
     if (!state.gameId) { log('No game to start. Click Create Game first.'); return; }
-    if (timerIsActive()) { log('Game is already running.'); return; }
+    if (hostTimerActive()) { log('Game is already running.'); return; }
     const url = state.functionsBase + '/start_game';
     try {
       const t0 = performance.now();
@@ -203,7 +225,7 @@
   }
   if (els.startGameBtn) els.startGameBtn.addEventListener('click', startGame);
 
-  // ---- End Game & analyze (host) ----
+  // -------- End Game & analyze (host) --------
   async function endGame(){
     if (!state.session?.access_token) { log('Please login first'); return; }
     if (!state.gameId) { log('No game created'); return; }
@@ -222,7 +244,7 @@
 
       // Reset host UI
       stopHeartbeat();
-      clearTimer('host');
+      clearHostCountdown();
       setText(els.statusOut, 'ended');
       state.gameId = null; state.gameCode = null; state.status = 'ended';
       setText(els.gameIdOut, '—'); setText(els.gameCodeOut, '—'); setText(els.endsAtOut, '—');
@@ -235,12 +257,11 @@
   }
   if (els.endAnalyzeBtn) els.endAnalyzeBtn.addEventListener('click', endGame);
 
-  // ---- Reveal next card (host) ----
+  // -------- Reveal next card (host) --------
   async function revealNext(){
     if (!state.session?.access_token) { log('Please login first'); return; }
     if (!state.gameId) { log('No game active'); return; }
-    if (!timerIsActive()) { log('Start the game first.'); return; }
-
+    // NOTE: we allow reveal even if timer hit 00:00 locally; backend will check status.
     const url = state.functionsBase + '/next_question';
     try {
       const t0 = performance.now();
@@ -273,27 +294,37 @@
   }
   if (els.nextCardBtn) els.nextCardBtn.addEventListener('click', revealNext);
 
-  // ---- Guest join & polling (code only) ----
-  function stopGuestTimer(){ clearTimer('guest'); }
+  // -------- Guest join & polling (by 6-digit code) --------
+  function stopGuestPolling(){
+    if (state.guestPollHandle){ clearInterval(state.guestPollHandle); state.guestPollHandle = null; }
+  }
+
+  function stopGuestCountdown(){
+    clearGuestCountdown();
+  }
+
   async function pollGuestStateOnce(){
     if (!state.functionsBase || !state.guestCode) return;
     try {
       const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.guestCode));
       const out = await r.json().catch(()=>({}));
-      // question
+
+      // Question
       const q = out?.question;
       setText(els.gQuestionText, q?.text || '—');
       setText(els.gQuestionClar, q?.clarification || '');
-      // countdown
+
+      // Timer
       const endsIso = out?.ends_at || null;
-      if (endsIso) startTimer('guest', endsIso, els.gTimeLeft || null);
-      else stopGuestTimer();
+      if (endsIso) startCountdown('guest', endsIso);
+      else stopGuestCountdown();
     } catch {}
   }
+
   function startGuestPolling(){
-    if (state.guestTimer){ clearInterval(state.guestTimer); state.guestTimer=null; }
+    stopGuestPolling();            // <-- only stops polling, not countdown
     pollGuestStateOnce();
-    state.guestTimer = setInterval(pollGuestStateOnce, 3000);
+    state.guestPollHandle = setInterval(pollGuestStateOnce, 3000); // 3s polling
   }
 
   if (els.joinRoomBtn) els.joinRoomBtn.addEventListener('click', async ()=>{
@@ -302,17 +333,17 @@
     if (!code){ if (els.joinLog) els.joinLog.textContent = 'Enter the 6-digit code'; return; }
     state.guestCode = code;
 
-    // Begin polling immediately so guests see card/timer even if join call fails
+    // Start polling immediately—so guests (and returning host) see updates in near real-time
     startGuestPolling();
 
-    // Optionally register presence
+    // Optional: register presence server-side (won't affect polling)
     try {
       const url = state.functionsBase + '/join_game_guest';
       const t0 = performance.now();
       const r = await fetch(url, { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ name, code }) });
       const dt = Math.round(performance.now() - t0);
       const out = await r.json().catch(()=>({}));
-      if (!r.ok) { if (els.joinLog) els.joinLog.textContent = `Join failed (${dt}ms): ` + JSON.stringify(out); return; }
+      if (!r.ok){ if (els.joinLog) els.joinLog.textContent = `Join failed (${dt}ms): ` + JSON.stringify(out); return; }
       if (els.joinLog) els.joinLog.textContent = `Join ok (${dt}ms): ` + JSON.stringify(out, null, 2);
     } catch (e) {
       if (els.joinLog) els.joinLog.textContent = 'Join error: ' + e.message;
