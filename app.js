@@ -11,11 +11,12 @@
     hostLoginForm: $('hostLoginForm'), hostEmail: $('hostEmail'), hostPassword: $('hostPassword'),
     createGameBtn: $('createGameBtn'), startGameBtn: $('startGameBtn'), nextCardBtn: $('nextCardBtn'), endAnalyzeBtn: $('endAnalyzeBtn'),
     gameIdOut: $('gameIdOut'), gameCodeOut: $('gameCodeOut'), statusOut: $('statusOut'), endsAtOut: $('endsAtOut'), timeLeft: $('timeLeft'),
-    hostPeople: $('hostPeople'),
+    hostPeople: $('hostPeople'), hostPeopleCount: $('hostPeopleCount'),
     questionText: $('questionText'), questionClar: $('questionClar'),
     guestName: $('guestName'), joinCode: $('joinCode'), joinRoomBtn: $('joinRoomBtn'),
     gStatus: $('gStatus'), gEndsAt: $('gEndsAt'), gTimeLeft: $('gTimeLeft'),
-    guestPeople: $('guestPeople'), gQuestionText: $('gQuestionText'), gQuestionClar: $('gQuestionClar'),
+    guestPeople: $('guestPeople'), guestPeopleCount: $('guestPeopleCount'),
+    gQuestionText: $('gQuestionText'), gQuestionClar: $('gQuestionClar'),
     joinLog: $('joinLog')
   };
 
@@ -29,8 +30,8 @@
   };
 
   // Navigation
-  const show = (el)=> el && (el.style.display='');
-  const hide = (el)=> el && (el.style.display='none');
+  const show = (el)=> el && el.classList.remove('hidden');
+  const hide = (el)=> el && el.classList.add('hidden');
   if (els.btnHome) els.btnHome.onclick = ()=>{ show(els.home); hide(els.host); hide(els.join); };
   if (els.hostBtn) els.hostBtn.onclick = ()=>{ hide(els.home); show(els.host); hide(els.join); };
   if (els.joinBtn) els.joinBtn.onclick = ()=>{ hide(els.home); hide(els.host); show(els.join); };
@@ -85,10 +86,13 @@
     setText(els.statusOut, out?.status || '—'); setText(els.endsAtOut, endsIso || '—');
     setText(els.gStatus, out?.status || '—'); setText(els.gEndsAt, endsIso || '—');
     if(endsIso){ startHostCountdown(endsIso); startGuestCountdown(endsIso); }
-    // Update participants on both panes
+    // Update participants on both panes + counts
     const ppl = out?.participants || [];
     els.hostPeople.innerHTML  = ppl.map(p=>`<li>${p.name} <span class="meta">(${p.role})</span></li>`).join('') || '<li class="meta">No one yet</li>';
     els.guestPeople.innerHTML = els.hostPeople.innerHTML;
+    const count = Array.isArray(ppl) ? ppl.length : 0;
+    if (els.hostPeopleCount) els.hostPeopleCount.textContent = String(count);
+    if (els.guestPeopleCount) els.guestPeopleCount.textContent = String(count);
   }
   function startRoomPolling(){ stopRoomPolling(); state.roomPollHandle=setInterval(pollRoomStateOnce,3000); pollRoomStateOnce(); }
 
@@ -104,7 +108,6 @@
     setText(els.statusOut, state.status || '—'); setText(els.endsAtOut, endsIso || '—');
     if(endsIso) startHostCountdown(endsIso); else clearHostCountdown();
     els.startGameBtn.disabled = !!(state.status==='running' && endsIso);
-    // ensure shared polling runs so participants + card stay fresh
     if (state.gameCode) startRoomPolling();
   }
 
@@ -121,7 +124,6 @@
   // Auto-join as host helper (when Create says an active game exists)
   async function autoJoinAsHost(code){
     if(!code){ log('No code to join.'); return; }
-    // show Join pane and prefill
     hide(els.home); hide(els.host); show(els.join);
     if (els.joinCode) els.joinCode.value = code;
 
@@ -137,7 +139,6 @@
     const isHost = !!out?.is_host;
     if (!isHost){ if(els.joinLog) els.joinLog.textContent='This code belongs to an existing room, but you are not the host.'; return; }
 
-    // Success as host: attach control
     state.isHostInJoin = true;
     state.gameId  = out.game_id || state.gameId;
     state.gameCode = code;
@@ -190,7 +191,6 @@
     if (!r.ok){ log('Next card failed'); log(out); return; }
     const q = out.question || {};
     setText(els.questionText, q.text || '—'); setText(els.questionClar, q.clarification || '');
-    // room polling will also reflect this for all clients
   });
 
   // End
@@ -205,13 +205,13 @@
     const out = await r.json().catch(()=>({}));
     if (!r.ok){ log('End failed'); log(out); return; }
     log('End ok'); log(out);
-    stopHeartbeat(); clearHostCountdown(); stopRoomPolling();
+    stopHeartbeat(); stopRoomPolling(); clearHostCountdown();
     state.gameId=null; state.gameCode=null; state.status='ended';
     setText(els.gameIdOut,'—'); setText(els.gameCodeOut,'—'); setText(els.statusOut,'ended'); setText(els.endsAtOut,'—');
     setText(els.questionText,'—'); setText(els.questionClar,'');
   });
 
-  // Manual Join button (guest or returning host)
+  // Manual Join (guest or returning host)
   if (els.joinRoomBtn) els.joinRoomBtn.addEventListener('click', async ()=>{
     const code=(els.joinCode?.value||'').trim(); const name=(els.guestName?.value||'').trim();
     if (!code){ if(els.joinLog) els.joinLog.textContent='Enter the 6-digit code'; return; }
@@ -227,16 +227,16 @@
 
     const isHost = !!out?.is_host;
     state.isHostInJoin = isHost;
+    state.gameCode = code;
+
     if (isHost){
       state.gameId = out.game_id || state.gameId;
-      state.gameCode = code;
       setText(els.gameIdOut, state.gameId || '—'); setText(els.gameCodeOut, code);
       startHeartbeat();
-    } else {
-      // guest presence pings
+    } else if (name){
       setInterval(()=>{ fetch(state.functionsBase + '/participant_heartbeat',{ method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ gameId: out?.game_id, name }) }).catch(()=>{}); }, 25000);
-      state.gameCode = code; // to enable room polling for guests
     }
+
     if(els.joinLog) els.joinLog.textContent='Joined: '+JSON.stringify({ is_host:isHost, game_id: out?.game_id }, null, 2);
     startRoomPolling();
   });
