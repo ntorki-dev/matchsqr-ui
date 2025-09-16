@@ -5,16 +5,16 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Match Square — Game MVP</title>
   <style>
-    :root { --ink:#0f172a; --text:#111827; --muted:#6b7280; --brand:#0ea5e9; --ok:#16a34a; --danger:#ef4444; }
+    :root { --ink:#0f172a; --text:#111827; --muted:#6b7280; --brand:#0ea5e9; --ok:#16a34a; --danger:#ef4444; --bg:#ffffff; --panel:#fafafa; }
     *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#fff;color:var(--text);line-height:1.45;}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text);line-height:1.45;}
     header{background:var(--ink);color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
     .brand{font-weight:700}
     .main{max-width:1100px;margin:18px auto;padding:0 16px}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
     @media (max-width:900px){.grid{grid-template-columns:1fr}}
     h2{margin:0 0 8px 0}
-    .card{border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fafafa}
+    .card{border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:var(--panel)}
     .row{display:flex;gap:8px;flex-wrap:wrap}
     .btn{border:1px solid #e5e7eb;background:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
     .btn.primary{border-color:var(--brand);background:var(--brand);color:#fff}
@@ -26,8 +26,11 @@
     ul.people{list-style:none;padding:0;margin:6px 0 0 0}
     ul.people li{padding:4px 0;border-bottom:1px dashed #e5e7eb}
     .question{font-size:18px}
+    .hidden{display:none}
   </style>
+  <!-- Supabase client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Your config should define window.CONFIG.FUNCTIONS_BASE -->
   <script src="./config.js"></script>
 </head>
 <body>
@@ -48,7 +51,7 @@
 
     <div class="grid">
       <!-- HOST PANEL -->
-      <section id="hostSection" class="card" style="display:none">
+      <section id="hostSection" class="card hidden">
         <h2>Host</h2>
         <form id="hostLoginForm" class="row">
           <input id="hostEmail" type="email" placeholder="Email" required style="max-width:280px"/>
@@ -72,7 +75,7 @@
             <div><strong>Time left:</strong> <span id="timeLeft">—</span></div>
           </div>
           <div class="card" style="flex:1">
-            <div class="meta">Participants (last 2 min)</div>
+            <div class="meta">Participants (<span id="hostPeopleCount">0</span>)</div>
             <ul id="hostPeople" class="people"></ul>
           </div>
         </div>
@@ -86,8 +89,8 @@
         <pre id="hostLog" class="mono" style="margin-top:8px">Ready.</pre>
       </section>
 
-      <!-- GUEST PANEL (also used by returning host via Join) -->
-      <section id="joinSection" class="card" style="display:none">
+      <!-- GUEST PANEL -->
+      <section id="joinSection" class="card hidden">
         <h2>Join</h2>
         <div class="row">
           <input id="guestName" placeholder="Your name (guest)"/>
@@ -102,7 +105,7 @@
             <div><strong>Time left:</strong> <span id="gTimeLeft">—</span></div>
           </div>
           <div class="card" style="flex:1">
-            <div class="meta">Participants (last 2 min)</div>
+            <div class="meta">Participants (<span id="guestPeopleCount">0</span>)</div>
             <ul id="guestPeople" class="people"></ul>
           </div>
         </div>
