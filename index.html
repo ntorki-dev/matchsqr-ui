@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>MatchSqr</title>
 
-  <!-- Inline minimal styles so we don't need a third file -->
   <style>
     :root { --green:#16a34a; --ink:#0f172a; --text:#1f2937; --muted:#6b7280; }
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;color:var(--text);background:#fff;line-height:1.45;}
@@ -34,7 +33,6 @@
     @media (max-width:640px){.grid{grid-template-columns:1fr;}.nav{flex-wrap:wrap;gap:8px;}}
   </style>
 
-  <!-- Supabase client and your config.js -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./config.js"></script>
 </head>
@@ -62,7 +60,7 @@
     <!-- HOST -->
     <section id="hostSection" class="hidden">
       <h2>Host a Room</h2>
-      <p class="muted">Login as host, then Create/Resume your room, then Start.</p>
+      <p class="muted">Login as host, Create/Resume, Start the session, then reveal cards.</p>
 
       <form id="hostLoginForm" class="grid">
         <input id="hostEmail" type="email" placeholder="Email" autocomplete="email" required />
@@ -86,6 +84,18 @@
         <div><strong>Status:</strong> <span id="statusOut">—</span></div>
         <div><strong>Ends at:</strong> <span id="endsAtOut">—</span></div>
         <div><strong>Time left:</strong> <span id="timeLeft">—</span></div>
+      </div>
+
+      <!-- New: Current Card -->
+      <div class="panel">
+        <div class="row">
+          <button id="nextCardBtn" class="btn small">Reveal next card</button>
+        </div>
+        <div style="margin-top:10px">
+          <div class="muted">Current Card</div>
+          <div id="questionText" style="font-size:18px; margin-top:6px;">—</div>
+          <div id="questionClar" class="muted" style="margin-top:6px;"></div>
+        </div>
       </div>
 
       <pre id="hostLog" class="mono">Ready.</pre>
