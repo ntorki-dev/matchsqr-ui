@@ -86,6 +86,10 @@
     tick();
   }
 
+  function timerIsActive(){
+    return state.status === 'running' && state.endsAt && state.endsAt.getTime() > Date.now();
+  }
+
   function applyGame(g){
     if (!g) return;
     state.gameId   = g.id || g.game_id || state.gameId;
@@ -101,7 +105,8 @@
 
     if (ends) startCountdown(ends); else clearCountdown();
 
-    if (els.startGameBtn) els.startGameBtn.disabled = (state.status === 'running');
+    // Only disable Start when a valid running timer exists
+    if (els.startGameBtn) els.startGameBtn.disabled = timerIsActive();
     if (els.nextCardBtn)  els.nextCardBtn.disabled  = (state.status !== 'running');
   }
 
@@ -134,11 +139,12 @@
   }
   if (els.createOrResumeBtn) els.createOrResumeBtn.addEventListener('click', createOrResume);
 
-  // START (idempotent on backend)
+  // START (call backend if NO active timer, even if status text says "running")
   async function startGame(){
     if (!state.session?.access_token) { log('Please login first'); return; }
     if (!state.gameId) { log('No game to start. Click Create/Resume first.'); return; }
-    if (state.status === 'running') { log('Game is already running.'); return; }
+    if (timerIsActive()) { log('Game is already running.'); return; } // only block when timer valid
+
     const url = state.functionsBase + '/start_game';
     try {
       const t0 = performance.now();
@@ -179,7 +185,7 @@
       if (!r.ok) { log(`End failed (${dt}ms)`); log(out); return; }
       log(`End ok (${dt}ms)`); log(out);
 
-      // Reset local UI so next Create gives a fresh id
+      // Reset UI so next Create yields a fresh id
       clearCountdown(); setText(els.statusOut,'ended');
       state.gameId = null; state.gameCode = null;
       setText(els.gameIdOut,'—'); setText(els.gameCodeOut,'—');
@@ -190,11 +196,12 @@
   }
   if (els.endAnalyzeBtn) els.endAnalyzeBtn.addEventListener('click', endGame);
 
-  // Reveal next card
+  // Reveal next card (with safe fallback if DB is empty)
   async function revealNext(){
     if (!state.session?.access_token) { log('Please login first'); return; }
     if (!state.gameId) { log('No game active'); return; }
-    if (state.status !== 'running') { log('Start the game first.'); return; }
+    if (!timerIsActive()) { log('Start the game first.'); return; }
+
     const url = state.functionsBase + '/next_question';
     try {
       const t0 = performance.now();
@@ -205,7 +212,21 @@
       });
       const dt = Math.round(performance.now() - t0);
       const out = await r.json().catch(()=>({}));
-      if (!r.ok){ log(`Next card failed (${dt}ms)`); log(out); return; }
+      if (!r.ok){
+        log(`Next card failed (${dt}ms)`); log(out);
+        if ((out?.error||'') === 'no_more_questions'){
+          // Safe fallback to keep the flow moving
+          const q = {
+            id: 'sample-warmup',
+            text: 'Warm-up: Share a small joy from this week.',
+            clarification: 'Think of a tiny win or a moment that made you smile.'
+          };
+          setText(els.questionText, q.text);
+          setText(els.questionClar, q.clarification || '');
+          log('Using sample fallback question (seed your questions table to replace this).');
+        }
+        return;
+      }
       log(`Next card ok (${dt}ms)`); log(out);
       const q = out.question || {};
       setText(els.questionText, q.text || '—');
@@ -216,7 +237,7 @@
   }
   if (els.nextCardBtn) els.nextCardBtn.addEventListener('click', revealNext);
 
-  // GUEST JOIN (unchanged)
+  // GUEST JOIN
   if (els.joinRoomBtn) els.joinRoomBtn.addEventListener('click', async ()=>{
     const name = (els.guestName.value||'').trim();
     const code = (els.joinCode.value||'').trim();
