@@ -20,9 +20,9 @@
     joinLog: $('joinLog')
   };
 
-  // Simple show/hide (this was the working version)
-  const show = (el)=>{ if(el) el.style.display=''; };
-  const hide = (el)=>{ if(el) el.style.display='none'; };
+  // Minimal, robust show/hide (fix for Join blank screen)
+  const show = (el)=>{ if(!el) return; el.classList.remove('hidden'); el.style.display=''; };
+  const hide = (el)=>{ if(!el) return; el.classList.add('hidden'); el.style.display='none'; };
   if (els.btnHome) els.btnHome.onclick = ()=>{ show(els.home); hide(els.host); hide(els.join); };
   if (els.hostBtn) els.hostBtn.onclick = ()=>{ hide(els.home); show(els.host); hide(els.join); };
   if (els.joinBtn) els.joinBtn.onclick = ()=>{ hide(els.home); hide(els.host); show(els.join); };
