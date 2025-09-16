@@ -20,6 +20,12 @@
     joinLog: $('joinLog')
   };
 
+  // Set up robust navigation using body[data-view]
+  const setView = (v) => { document.body.setAttribute('data-view', v); };
+  if (els.btnHome) els.btnHome.addEventListener('click', (e)=>{ e.preventDefault(); setView('home'); });
+  if (els.hostBtn) els.hostBtn.addEventListener('click', (e)=>{ e.preventDefault(); setView('host'); });
+  if (els.joinBtn) els.joinBtn.addEventListener('click', (e)=>{ e.preventDefault(); setView('join'); });
+
   // State
   const state = {
     supa: null, session: null, functionsBase: null,
@@ -28,13 +34,6 @@
     roomPollHandle: null, // shared polling for participants + card + timer
     isHostInJoin: false
   };
-
-  // Navigation
-  const show = (el)=> el && el.classList.remove('hidden');
-  const hide = (el)=> el && el.classList.add('hidden');
-  if (els.btnHome) els.btnHome.onclick = ()=>{ show(els.home); hide(els.host); hide(els.join); };
-  if (els.hostBtn) els.hostBtn.onclick = ()=>{ hide(els.home); show(els.host); hide(els.join); };
-  if (els.joinBtn) els.joinBtn.onclick = ()=>{ hide(els.home); hide(els.host); show(els.join); };
 
   // Config/Supabase
   async function loadConfig(){
@@ -124,7 +123,7 @@
   // Auto-join as host helper (when Create says an active game exists)
   async function autoJoinAsHost(code){
     if(!code){ log('No code to join.'); return; }
-    hide(els.home); hide(els.host); show(els.join);
+    setView('join');
     if (els.joinCode) els.joinCode.value = code;
 
     const headers = { 'content-type':'application/json' };
@@ -162,6 +161,7 @@
       log('Create failed'); log(out); return;
     }
     log('Create ok'); applyHostGame(out); startHeartbeat();
+    setView('host');
   });
 
   // Start
