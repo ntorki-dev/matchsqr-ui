@@ -4,7 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>MatchSqr</title>
-
   <style>
     :root { --green:#16a34a; --ink:#0f172a; --text:#1f2937; --muted:#6b7280; }
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;color:var(--text);background:#fff;line-height:1.45;}
@@ -32,16 +31,13 @@
     .foot{max-width:960px;margin:40px auto 24px auto;padding:0 16px;color:#94a3b8;}
     @media (max-width:640px){.grid{grid-template-columns:1fr;}.nav{flex-wrap:wrap;gap:8px;}}
   </style>
-
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./config.js"></script>
 </head>
 <body>
   <header class="nav">
     <div class="brand">MatchSqr</div>
-    <div class="right">
-      <button id="btnHome" class="btn ghost">Home</button>
-    </div>
+    <div class="right"><button id="btnHome" class="btn ghost">Home</button></div>
   </header>
 
   <main class="container">
@@ -60,11 +56,11 @@
     <!-- HOST -->
     <section id="hostSection" class="hidden">
       <h2>Host a Room</h2>
-      <p class="muted">Login as host, Create/Resume, Start the session, then reveal cards.</p>
+      <p class="muted">Login, Create/Resume, Start, then reveal cards.</p>
 
       <form id="hostLoginForm" class="grid">
-        <input id="hostEmail" type="email" placeholder="Email" autocomplete="email" required />
-        <input id="hostPassword" type="password" placeholder="Password" autocomplete="current-password" required />
+        <input id="hostEmail" type="email" placeholder="Email" required />
+        <input id="hostPassword" type="password" placeholder="Password" required />
         <button class="btn small">Login</button>
       </form>
 
@@ -77,7 +73,7 @@
       <div class="panel">
         <div><strong>Game Code:</strong> <span id="gameCodeOut">—</span></div>
         <div><strong>Game Id:</strong> <span id="gameIdOut">—</span></div>
-        <div class="muted">Share the Game Code with players.</div>
+        <div class="muted">Share the 6-digit code with players.</div>
       </div>
 
       <div class="panel">
@@ -86,11 +82,8 @@
         <div><strong>Time left:</strong> <span id="timeLeft">—</span></div>
       </div>
 
-      <!-- New: Current Card -->
       <div class="panel">
-        <div class="row">
-          <button id="nextCardBtn" class="btn small">Reveal next card</button>
-        </div>
+        <div class="row"><button id="nextCardBtn" class="btn small">Reveal next card</button></div>
         <div style="margin-top:10px">
           <div class="muted">Current Card</div>
           <div id="questionText" style="font-size:18px; margin-top:6px;">—</div>
@@ -106,17 +99,21 @@
       <h2>Join a Room</h2>
       <div class="grid">
         <input id="guestName" placeholder="Your name" />
-        <input id="joinCode" placeholder="Game ID" />
+        <input id="joinCode" placeholder="6-digit code" />
         <button id="joinRoomBtn" class="btn small">Join the Game</button>
       </div>
+
+      <div class="panel">
+        <div class="muted">Current Card</div>
+        <div id="gQuestionText" style="font-size:18px; margin-top:6px;">—</div>
+        <div id="gQuestionClar" class="muted" style="margin-top:6px;"></div>
+      </div>
+
       <pre id="joinLog" class="mono"></pre>
     </section>
   </main>
 
-  <footer class="foot">
-    <div class="muted">Beta MVP prototype UI</div>
-  </footer>
-
+  <footer class="foot"><div class="muted">Beta MVP prototype UI</div></footer>
   <script src="./app.js"></script>
 </body>
 </html>
