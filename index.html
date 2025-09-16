@@ -27,16 +27,23 @@
     ul.people li{padding:4px 0;border-bottom:1px dashed #e5e7eb}
     .question{font-size:18px}
     .hidden{display:none}
+    /* View-based visibility (robust against nesting) */
+    #homeSection{display:block}
+    #hostSection, #joinSection{display:none}
+    body[data-view="home"] #homeSection{display:block}
+    body[data-view="home"] #hostSection, body[data-view="home"] #joinSection{display:none}
+    body[data-view="host"] #hostSection{display:block}
+    body[data-view="host"] #homeSection, body[data-view="host"] #joinSection{display:none}
+    body[data-view="join"] #joinSection{display:block}
+    body[data-view="join"] #homeSection, body[data-view="join"] #hostSection{display:none}
   </style>
-  <!-- Supabase client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- Your config should define window.CONFIG.FUNCTIONS_BASE -->
   <script src="./config.js"></script>
 </head>
-<body>
+<body data-view="home">
   <header>
     <div class="brand">Match Square</div>
-    <div><button id="btnHome" class="btn">Home</button></div>
+    <div><button id="btnHome" type="button" class="btn">Home</button></div>
   </header>
 
   <main class="main">
@@ -44,26 +51,26 @@
       <h2>Real connections first</h2>
       <p class="meta">Host a room, invite guests with a 6-digit code, reveal cards, and talk.</p>
       <div class="row" style="margin-top:8px">
-        <button id="hostBtn" class="btn primary">Host</button>
-        <button id="joinBtn" class="btn">Join</button>
+        <button id="hostBtn" type="button" class="btn primary">Host</button>
+        <button id="joinBtn" type="button" class="btn">Join</button>
       </div>
     </section>
 
     <div class="grid">
       <!-- HOST PANEL -->
-      <section id="hostSection" class="card hidden">
+      <section id="hostSection" class="card">
         <h2>Host</h2>
-        <form id="hostLoginForm" class="row">
+        <form id="hostLoginForm" class="row" onsubmit="return false;">
           <input id="hostEmail" type="email" placeholder="Email" required style="max-width:280px"/>
           <input id="hostPassword" type="password" placeholder="Password" required style="max-width:180px"/>
-          <button class="btn">Login</button>
+          <button id="loginBtn" type="submit" class="btn">Login</button>
         </form>
 
         <div class="row" style="margin-top:8px">
-          <button id="createGameBtn" class="btn primary">Create Game</button>
-          <button id="startGameBtn" class="btn ok">Start</button>
-          <button id="nextCardBtn" class="btn">Reveal next card</button>
-          <button id="endAnalyzeBtn" class="btn danger">End & analyze</button>
+          <button id="createGameBtn" type="button" class="btn primary">Create Game</button>
+          <button id="startGameBtn" type="button" class="btn ok">Start</button>
+          <button id="nextCardBtn" type="button" class="btn">Reveal next card</button>
+          <button id="endAnalyzeBtn" type="button" class="btn danger">End & analyze</button>
         </div>
 
         <div class="row" style="margin-top:8px">
@@ -90,12 +97,12 @@
       </section>
 
       <!-- GUEST PANEL -->
-      <section id="joinSection" class="card hidden">
+      <section id="joinSection" class="card">
         <h2>Join</h2>
         <div class="row">
           <input id="guestName" placeholder="Your name (guest)"/>
           <input id="joinCode" placeholder="6-digit code"/>
-          <button id="joinRoomBtn" class="btn">Join</button>
+          <button id="joinRoomBtn" type="button" class="btn">Join</button>
         </div>
 
         <div class="row" style="margin-top:8px">
