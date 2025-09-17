@@ -25,7 +25,7 @@
   const hide = (el)=>{ if(!el) return; el.classList.add('hidden'); el.style.display='none'; };
   if (els.btnHome) els.btnHome.onclick = ()=>{ show(els.home); hide(els.host); hide(els.join); };
   if (els.hostBtn) els.hostBtn.onclick = ()=>{ hide(els.home); show(els.host); hide(els.join); };
-  if (els.joinBtn) els.joinBtn.onclick = ()=>{ hide(els.home); hide(els.host); show(els.join); if(state.session?.access_token && els.guestName){ els.guestName.parentElement.style.display='none'; } };
+  if (els.joinBtn) els.joinBtn.onclick = ()=>{ hide(els.home); hide(els.host); show(els.join); };
 
   // State
   const state = {
@@ -35,17 +35,6 @@
     roomPollHandle: null,
     isHostInJoin: false
   };
-
-  function deriveSignedName(){
-    const u = state.session?.user;
-    if (!u) return '';
-    const metaName = (u.user_metadata && (u.user_metadata.full_name || u.user_metadata.name)) || '';
-    if (metaName && String(metaName).trim()) return String(metaName).trim();
-    const email = (u.email || '').trim();
-    if (!email) return '';
-    return email.split('@')[0];
-  }
-
 
   // Config/Supabase
   async function loadConfig(){
@@ -84,26 +73,6 @@
   }
 
   // Shared room polling
-
-  // Stable participants render: host first, then name; avoids flicker
-  function renderParticipantsStable(ppl){
-    const list = Array.isArray(ppl) ? [...ppl] : [];
-    list.sort((a,b)=>{
-      const ra = (a?.role||'guest') === 'host' ? 0 : 1;
-      const rb = (b?.role||'guest') === 'host' ? 0 : 1;
-      if (ra !== rb) return ra - rb;
-      const na = (a?.name||'').toLowerCase();
-      const nb = (b?.name||'').toLowerCase();
-      return na.localeCompare(nb);
-    });
-    const html = list.map(p=>`<li>${p.name || '—'} <span class="meta">(${p.role || 'guest'})</span></li>`).join('') || '<li class="meta">No one yet</li>';
-    if (els.hostPeople) els.hostPeople.innerHTML = html;
-    if (els.guestPeople) els.guestPeople.innerHTML = html;
-    const count = list.length;
-    if (els.hostPeopleCount) els.hostPeopleCount.textContent = String(count);
-    if (els.guestPeopleCount) els.guestPeopleCount.textContent = String(count);
-  }
-
   function stopRoomPolling(){ if(state.roomPollHandle){ clearInterval(state.roomPollHandle); state.roomPollHandle=null; } }
   async function pollRoomStateOnce(){
     if(!state.functionsBase || !state.gameCode) return;
@@ -117,8 +86,13 @@
     setText(els.statusOut, out?.status || '—'); setText(els.endsAtOut, endsIso || '—');
     setText(els.gStatus, out?.status || '—'); setText(els.gEndsAt, endsIso || '—');
     if(endsIso){ startHostCountdown(endsIso); startGuestCountdown(endsIso); }
-      // Participants + counts
-  renderParticipantsStable(out?.participants || []);
+    // Participants + counts
+    const ppl = out?.participants || [];
+    els.hostPeople.innerHTML  = ppl.map(p=>`<li>${p.name} <span class="meta">(${p.role})</span></li>`).join('') || '<li class="meta">No one yet</li>';
+    els.guestPeople.innerHTML = els.hostPeople.innerHTML;
+    const count = Array.isArray(ppl) ? ppl.length : 0;
+    if (els.hostPeopleCount) els.hostPeopleCount.textContent = String(count);
+    if (els.guestPeopleCount) els.guestPeopleCount.textContent = String(count);
   }
   function startRoomPolling(){ stopRoomPolling(); state.roomPollHandle=setInterval(pollRoomStateOnce,3000); pollRoomStateOnce(); }
 
@@ -239,10 +213,8 @@
 
   // Manual Join (guest or returning host)
   if (els.joinRoomBtn) els.joinRoomBtn.addEventListener('click', async ()=>{
-    const code=(els.joinCode?.value||'').trim(); const nameInput=(els.guestName?.value||'').trim();
+    const code=(els.joinCode?.value||'').trim(); const name=(els.guestName?.value||'').trim();
     if (!code){ if(els.joinLog) els.joinLog.textContent='Enter the 6-digit code'; return; }
-    let name = nameInput;
-    if (!name && state.session?.access_token) { name = deriveSignedName(); }
 
     const headers = { 'content-type':'application/json' };
     if (state.session?.access_token) headers['authorization']='Bearer '+state.session.access_token;
