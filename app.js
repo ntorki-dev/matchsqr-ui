@@ -1,4 +1,4 @@
-(function(){
+ (function(){
   const $ = (id) => document.getElementById(id);
   const logEl = $('hostLog');
   const log = (msg) => { if (!logEl) return; const t = typeof msg==='string'?msg:JSON.stringify(msg,null,2); logEl.textContent=(logEl.textContent?logEl.textContent+"\n":"")+t; logEl.scrollTop=logEl.scrollHeight; };
