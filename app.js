@@ -1,11 +1,11 @@
-// app.js — full file with realtime participants integrated
+// app.js — full file with realtime on `games` row (participants_version bump) integrated
 // Assumes window.CONFIG = { SUPABASE_URL, SUPABASE_ANON_KEY, FUNCTIONS_BASE }
-// UI element IDs remain the same as your last working version.
+// Keeps your existing flows; only change is realtime subscription target (games row).
 
 (() => {
   const byId = (id) => document.getElementById(id);
   const qs = (sel) => document.querySelector(sel);
-  const escapeHtml = (str) => String(str).replace(/[&<>"']/g, (m)=>({ "&":"&amp;","<":"&lt;",">":"&gt;",""":"&quot;","'":"&#39;" }[m]));
+  const escapeHtml = (str) => String(str).replace(/[&<>"']/g, (m)=>({ "&":"&amp;","<":"&lt;"," >":"&gt;","\"":"&quot;","'":"&#39;" }[m]));
 
   const safeJSON = async (res) => { try { return await res.json(); } catch { return null; } };
   const http = async (path, body=null, method="POST") => {
@@ -28,6 +28,9 @@
         window.__createSupabaseClient = m.createClient;
       });
     }
+    if (!window.CONFIG || !window.CONFIG.SUPABASE_URL || !window.CONFIG.SUPABASE_ANON_KEY) {
+      throw new Error("Supabase config missing. Check config.js");
+    }
     supabaseClient = window.__createSupabaseClient(window.CONFIG.SUPABASE_URL, window.CONFIG.SUPABASE_ANON_KEY, {
       auth: { persistSession: true },
       realtime: { params: { eventsPerSecond: 20 } }
@@ -45,7 +48,7 @@
     question: null,
     _timerRAF: null,
     _timerTarget: null,
-    _channel: null,
+    _gameChannel: null,
     _pollHandle: null,
   };
 
@@ -174,21 +177,25 @@
     }
   };
 
-  // ---- Realtime on participants ----
-  async function startParticipantsRealtime(gameId) {
-    const client = await ensureSupabase();
-    if (AppState._channel) {
-      try { await AppState._channel.unsubscribe(); } catch {}
-      AppState._channel = null;
+  // ---- Realtime on single `games` row (bumped by DB triggers on participants change) ----
+  async function stopGameRealtime() {
+    if (AppState._gameChannel) {
+      try { await AppState._gameChannel.unsubscribe(); } catch {}
+      AppState._gameChannel = null;
     }
-    const ch = client.channel(`participants:${gameId}`);
+  }
+
+  async function startGameRealtime(gameId) {
+    const client = await ensureSupabase();
+    await stopGameRealtime();
+    const ch = client.channel(`game:${gameId}`);
     ch.on("postgres_changes",
-      { event: "*", schema: "public", table: "participants", filter: `game_id=eq.${gameId}` },
+      { event: "*", schema: "public", table: "games", filter: `id=eq.${gameId}` },
       () => { refreshState(); }
     );
     await ch.subscribe();
-    AppState._channel = ch;
-    console.log("[Realtime] Subscribed to participants for game", gameId);
+    AppState._gameChannel = ch;
+    console.log("[Realtime] Subscribed to games row", gameId);
   }
 
   // ---- Polling fallback ----
@@ -206,21 +213,22 @@
     catch (e) { console.warn("get_state failed:", e.message); }
   };
 
-  // ---- UI wiring ----
+  // ---- UI wiring (unchanged behaviors) ----
   const wireUI = () => {
     const createBtn = byId("createGameBtn");
     if (createBtn) {
       createBtn.onclick = async () => {
         try {
           const data = await api.createGame({});
-          AppState.code = data.code;
-          AppState.gameId = data.game_id;
+          AppState.code   = data.code;
+          AppState.gameId = data.game_id || data.id;
           await refreshState();
-          if (AppState.gameId) await startParticipantsRealtime(AppState.gameId);
+          if (AppState.gameId) await startGameRealtime(AppState.gameId);
           setPolling("lobby");
         } catch (e) { alert("Create game failed: " + e.message); }
       };
     }
+
     const joinBtn = byId("joinBtn");
     if (joinBtn) {
       joinBtn.onclick = async () => {
@@ -232,11 +240,12 @@
           await api.joinGuest({ code, name, role });
           AppState.code = code;
           await refreshState();
-          if (AppState.gameId) await startParticipantsRealtime(AppState.gameId);
+          if (AppState.gameId) await startGameRealtime(AppState.gameId);
           setPolling(AppState.status === "running" ? "running" : "lobby");
         } catch (e) { alert("Join failed: " + e.message); }
       };
     }
+
     const startBtn = byId("startGameBtn");
     if (startBtn) {
       startBtn.onclick = async () => {
@@ -248,6 +257,7 @@
         } catch (e) { alert("Start game failed: " + e.message); }
       };
     }
+
     const revealBtn = byId("revealBtn");
     if (revealBtn) {
       revealBtn.onclick = async () => {
