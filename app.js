@@ -1,39 +1,51 @@
-// app.js — consolidated client logic (realtime participants + smooth timer + command-style next_question)
-// This file assumes window.CONFIG provides SUPABASE_URL, SUPABASE_ANON_KEY, and FUNCTIONS_BASE.
-//
-// It preserves your existing request/response shapes and does NOT require HTML changes.
-// If an expected DOM element is missing, it will simply skip rendering that piece (no crashes).
+// app.js — robust wiring for Join flow + realtime participants + smooth timer + command-style next_question
+// Assumes window.CONFIG with SUPABASE_URL, SUPABASE_ANON_KEY, FUNCTIONS_BASE.
+// No HTML changes required; supports multiple common element IDs/data-attributes.
 
 (() => {
-  // ---------- Utilities ----------
+  // ---------- Helpers ----------
   const byId = (id) => document.getElementById(id);
   const qs = (sel) => document.querySelector(sel);
-
-  const safeJSON = async (res) => {
-    try { return await res.json(); } catch { return null; }
-  };
-
-  const http = async (path, body=null, method="POST") => {
-    const url = (window.CONFIG && window.CONFIG.FUNCTIONS_BASE ? window.CONFIG.FUNCTIONS_BASE : "").replace(/\/+$/,"/") + path.replace(/^\/+/, "");
-    const init = { method, headers: { "Content-Type": "application/json" } };
-    if (body && method !== "GET") init.body = JSON.stringify(body);
-    if (method === "GET" && body && typeof body === "object") {
-      // attach query params
-      const q = new URLSearchParams(body).toString();
-      return await fetch(url + (q ? "?" + q : ""), { method: "GET" });
-    }
-    return await fetch(url, init);
-  };
-
+  const qsa = (sel) => Array.from(document.querySelectorAll(sel));
   const fmt2 = (n) => String(n).padStart(2, "0");
 
-  // ---------- Supabase Client ----------
+  const log = (msg) => {
+    console.log("[MatchSquare]", msg);
+    const el = byId("log") || qs("[data-log]");
+    if (el) {
+      const p = document.createElement("div");
+      p.textContent = String(msg);
+      el.appendChild(p);
+      // keep last 20 lines
+      while (el.childNodes.length > 20) el.removeChild(el.firstChild);
+    }
+  };
+
+  const escapeHtml = (str) => String(str).replace(/[&<>"']/g, (m)=>({ "&":"&amp;","<":"&lt;",">":"&gt;",""":"&quot;","'":"&#39;" }[m]));
+
+  // ---------- HTTP ----------
+  const safeJSON = async (res) => { try { return await res.json(); } catch { return null; } };
+  const http = async (path, body=null, method="POST") => {
+    const base = (window.CONFIG && window.CONFIG.FUNCTIONS_BASE ? window.CONFIG.FUNCTIONS_BASE : "").replace(/\/+$/,"/");
+    const url = base + path.replace(/^\/+/, "");
+    const init = { method, headers: { "Content-Type": "application/json" } };
+    if (method === "GET") {
+      const q = body && typeof body === "object" ? new URLSearchParams(body).toString() : "";
+      log(`GET ${url}${q ? "?" + q : ""}`);
+      return await fetch(url + (q ? "?" + q : ""), { method: "GET" });
+    } else {
+      init.body = body ? JSON.stringify(body) : "{}";
+      log(`${method} ${url} :: ${init.body}`);
+      return await fetch(url, init);
+    }
+  };
+
+  // ---------- Supabase ----------
   const ensureSupabase = async () => {
     if (window.supabase) return window.supabase;
     if (!window.CONFIG || !window.CONFIG.SUPABASE_URL || !window.CONFIG.SUPABASE_ANON_KEY) {
-      throw new Error("Supabase client not configured. Ensure config.js sets window.CONFIG.");
+      throw new Error("Supabase not configured. Ensure config.js sets window.CONFIG.");
     }
-    // Load supabase-js v2 as an ES module dynamically
     if (!window.__createSupabaseClient) {
       await import("https://esm.sh/@supabase/supabase-js@2.45.4").then((m)=>{
         window.__createSupabaseClient = m.createClient;
@@ -53,19 +65,18 @@
     code: null,
     status: null,
     level: null,
-    endsAt: null, // ISO string
+    endsAt: null,
     participants: [],
     question: null,
     _timerRAF: null,
-    _timerTarget: null, // Date
+    _timerTarget: null,
     _channel: null,
     _pollHandle: null,
   };
 
-  // ---------- Rendering ----------
+  // ---------- Renderers ----------
   const renderParticipants = (list) => {
-    AppState.participants = list || [];
-    // Server already orders by seat_index; keep as-is. Fallback sort if needed:
+    AppState.participants = Array.isArray(list) ? list : [];
     const sorted = [...AppState.participants].sort((a,b)=>{
       const ai = a.seat_index ?? 99999;
       const bi = b.seat_index ?? 99999;
@@ -76,21 +87,16 @@
       return String(a.id).localeCompare(String(b.id));
     });
 
-    // Try common containers
     const ul = byId("participantsList") || qs("[data-participants]") || byId("participants");
-    if (!ul) return; // UI might have different structure; skip silently
-
-    // Use innerHTML for simplicity
+    if (!ul) return;
     ul.innerHTML = sorted.map(p => {
-      const role = p.role || "";
-      const seat = (p.seat_index ?? "") === "" ? "" : ` <span class="seat">#${p.seat_index}</span>`;
-      return `<li data-participant-id="${p.id}"><span class="name">${escapeHtml(p.name || "")}</span> <span class="role">${escapeHtml(role)}</span>${seat}</li>`;
+      const seat = p.seat_index != null ? ` <span class="seat">#${p.seat_index}</span>` : "";
+      return `<li data-participant-id="${escapeHtml(p.id)}"><span class="name">${escapeHtml(p.name||"")}</span> <span class="role">${escapeHtml(p.role||"")}</span>${seat}</li>`;
     }).join("");
   };
 
   const renderQuestion = (q) => {
     AppState.question = q || null;
-
     const qEl = byId("questionText") || qs("[data-question]") || byId("question");
     const hEl = byId("hintText") || qs("[data-hint]") || byId("hint");
 
@@ -103,31 +109,36 @@
     if (st) st.textContent = AppState.status || "";
     const lvl = byId("levelText") || qs("[data-level]") || byId("level");
     if (lvl) lvl.textContent = AppState.level || "";
-    const codeEl = byId("gameCode") || qs("[data-game-code]") || byId("code");
-    if (codeEl) codeEl.textContent = AppState.code || "";
+    const c = byId("gameCode") || qs("[data-game-code]") || byId("code");
+    if (c) c.textContent = AppState.code || "";
   };
 
-  // ---------- Timer (requestAnimationFrame + drift correction) ----------
+  // ---------- Timer ----------
   const stopTimer = () => {
     if (AppState._timerRAF) cancelAnimationFrame(AppState._timerRAF);
     AppState._timerRAF = null;
     AppState._timerTarget = null;
+    paintTimer(0);
   };
-
   const startTimer = (iso) => {
     AppState.endsAt = iso || null;
-    if (!iso) { stopTimer(); paintTimer(0); return; }
+    if (!iso) return stopTimer();
     AppState._timerTarget = new Date(iso);
     const tick = () => {
       const msLeft = AppState._timerTarget.getTime() - Date.now();
       paintTimer(msLeft);
-      if (msLeft <= 0) { stopTimer(); paintTimer(0); return; }
+      if (msLeft <= 0) { stopTimer(); return; }
       AppState._timerRAF = requestAnimationFrame(tick);
     };
     stopTimer();
     AppState._timerRAF = requestAnimationFrame(tick);
   };
-
+  const maybeResyncTimer = (iso) => {
+    if (!iso || !AppState._timerTarget) return;
+    const target = new Date(iso).getTime();
+    const delta = Math.abs(target - AppState._timerTarget.getTime());
+    if (delta > 1000) startTimer(iso);
+  };
   const paintTimer = (ms) => {
     const tEl = byId("timer") || qs("[data-timer]");
     if (!tEl) return;
@@ -135,27 +146,17 @@
     const hh = Math.floor(s / 3600);
     const mm = Math.floor((s % 3600)/60);
     const ss = s % 60;
-    if (hh > 0) tEl.textContent = `${fmt2(hh)}:${fmt2(mm)}:${fmt2(ss)}`;
-    else tEl.textContent = `${fmt2(mm)}:${fmt2(ss)}`;
+    tEl.textContent = hh > 0 ? `${fmt2(hh)}:${fmt2(mm)}:${fmt2(ss)}` : `${fmt2(mm)}:${fmt2(ss)}`;
   };
 
-  // On each state refresh, correct drift if |delta| > 1s
-  const maybeResyncTimer = (iso) => {
-    if (!iso || !AppState._timerTarget) return;
-    const target = new Date(iso).getTime();
-    const delta = Math.abs(target - AppState._timerTarget.getTime());
-    if (delta > 1000) startTimer(iso);
-  };
-
-  // ---------- API calls (preserve existing shapes) ----------
+  // ---------- API ----------
   const api = {
     async createGame(payload) {
       const res = await http("create_game", payload || {});
       const data = await safeJSON(res);
-      if (!res.ok) throw new Error(data && data.error || "create_game failed");
-      // Expected fields: { game_id, code, status:'lobby', level, ends_at:null }
+      if (!res.ok) throw new Error(data?.error || "create_game failed");
       AppState.gameId = data.game_id || data.id || AppState.gameId;
-      AppState.code = data.code || AppState.code;
+      AppState.code   = data.code || AppState.code;
       AppState.status = data.status || AppState.status;
       AppState.level  = data.level  || AppState.level;
       renderStatus();
@@ -164,38 +165,34 @@
     async joinGuest({ code, name, role }) {
       const res = await http("join_game_guest", { code, name, role });
       const data = await safeJSON(res);
-      if (!res.ok) throw new Error(data && data.error || "join_game_guest failed");
+      if (!res.ok) throw new Error(data?.error || "join_game_guest failed");
       return data;
     },
     async startGame({ gameId }) {
       const res = await http("start_game", { gameId });
       const data = await safeJSON(res);
-      if (!res.ok) throw new Error(data && data.error || "start_game failed");
-      // { ends_at, status:'running', level }
+      if (!res.ok) throw new Error(data?.error || "start_game failed");
       AppState.status = data.status || AppState.status;
-      AppState.level = data.level || AppState.level;
+      AppState.level  = data.level  || AppState.level;
       startTimer(data.ends_at || null);
       renderStatus();
       return data;
     },
     async nextQuestion({ gameId }) {
-      // Command-style: do not update UI from this response to avoid flicker
       const res = await http("next_question", { gameId });
       const data = await safeJSON(res);
-      if (!res.ok) throw new Error(data && data.error || "next_question failed");
-      // Trigger immediate refresh to pick up the new pointer
+      if (!res.ok) throw new Error(data?.error || "next_question failed");
+      // Command-style: do not render from response. Refresh state to show new card.
       refreshState();
       return data;
     },
     async getState({ gameId, code }) {
-      // Prefer POST body with aliases supported by your function
       const res = await http("get_state", { gameId, code });
       const data = await safeJSON(res);
-      if (!res.ok) throw new Error(data && data.error || "get_state failed");
-      // { ok, game_id, status, level, ends_at, question, participants }
+      if (!res.ok) throw new Error(data?.error || "get_state failed");
       AppState.gameId = data.game_id || AppState.gameId;
-      AppState.status = data.status || AppState.status;
-      AppState.level  = data.level || AppState.level;
+      AppState.status = data.status  || AppState.status;
+      AppState.level  = data.level   || AppState.level;
       AppState.endsAt = data.ends_at || null;
       renderStatus();
       maybeResyncTimer(AppState.endsAt);
@@ -205,10 +202,9 @@
     }
   };
 
-  // ---------- Realtime for participants (triggered read) ----------
+  // ---------- Realtime ----------
   const subscribeParticipants = async (gameId) => {
     const client = await ensureSupabase();
-    // Cleanup previous
     if (AppState._channel) {
       try { await AppState._channel.unsubscribe(); } catch {}
       AppState._channel = null;
@@ -216,11 +212,9 @@
     const ch = client.channel(`participants:game_${gameId}`);
     ch.on("postgres_changes",
       { event: "*", schema: "public", table: "participants", filter: `game_id=eq.${gameId}` },
-      () => { refreshState(); } // do not infer state, always read from source of truth
+      () => { log("Realtime: participants changed, refreshing state."); refreshState(); }
     );
-    await ch.subscribe((status)=>{
-      // Optionally, log or reflect status
-    });
+    await ch.subscribe((status)=>log("Realtime status: " + status));
     AppState._channel = ch;
   };
 
@@ -234,112 +228,114 @@
     }, ms);
   };
 
-  // ---------- Orchestration ----------
   const refreshState = async () => {
-    try {
-      await api.getState({ gameId: AppState.gameId, code: AppState.code });
-    } catch (e) {
-      console.warn("get_state failed:", e.message);
-    }
+    try { await api.getState({ gameId: AppState.gameId, code: AppState.code }); }
+    catch (e) { log("get_state failed: " + e.message); }
   };
 
-  // Exposed hooks for existing UI buttons (use the IDs you already have)
-  const wireUI = () => {
-    const createBtn = byId("createGameBtn") || byId("createBtn");
+  // ---------- UI Wiring: robust join handling ----------
+  const wireJoin = () => {
+    // Buttons and forms that might exist
+    const joinForm = byId("joinForm") || qs("[data-join-form]");
+    const joinBtn  = byId("joinBtn") || qs("[data-join-btn]") || (joinForm ? joinForm.querySelector("button[type=submit]") : null);
+    const codeInput = byId("joinCode") || qs("[name=code]") || qs("[data-join-code]") || byId("codeInput");
+    const nameInput = byId("joinName") || qs("[name=name]") || qs("[data-join-name]") || byId("nameInput");
+    const roleInput = byId("joinRole") || qs("[name=role]") || qs("[data-join-role]");
+
+    const handler = async (ev) => {
+      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+      const code = (codeInput && codeInput.value) || AppState.code || "";
+      const name = (nameInput && nameInput.value) || "";
+      const role = (roleInput && roleInput.value) || "player";
+      if (!code || !name) { alert("Enter code and name."); return; }
+      try {
+        await api.joinGuest({ code, name, role });
+        AppState.code = code;
+        await resolveGameIdFromCode();
+        await refreshState();
+        if (AppState.gameId) await subscribeParticipants(AppState.gameId);
+        setPolling(AppState.status === "running" ? "running" : "lobby");
+        log("Join successful.");
+      } catch (e) {
+        alert("Join failed: " + e.message);
+        log("Join failed: " + e.message);
+      }
+    };
+
+    if (joinForm) joinForm.addEventListener("submit", handler);
+    if (joinBtn)  joinBtn.addEventListener("click", handler);
+  };
+
+  const wireHostButtons = () => {
+    const createBtn = byId("createGameBtn") || byId("createBtn") || qs("[data-create-btn]");
     if (createBtn) {
-      createBtn.onclick = async () => {
+      createBtn.addEventListener("click", async (ev) => {
+        ev && ev.preventDefault && ev.preventDefault();
         try {
-          const data = await api.createGame({}); // adjust payload if needed
-          AppState.code = data.code || AppState.code;
+          const data = await api.createGame({});
+          AppState.code   = data.code || AppState.code;
           AppState.gameId = data.game_id || data.id || AppState.gameId;
-          renderStatus();
           await refreshState();
           if (AppState.gameId) await subscribeParticipants(AppState.gameId);
           setPolling("lobby");
-        } catch (e) { alert("Create game failed: " + e.message); }
-      };
+        } catch (e) { alert("Create game failed: " + e.message); log(e); }
+      });
     }
 
-    const startBtn = byId("startGameBtn") || byId("startBtn");
+    const startBtn = byId("startGameBtn") || byId("startBtn") || qs("[data-start-btn]");
     if (startBtn) {
-      startBtn.onclick = async () => {
+      startBtn.addEventListener("click", async (ev) => {
+        ev && ev.preventDefault && ev.preventDefault();
         if (!AppState.gameId) return alert("No game yet.");
         try {
           await api.startGame({ gameId: AppState.gameId });
           await refreshState();
           setPolling("running");
-        } catch (e) { alert("Start game failed: " + e.message); }
-      };
+        } catch (e) { alert("Start game failed: " + e.message); log(e); }
+      });
     }
 
-    const revealBtn = byId("revealBtn") || byId("revealNextBtn");
+    const revealBtn = byId("revealBtn") || byId("revealNextBtn") || qs("[data-reveal-btn]");
     if (revealBtn) {
-      revealBtn.onclick = async () => {
+      revealBtn.addEventListener("click", async (ev) => {
+        ev && ev.preventDefault && ev.preventDefault();
         if (!AppState.gameId) return alert("No game yet.");
         try {
           await api.nextQuestion({ gameId: AppState.gameId });
-          // Do not render from response; state refresh will show the new card
-        } catch (e) { alert("Next card failed: " + e.message); }
-      };
-    }
-
-    // If your UI has join flow on the same page
-    const joinBtn = byId("joinBtn");
-    if (joinBtn) {
-      joinBtn.onclick = async () => {
-        const code = (byId("joinCode") || {}).value || AppState.code;
-        const name = (byId("joinName") || {}).value || "";
-        const role = (byId("joinRole") || {}).value || "player";
-        if (!code || !name) return alert("Enter code and name.");
-        try {
-          await api.joinGuest({ code, name, role });
-          AppState.code = code;
-          await resolveGameIdFromCode(); // to subscribe realtime
-          await refreshState();
-          if (AppState.gameId) await subscribeParticipants(AppState.gameId);
-          // poll according to server status
-          setPolling(AppState.status === "running" ? "running" : "lobby");
-        } catch (e) { alert("Join failed: " + e.message); }
-      };
+          // UI updates on get_state via refreshState(), which is called right after command
+        } catch (e) { alert("Next card failed: " + e.message); log(e); }
+      });
     }
   };
 
   const resolveGameIdFromCode = async () => {
     if (AppState.gameId || !AppState.code) return;
-    // Use get_state by code to resolve id
     try {
       const res = await api.getState({ code: AppState.code });
       AppState.gameId = res.game_id || AppState.gameId;
       if (AppState.gameId) await subscribeParticipants(AppState.gameId);
-    } catch {}
+    } catch (e) {
+      log("resolveGameIdFromCode failed: " + e.message);
+    }
   };
 
-  // ---------- Helpers ----------
-  function escapeHtml(str) {
-    return String(str).replace(/[&<>"']/g, (m)=>({ "&":"&amp;","<":"&lt;",">":"&gt;",""":"&quot;","'":"&#39;" }[m]));
-  }
-
   // ---------- Init ----------
-  window.addEventListener("load", async () => {
+  window.addEventListener("DOMContentLoaded", async () => {
     try {
       await ensureSupabase();
-      wireUI();
-      // if code present in URL, auto-resolve and subscribe
+      wireJoin();
+      wireHostButtons();
+
+      // Support code in URL
       const url = new URL(window.location.href);
       const codeFromUrl = url.searchParams.get("code") || url.searchParams.get("room") || null;
       if (codeFromUrl) {
         AppState.code = codeFromUrl;
         await resolveGameIdFromCode();
         setPolling(AppState.status === "running" ? "running" : "lobby");
-      } else {
-        // default: try a light refresh if already have gameId
-        if (AppState.gameId) {
-          await subscribeParticipants(AppState.gameId);
-          setPolling(AppState.status === "running" ? "running" : "lobby");
-        }
       }
     } catch (e) {
-      console.error(e);
+      log("App init failed: " + e.message);
       const warn = byId("warning") || qs("[data-warning]");
       if (warn) warn.textContent = "App init failed: " + e.message;
     }
