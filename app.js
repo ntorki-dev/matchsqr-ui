@@ -1,11 +1,19 @@
-// app.js — full file with realtime on `games` row (participants_version bump) integrated
+// app.js — full file with realtime on `games` row and robust button wiring
 // Assumes window.CONFIG = { SUPABASE_URL, SUPABASE_ANON_KEY, FUNCTIONS_BASE }
-// Keeps your existing flows; only change is realtime subscription target (games row).
 
 (() => {
   const byId = (id) => document.getElementById(id);
   const qs = (sel) => document.querySelector(sel);
-  const escapeHtml = (str) => String(str).replace(/[&<>"']/g, (m)=>({ "&":"&amp;","<":"&lt;"," >":"&gt;","\"":"&quot;","'":"&#39;" }[m]));
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, (m) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[m]));
+  }
 
   const safeJSON = async (res) => { try { return await res.json(); } catch { return null; } };
   const http = async (path, body=null, method="POST") => {
@@ -23,13 +31,15 @@
   let supabaseClient = null;
   async function ensureSupabase() {
     if (supabaseClient) return supabaseClient;
+    if (!window.CONFIG || !window.CONFIG.SUPABASE_URL || !window.CONFIG.SUPABASE_ANON_KEY) {
+      // Do not throw; allow UI to bind so buttons still work for non-realtime flows
+      console.warn("Supabase config missing in window.CONFIG. Realtime will be disabled.");
+      return null;
+    }
     if (!window.__createSupabaseClient) {
       await import("https://esm.sh/@supabase/supabase-js@2.45.4").then((m)=>{
         window.__createSupabaseClient = m.createClient;
       });
-    }
-    if (!window.CONFIG || !window.CONFIG.SUPABASE_URL || !window.CONFIG.SUPABASE_ANON_KEY) {
-      throw new Error("Supabase config missing. Check config.js");
     }
     supabaseClient = window.__createSupabaseClient(window.CONFIG.SUPABASE_URL, window.CONFIG.SUPABASE_ANON_KEY, {
       auth: { persistSession: true },
@@ -187,6 +197,7 @@
 
   async function startGameRealtime(gameId) {
     const client = await ensureSupabase();
+    if (!client || !gameId) return;
     await stopGameRealtime();
     const ch = client.channel(`game:${gameId}`);
     ch.on("postgres_changes",
@@ -213,11 +224,38 @@
     catch (e) { console.warn("get_state failed:", e.message); }
   };
 
-  // ---- UI wiring (unchanged behaviors) ----
-  const wireUI = () => {
-    const createBtn = byId("createGameBtn");
+  // ---- UI wiring (defensive) ----
+  function wireJoin() {
+    const joinBtn  = byId("joinBtn") || qs("[data-join-btn]");
+    const joinForm = byId("joinForm") || qs("[data-join-form]");
+    const codeInput = byId("joinCode") || qs("[name=code]") || qs("[data-join-code]") || byId("codeInput");
+    const nameInput = byId("joinName") || qs("[name=name]") || qs("[data-join-name]") || byId("nameInput");
+    const roleInput = byId("joinRole") || qs("[name=role]") || qs("[data-join-role]");
+
+    const handler = async (ev) => {
+      if (ev && ev.preventDefault) ev.preventDefault();
+      const code = (codeInput && codeInput.value) || AppState.code || "";
+      const name = (nameInput && nameInput.value) || "";
+      const role = (roleInput && roleInput.value) || "player";
+      if (!code || !name) return alert("Enter code and name.");
+      try {
+        await api.joinGuest({ code, name, role });
+        AppState.code = code;
+        await refreshState();
+        if (AppState.gameId) await startGameRealtime(AppState.gameId);
+        setPolling(AppState.status === "running" ? "running" : "lobby");
+      } catch (e) { alert("Join failed: " + e.message); }
+    };
+
+    if (joinBtn) joinBtn.addEventListener("click", handler);
+    if (joinForm) joinForm.addEventListener("submit", handler);
+  }
+
+  function wireHost() {
+    const createBtn = byId("createGameBtn") || byId("createBtn") || qs("[data-create-btn]");
     if (createBtn) {
-      createBtn.onclick = async () => {
+      createBtn.addEventListener("click", async (ev) => {
+        ev && ev.preventDefault && ev.preventDefault();
         try {
           const data = await api.createGame({});
           AppState.code   = data.code;
@@ -226,55 +264,41 @@
           if (AppState.gameId) await startGameRealtime(AppState.gameId);
           setPolling("lobby");
         } catch (e) { alert("Create game failed: " + e.message); }
-      };
+      });
     }
 
-    const joinBtn = byId("joinBtn");
-    if (joinBtn) {
-      joinBtn.onclick = async () => {
-        const code = (byId("joinCode")||{}).value || AppState.code;
-        const name = (byId("joinName")||{}).value || "";
-        const role = (byId("joinRole")||{}).value || "player";
-        if (!code || !name) return alert("Enter code and name.");
-        try {
-          await api.joinGuest({ code, name, role });
-          AppState.code = code;
-          await refreshState();
-          if (AppState.gameId) await startGameRealtime(AppState.gameId);
-          setPolling(AppState.status === "running" ? "running" : "lobby");
-        } catch (e) { alert("Join failed: " + e.message); }
-      };
-    }
-
-    const startBtn = byId("startGameBtn");
+    const startBtn = byId("startGameBtn") || byId("startBtn") || qs("[data-start-btn]");
     if (startBtn) {
-      startBtn.onclick = async () => {
+      startBtn.addEventListener("click", async (ev) => {
+        ev && ev.preventDefault && ev.preventDefault();
         if (!AppState.gameId) return alert("No game yet.");
         try {
           await api.startGame({ gameId: AppState.gameId });
           await refreshState();
           setPolling("running");
         } catch (e) { alert("Start game failed: " + e.message); }
-      };
+      });
     }
 
-    const revealBtn = byId("revealBtn");
+    const revealBtn = byId("revealBtn") || byId("revealNextBtn") || qs("[data-reveal-btn]");
     if (revealBtn) {
-      revealBtn.onclick = async () => {
+      revealBtn.addEventListener("click", async (ev) => {
+        ev && ev.preventDefault && ev.preventDefault();
         if (!AppState.gameId) return alert("No game yet.");
         try {
           await api.nextQuestion({ gameId: AppState.gameId });
         } catch (e) { alert("Next card failed: " + e.message); }
-      };
+      });
     }
-  };
+  }
 
-  window.addEventListener("load", async () => {
+  window.addEventListener("DOMContentLoaded", async () => {
     try {
-      await ensureSupabase();
-      wireUI();
+      await ensureSupabase(); // non-fatal if CONFIG missing
     } catch (e) {
-      console.error("App init failed:", e.message);
+      console.warn("Supabase init warning:", e.message);
     }
+    wireHost();
+    wireJoin();
   });
 })();
