@@ -1,343 +1,266 @@
-// app.js — robust wiring for Join flow + realtime participants + smooth timer + command-style next_question
-// Assumes window.CONFIG with SUPABASE_URL, SUPABASE_ANON_KEY, FUNCTIONS_BASE.
-// No HTML changes required; supports multiple common element IDs/data-attributes.
+ (function(){
+  const $ = (id) => document.getElementById(id);
+  const logEl = $('hostLog');
+  const log = (msg) => { if (!logEl) return; const t = typeof msg==='string'?msg:JSON.stringify(msg,null,2); logEl.textContent=(logEl.textContent?logEl.textContent+"\n":"")+t; logEl.scrollTop=logEl.scrollHeight; };
+  const setText = (el,v)=>{ if(el) el.textContent=v; };
 
-(() => {
-  // ---------- Helpers ----------
-  const byId = (id) => document.getElementById(id);
-  const qs = (sel) => document.querySelector(sel);
-  const qsa = (sel) => Array.from(document.querySelectorAll(sel));
-  const fmt2 = (n) => String(n).padStart(2, "0");
-
-  const log = (msg) => {
-    console.log("[MatchSquare]", msg);
-    const el = byId("log") || qs("[data-log]");
-    if (el) {
-      const p = document.createElement("div");
-      p.textContent = String(msg);
-      el.appendChild(p);
-      // keep last 20 lines
-      while (el.childNodes.length > 20) el.removeChild(el.firstChild);
-    }
+  // Elements
+  const els = {
+    home: $('homeSection'), host: $('hostSection'), join: $('joinSection'),
+    btnHome: $('btnHome'), hostBtn: $('hostBtn'), joinBtn: $('joinBtn'),
+    hostLoginForm: $('hostLoginForm'), hostEmail: $('hostEmail'), hostPassword: $('hostPassword'),
+    createGameBtn: $('createGameBtn'), startGameBtn: $('startGameBtn'), nextCardBtn: $('nextCardBtn'), endAnalyzeBtn: $('endAnalyzeBtn'),
+    gameIdOut: $('gameIdOut'), gameCodeOut: $('gameCodeOut'), statusOut: $('statusOut'), endsAtOut: $('endsAtOut'), timeLeft: $('timeLeft'),
+    hostPeople: $('hostPeople'), hostPeopleCount: $('hostPeopleCount'),
+    questionText: $('questionText'), questionClar: $('questionClar'),
+    guestName: $('guestName'), joinCode: $('joinCode'), joinRoomBtn: $('joinRoomBtn'),
+    gStatus: $('gStatus'), gEndsAt: $('gEndsAt'), gTimeLeft: $('gTimeLeft'),
+    guestPeople: $('guestPeople'), guestPeopleCount: $('guestPeopleCount'),
+    gQuestionText: $('gQuestionText'), gQuestionClar: $('gQuestionClar'),
+    joinLog: $('joinLog')
   };
 
-  const escapeHtml = (str) => String(str).replace(/[&<>"']/g, (m)=>({ "&":"&amp;","<":"&lt;",">":"&gt;",""":"&quot;","'":"&#39;" }[m]));
+  // Minimal, robust show/hide (fix for Join blank screen)
+  const show = (el)=>{ if(!el) return; el.classList.remove('hidden'); el.style.display=''; };
+  const hide = (el)=>{ if(!el) return; el.classList.add('hidden'); el.style.display='none'; };
+  if (els.btnHome) els.btnHome.onclick = ()=>{ show(els.home); hide(els.host); hide(els.join); };
+  if (els.hostBtn) els.hostBtn.onclick = ()=>{ hide(els.home); show(els.host); hide(els.join); };
+  if (els.joinBtn) els.joinBtn.onclick = ()=>{ hide(els.home); hide(els.host); show(els.join); };
 
-  // ---------- HTTP ----------
-  const safeJSON = async (res) => { try { return await res.json(); } catch { return null; } };
-  const http = async (path, body=null, method="POST") => {
-    const base = (window.CONFIG && window.CONFIG.FUNCTIONS_BASE ? window.CONFIG.FUNCTIONS_BASE : "").replace(/\/+$/,"/");
-    const url = base + path.replace(/^\/+/, "");
-    const init = { method, headers: { "Content-Type": "application/json" } };
-    if (method === "GET") {
-      const q = body && typeof body === "object" ? new URLSearchParams(body).toString() : "";
-      log(`GET ${url}${q ? "?" + q : ""}`);
-      return await fetch(url + (q ? "?" + q : ""), { method: "GET" });
-    } else {
-      init.body = body ? JSON.stringify(body) : "{}";
-      log(`${method} ${url} :: ${init.body}`);
-      return await fetch(url, init);
-    }
+  // State
+  const state = {
+    supa: null, session: null, functionsBase: null,
+    gameId: null, gameCode: null, status: null, endsAt: null,
+    hostCountdownHandle: null, heartbeatHandle: null,
+    roomPollHandle: null,
+    isHostInJoin: false
   };
 
-  // ---------- Supabase ----------
-  const ensureSupabase = async () => {
-    if (window.supabase) return window.supabase;
-    if (!window.CONFIG || !window.CONFIG.SUPABASE_URL || !window.CONFIG.SUPABASE_ANON_KEY) {
-      throw new Error("Supabase not configured. Ensure config.js sets window.CONFIG.");
-    }
-    if (!window.__createSupabaseClient) {
-      await import("https://esm.sh/@supabase/supabase-js@2.45.4").then((m)=>{
-        window.__createSupabaseClient = m.createClient;
-      });
-    }
-    const client = window.__createSupabaseClient(window.CONFIG.SUPABASE_URL, window.CONFIG.SUPABASE_ANON_KEY, {
-      auth: { persistSession: true },
-      realtime: { params: { eventsPerSecond: 20 } }
-    });
-    window.supabase = client;
-    return client;
-  };
+  // Config/Supabase
+  async function loadConfig(){
+    const baseRaw=(window.CONFIG&&window.CONFIG.FUNCTIONS_BASE)||''; const base=baseRaw.replace(/\/$/,'');
+    if(!base){ log('Please set FUNCTIONS_BASE in config.js'); return; }
+    state.functionsBase = base;
+    try{
+      const r=await fetch(base+'/config'); const text=await r.text(); let cfg; try{ cfg=JSON.parse(text);}catch{cfg={};}
+      const url=cfg.supabase_url||cfg.public_supabase_url||cfg.url||(window.CONFIG&&window.CONFIG.FALLBACK_SUPABASE_URL);
+      const anon=cfg.supabase_anon_key||cfg.public_supabase_anon_key||cfg.anon||(window.CONFIG&&window.CONFIG.FALLBACK_SUPABASE_ANON_KEY);
+      if(!url||!anon) throw new Error('Missing supabase url/anon');
+      state.supa=window.supabase.createClient(url,anon); log('Supabase client initialized.');
+    }catch(e){ log('Config error: '+e.message); }
+  }
+  loadConfig();
 
-  // ---------- App State ----------
-  const AppState = {
-    gameId: null,
-    code: null,
-    status: null,
-    level: null,
-    endsAt: null,
-    participants: [],
-    question: null,
-    _timerRAF: null,
-    _timerTarget: null,
-    _channel: null,
-    _pollHandle: null,
-  };
+  // Countdowns
+  function clearHostCountdown(){ if(state.hostCountdownHandle){ clearInterval(state.hostCountdownHandle); state.hostCountdownHandle=null; } setText(els.timeLeft,'—'); state.endsAt=null; }
+  function startHostCountdown(iso){ clearHostCountdown(); if(!iso) return; state.endsAt=new Date(iso);
+    function tick(){ const ms=state.endsAt-Date.now(); const s=Math.max(0,Math.floor(ms/1000)); const hh=String(Math.floor(s/3600)).padStart(2,'0'); const mm=String(Math.floor((s%3600)/60)).padStart(2,'0'); const ss=String(s%60).padStart(2,'0'); setText(els.timeLeft,`${hh}:${mm}:${ss}`); if(ms<=0) clearHostCountdown(); }
+    state.hostCountdownHandle=setInterval(tick,1000); tick(); }
+  function startGuestCountdown(iso){ if(!iso){ setText(els.gTimeLeft,'—'); return; } const ends=new Date(iso);
+    function tick(){ const ms=ends-Date.now(); const s=Math.max(0,Math.floor(ms/1000)); const hh=String(Math.floor(s/3600)).padStart(2,'0'); const mm=String(Math.floor((s%3600)/60)).padStart(2,'0'); const ss=String(s%60).padStart(2,'0'); setText(els.gTimeLeft,`${hh}:${mm}:${ss}`); }
+    tick(); }
 
-  // ---------- Renderers ----------
-  const renderParticipants = (list) => {
-    AppState.participants = Array.isArray(list) ? list : [];
-    const sorted = [...AppState.participants].sort((a,b)=>{
-      const ai = a.seat_index ?? 99999;
-      const bi = b.seat_index ?? 99999;
-      if (ai !== bi) return ai - bi;
-      const an = (a.name||"").toLowerCase();
-      const bn = (b.name||"").toLowerCase();
-      if (an<bn) return -1; if (an>bn) return 1;
-      return String(a.id).localeCompare(String(b.id));
-    });
+  const hostTimerActive = ()=> state.status==='running' && state.endsAt && state.endsAt.getTime()>Date.now();
 
-    const ul = byId("participantsList") || qs("[data-participants]") || byId("participants");
-    if (!ul) return;
-    ul.innerHTML = sorted.map(p => {
-      const seat = p.seat_index != null ? ` <span class="seat">#${p.seat_index}</span>` : "";
-      return `<li data-participant-id="${escapeHtml(p.id)}"><span class="name">${escapeHtml(p.name||"")}</span> <span class="role">${escapeHtml(p.role||"")}</span>${seat}</li>`;
-    }).join("");
-  };
-
-  const renderQuestion = (q) => {
-    AppState.question = q || null;
-    const qEl = byId("questionText") || qs("[data-question]") || byId("question");
-    const hEl = byId("hintText") || qs("[data-hint]") || byId("hint");
-
-    if (qEl) qEl.textContent = q && q.text ? q.text : "";
-    if (hEl) hEl.textContent = q && q.clarification ? q.clarification : "";
-  };
-
-  const renderStatus = () => {
-    const st = byId("statusText") || qs("[data-status]") || byId("status");
-    if (st) st.textContent = AppState.status || "";
-    const lvl = byId("levelText") || qs("[data-level]") || byId("level");
-    if (lvl) lvl.textContent = AppState.level || "";
-    const c = byId("gameCode") || qs("[data-game-code]") || byId("code");
-    if (c) c.textContent = AppState.code || "";
-  };
-
-  // ---------- Timer ----------
-  const stopTimer = () => {
-    if (AppState._timerRAF) cancelAnimationFrame(AppState._timerRAF);
-    AppState._timerRAF = null;
-    AppState._timerTarget = null;
-    paintTimer(0);
-  };
-  const startTimer = (iso) => {
-    AppState.endsAt = iso || null;
-    if (!iso) return stopTimer();
-    AppState._timerTarget = new Date(iso);
-    const tick = () => {
-      const msLeft = AppState._timerTarget.getTime() - Date.now();
-      paintTimer(msLeft);
-      if (msLeft <= 0) { stopTimer(); return; }
-      AppState._timerRAF = requestAnimationFrame(tick);
+  // Heartbeat (host)
+  function stopHeartbeat(){ if(state.heartbeatHandle){ clearInterval(state.heartbeatHandle); state.heartbeatHandle=null; } }
+  function startHeartbeat(){
+    stopHeartbeat();
+    const beat=()=>{ if(!state.session?.access_token||!state.gameId) return;
+      fetch(state.functionsBase+'/heartbeat',{method:'POST',headers:{'authorization':'Bearer '+state.session.access_token,'content-type':'application/json'},body:JSON.stringify({gameId:state.gameId})}).catch(()=>{});
     };
-    stopTimer();
-    AppState._timerRAF = requestAnimationFrame(tick);
-  };
-  const maybeResyncTimer = (iso) => {
-    if (!iso || !AppState._timerTarget) return;
-    const target = new Date(iso).getTime();
-    const delta = Math.abs(target - AppState._timerTarget.getTime());
-    if (delta > 1000) startTimer(iso);
-  };
-  const paintTimer = (ms) => {
-    const tEl = byId("timer") || qs("[data-timer]");
-    if (!tEl) return;
-    const s = Math.max(0, Math.floor(ms/1000));
-    const hh = Math.floor(s / 3600);
-    const mm = Math.floor((s % 3600)/60);
-    const ss = s % 60;
-    tEl.textContent = hh > 0 ? `${fmt2(hh)}:${fmt2(mm)}:${fmt2(ss)}` : `${fmt2(mm)}:${fmt2(ss)}`;
-  };
+    state.heartbeatHandle=setInterval(beat,20000); beat();
+  }
 
-  // ---------- API ----------
-  const api = {
-    async createGame(payload) {
-      const res = await http("create_game", payload || {});
-      const data = await safeJSON(res);
-      if (!res.ok) throw new Error(data?.error || "create_game failed");
-      AppState.gameId = data.game_id || data.id || AppState.gameId;
-      AppState.code   = data.code || AppState.code;
-      AppState.status = data.status || AppState.status;
-      AppState.level  = data.level  || AppState.level;
-      renderStatus();
-      return data;
-    },
-    async joinGuest({ code, name, role }) {
-      const res = await http("join_game_guest", { code, name, role });
-      const data = await safeJSON(res);
-      if (!res.ok) throw new Error(data?.error || "join_game_guest failed");
-      return data;
-    },
-    async startGame({ gameId }) {
-      const res = await http("start_game", { gameId });
-      const data = await safeJSON(res);
-      if (!res.ok) throw new Error(data?.error || "start_game failed");
-      AppState.status = data.status || AppState.status;
-      AppState.level  = data.level  || AppState.level;
-      startTimer(data.ends_at || null);
-      renderStatus();
-      return data;
-    },
-    async nextQuestion({ gameId }) {
-      const res = await http("next_question", { gameId });
-      const data = await safeJSON(res);
-      if (!res.ok) throw new Error(data?.error || "next_question failed");
-      // Command-style: do not render from response. Refresh state to show new card.
-      refreshState();
-      return data;
-    },
-    async getState({ gameId, code }) {
-      const res = await http("get_state", { gameId, code });
-      const data = await safeJSON(res);
-      if (!res.ok) throw new Error(data?.error || "get_state failed");
-      AppState.gameId = data.game_id || AppState.gameId;
-      AppState.status = data.status  || AppState.status;
-      AppState.level  = data.level   || AppState.level;
-      AppState.endsAt = data.ends_at || null;
-      renderStatus();
-      maybeResyncTimer(AppState.endsAt);
-      renderQuestion(data.question || null);
-      renderParticipants(Array.isArray(data.participants) ? data.participants : []);
-      return data;
-    }
-  };
+  // Shared room polling
+  function stopRoomPolling(){ if(state.roomPollHandle){ clearInterval(state.roomPollHandle); state.roomPollHandle=null; } }
+  async function pollRoomStateOnce(){
+    if(!state.functionsBase || !state.gameCode) return;
+    const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
+    const out = await r.json().catch(()=>({}));
+    // Card
+    const q = out?.question; setText(els.questionText, q?.text || '—'); setText(els.questionClar, q?.clarification || '');
+    setText(els.gQuestionText, q?.text || '—'); setText(els.gQuestionClar, q?.clarification || '');
+    // Timer/status
+    const endsIso = out?.ends_at || null;
+    setText(els.statusOut, out?.status || '—'); setText(els.endsAtOut, endsIso || '—');
+    setText(els.gStatus, out?.status || '—'); setText(els.gEndsAt, endsIso || '—');
+    if(endsIso){ startHostCountdown(endsIso); startGuestCountdown(endsIso); }
+    // Participants + counts
+    const ppl = out?.participants || [];
+    els.hostPeople.innerHTML  = ppl.map(p=>`<li>${p.name} <span class="meta">(${p.role})</span></li>`).join('') || '<li class="meta">No one yet</li>';
+    els.guestPeople.innerHTML = els.hostPeople.innerHTML;
+    const count = Array.isArray(ppl) ? ppl.length : 0;
+    if (els.hostPeopleCount) els.hostPeopleCount.textContent = String(count);
+    if (els.guestPeopleCount) els.guestPeopleCount.textContent = String(count);
+  }
+  function startRoomPolling(){ stopRoomPolling(); state.roomPollHandle=setInterval(pollRoomStateOnce,3000); pollRoomStateOnce(); }
 
-  // ---------- Realtime ----------
-  const subscribeParticipants = async (gameId) => {
-    const client = await ensureSupabase();
-    if (AppState._channel) {
-      try { await AppState._channel.unsubscribe(); } catch {}
-      AppState._channel = null;
-    }
-    const ch = client.channel(`participants:game_${gameId}`);
-    ch.on("postgres_changes",
-      { event: "*", schema: "public", table: "participants", filter: `game_id=eq.${gameId}` },
-      () => { log("Realtime: participants changed, refreshing state."); refreshState(); }
-    );
-    await ch.subscribe((status)=>log("Realtime status: " + status));
-    AppState._channel = ch;
-  };
-
-  // ---------- Polling fallback ----------
-  const setPolling = (mode /* 'lobby'|'running' */) => {
-    if (AppState._pollHandle) clearInterval(AppState._pollHandle);
-    const ms = mode === "running" ? 5000 : 2000;
-    AppState._pollHandle = setInterval(()=>{
-      if (!AppState.gameId && !AppState.code) return;
-      refreshState();
-    }, ms);
-  };
-
-  const refreshState = async () => {
-    try { await api.getState({ gameId: AppState.gameId, code: AppState.code }); }
-    catch (e) { log("get_state failed: " + e.message); }
-  };
-
-  // ---------- UI Wiring: robust join handling ----------
-  const wireJoin = () => {
-    // Buttons and forms that might exist
-    const joinForm = byId("joinForm") || qs("[data-join-form]");
-    const joinBtn  = byId("joinBtn") || qs("[data-join-btn]") || (joinForm ? joinForm.querySelector("button[type=submit]") : null);
-    const codeInput = byId("joinCode") || qs("[name=code]") || qs("[data-join-code]") || byId("codeInput");
-    const nameInput = byId("joinName") || qs("[name=name]") || qs("[data-join-name]") || byId("nameInput");
-    const roleInput = byId("joinRole") || qs("[name=role]") || qs("[data-join-role]");
-
-    const handler = async (ev) => {
-      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-      const code = (codeInput && codeInput.value) || AppState.code || "";
-      const name = (nameInput && nameInput.value) || "";
-      const role = (roleInput && roleInput.value) || "player";
-      if (!code || !name) { alert("Enter code and name."); return; }
-      try {
-        await api.joinGuest({ code, name, role });
-        AppState.code = code;
-        await resolveGameIdFromCode();
-        await refreshState();
-        if (AppState.gameId) await subscribeParticipants(AppState.gameId);
-        setPolling(AppState.status === "running" ? "running" : "lobby");
-        log("Join successful.");
-      } catch (e) {
-        alert("Join failed: " + e.message);
-        log("Join failed: " + e.message);
-      }
-    };
-
-    if (joinForm) joinForm.addEventListener("submit", handler);
-    if (joinBtn)  joinBtn.addEventListener("click", handler);
-  };
-
-  const wireHostButtons = () => {
-    const createBtn = byId("createGameBtn") || byId("createBtn") || qs("[data-create-btn]");
-    if (createBtn) {
-      createBtn.addEventListener("click", async (ev) => {
-        ev && ev.preventDefault && ev.preventDefault();
-        try {
-          const data = await api.createGame({});
-          AppState.code   = data.code || AppState.code;
-          AppState.gameId = data.game_id || data.id || AppState.gameId;
-          await refreshState();
-          if (AppState.gameId) await subscribeParticipants(AppState.gameId);
-          setPolling("lobby");
-        } catch (e) { alert("Create game failed: " + e.message); log(e); }
+  // Realtime participants (minimal, trigger-only)
+  function stopParticipantsRealtime(){
+    try{ if(state.participantsChannel){ state.participantsChannel.unsubscribe(); } }catch(_e){}
+    state.participantsChannel = null;
+  }
+  async function startParticipantsRealtime(){
+    stopParticipantsRealtime();
+    if(!state.supa || !state.gameId) return;
+    try{
+      const ch = state.supa.channel('participants:game_'+state.gameId);
+      ch.on('postgres_changes',{ event:'*', schema:'public', table:'participants', filter:`game_id=eq.${state.gameId}` },()=>{
+        // Do not compute state from payload; always refresh from source of truth
+        pollRoomStateOnce();
       });
-    }
+      await ch.subscribe();
+      state.participantsChannel = ch;
+      log('Realtime participants subscribed.');
+    }catch(e){ log('Realtime subscribe failed: '+e.message); }
+  }
 
-    const startBtn = byId("startGameBtn") || byId("startBtn") || qs("[data-start-btn]");
-    if (startBtn) {
-      startBtn.addEventListener("click", async (ev) => {
-        ev && ev.preventDefault && ev.preventDefault();
-        if (!AppState.gameId) return alert("No game yet.");
-        try {
-          await api.startGame({ gameId: AppState.gameId });
-          await refreshState();
-          setPolling("running");
-        } catch (e) { alert("Start game failed: " + e.message); log(e); }
-      });
-    }
 
-    const revealBtn = byId("revealBtn") || byId("revealNextBtn") || qs("[data-reveal-btn]");
-    if (revealBtn) {
-      revealBtn.addEventListener("click", async (ev) => {
-        ev && ev.preventDefault && ev.preventDefault();
-        if (!AppState.gameId) return alert("No game yet.");
-        try {
-          await api.nextQuestion({ gameId: AppState.gameId });
-          // UI updates on get_state via refreshState(), which is called right after command
-        } catch (e) { alert("Next card failed: " + e.message); log(e); }
-      });
-    }
-  };
 
-  const resolveGameIdFromCode = async () => {
-    if (AppState.gameId || !AppState.code) return;
-    try {
-      const res = await api.getState({ code: AppState.code });
-      AppState.gameId = res.game_id || AppState.gameId;
-      if (AppState.gameId) await subscribeParticipants(AppState.gameId);
-    } catch (e) {
-      log("resolveGameIdFromCode failed: " + e.message);
-    }
-  };
+  // Apply game to host UI
+  function applyHostGame(g){
+    if(!g) return;
+    state.gameId = g.id || g.game_id || state.gameId;
+    state.gameCode = g.code || state.gameCode;
+    state.status = g.status || state.status;
+    const endsIso = (state.status==='running') ? (g.ends_at || g.endsAt || null) : null;
 
-  // ---------- Init ----------
-  window.addEventListener("DOMContentLoaded", async () => {
-    try {
-      await ensureSupabase();
-      wireJoin();
-      wireHostButtons();
+    setText(els.gameIdOut, state.gameId || '—'); setText(els.gameCodeOut, state.gameCode || '—');
+    setText(els.statusOut, state.status || '—'); setText(els.endsAtOut, endsIso || '—');
+    if(endsIso) startHostCountdown(endsIso); else clearHostCountdown();
+    els.startGameBtn.disabled = !!(state.status==='running' && endsIso);
+    if (state.gameCode) startRoomPolling(); startParticipantsRealtime();
+  }
 
-      // Support code in URL
-      const url = new URL(window.location.href);
-      const codeFromUrl = url.searchParams.get("code") || url.searchParams.get("room") || null;
-      if (codeFromUrl) {
-        AppState.code = codeFromUrl;
-        await resolveGameIdFromCode();
-        setPolling(AppState.status === "running" ? "running" : "lobby");
-      }
-    } catch (e) {
-      log("App init failed: " + e.message);
-      const warn = byId("warning") || qs("[data-warning]");
-      if (warn) warn.textContent = "App init failed: " + e.message;
-    }
+  // Auth
+  if (els.hostLoginForm) els.hostLoginForm.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    if(!state.supa){ log('Supabase client not ready yet.'); return; }
+    const email=(els.hostEmail.value||'').trim(), password=els.hostPassword.value||'';
+    const { data, error } = await state.supa.auth.signInWithPassword({ email, password });
+    if (error){ log('Login failed: '+error.message); return; }
+    state.session = data.session; log('Login ok');
   });
+
+  // Auto-join as host helper
+  async function autoJoinAsHost(code){
+    if(!code){ log('No code to join.'); return; }
+    hide(els.home); hide(els.host); show(els.join);
+    if (els.joinCode) els.joinCode.value = code;
+
+    const headers = { 'content-type':'application/json' };
+    if (state.session?.access_token) headers['authorization'] = 'Bearer ' + state.session.access_token;
+
+    const r = await fetch(state.functionsBase + '/join_game_guest', {
+      method:'POST', headers, body: JSON.stringify({ code })
+    });
+    const out = await r.json().catch(()=>({}));
+    if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
+
+    const isHost = !!out?.is_host;
+    if (!isHost){ if(els.joinLog) els.joinLog.textContent='This code belongs to an existing room, but you are not the host.'; return; }
+
+    state.isHostInJoin = true;
+    state.gameId  = out.game_id || state.gameId;
+    state.gameCode = code;
+    setText(els.gameIdOut, state.gameId || '—'); setText(els.gameCodeOut, code);
+    log('Rejoined room as host via Join.');
+    startHeartbeat();
+    startRoomPolling(); startParticipantsRealtime();
+  }
+
+  // Create
+  if (els.createGameBtn) els.createGameBtn.addEventListener('click', async ()=>{
+    if(!state.session?.access_token){ log('Please login first'); return; }
+    const r = await fetch(state.functionsBase + '/create_game', { method:'POST', headers:{ 'authorization':'Bearer '+state.session.access_token }});
+    const out = await r.json().catch(()=>({}));
+    if (!r.ok){
+      if (out?.error === 'host_has_active_game'){
+        log('Active game exists; auto-joining as host with code '+out.code);
+        await autoJoinAsHost(out.code);
+        return;
+      }
+      log('Create failed'); log(out); return;
+    }
+    log('Create ok'); applyHostGame(out); startHeartbeat();
+  });
+
+  // Start
+  if (els.startGameBtn) els.startGameBtn.addEventListener('click', async ()=>{
+    if(!state.session?.access_token){ log('Please login first'); return; }
+    if(!state.gameId){ log('No game to start'); return; }
+    const r = await fetch(state.functionsBase + '/start_game', {
+      method:'POST',
+      headers:{ 'authorization':'Bearer '+state.session.access_token, 'content-type':'application/json' },
+      body: JSON.stringify({ gameId: state.gameId })
+    });
+    const out = await r.json().catch(()=>({}));
+    if (!r.ok){ log('Start failed'); log(out); return; }
+    log('Start ok'); applyHostGame(out.game||out);
+  });
+
+  // Reveal next
+  if (els.nextCardBtn) els.nextCardBtn.addEventListener('click', async ()=>{
+    if(!state.session?.access_token){ log('Please login first'); return; }
+    if(!state.gameId){ log('No game active'); return; }
+    const r = await fetch(state.functionsBase + '/next_question', {
+      method:'POST',
+      headers:{ 'authorization':'Bearer '+state.session.access_token, 'content-type':'application/json' },
+      body: JSON.stringify({ gameId: state.gameId })
+    });
+    const out = await r.json().catch(()=>({}));
+    if (!r.ok){ log('Next card failed'); log(out); return; }
+    const q = out.question || {};
+    setText(els.questionText, q.text || '—'); setText(els.questionClar, q.clarification || '');
+  });
+
+  // End
+  if (els.endAnalyzeBtn) els.endAnalyzeBtn.addEventListener('click', async ()=>{
+    if(!state.session?.access_token){ log('Please login first'); return; }
+    if(!state.gameId && !state.gameCode){ log('No game created'); return; }
+    const r = await fetch(state.functionsBase + '/end_game_and_analyze', {
+      method:'POST',
+      headers:{ 'authorization':'Bearer '+state.session.access_token, 'content-type':'application/json' },
+      body: JSON.stringify({ gameId: state.gameId, code: state.gameCode })
+    });
+    const out = await r.json().catch(()=>({}));
+    if (!r.ok){ log('End failed'); log(out); return; }
+    log('End ok'); log(out);
+    stopHeartbeat(); stopRoomPolling(); clearHostCountdown();
+    state.gameId=null; state.gameCode=null; state.status='ended';
+    setText(els.gameIdOut,'—'); setText(els.gameCodeOut,'—'); setText(els.statusOut,'ended'); setText(els.endsAtOut,'—');
+    setText(els.questionText,'—'); setText(els.questionClar,'');
+  });
+
+  // Manual Join (guest or returning host)
+  if (els.joinRoomBtn) els.joinRoomBtn.addEventListener('click', async ()=>{
+    const code=(els.joinCode?.value||'').trim(); const name=(els.guestName?.value||'').trim();
+    if (!code){ if(els.joinLog) els.joinLog.textContent='Enter the 6-digit code'; return; }
+
+    const headers = { 'content-type':'application/json' };
+    if (state.session?.access_token) headers['authorization']='Bearer '+state.session.access_token;
+
+    const r = await fetch(state.functionsBase + '/join_game_guest', {
+      method:'POST', headers, body: JSON.stringify({ code, name })
+    });
+    const out = await r.json().catch(()=>({}));
+    if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
+
+    const isHost = !!out?.is_host;
+    state.isHostInJoin = isHost;
+    state.gameCode = code;
+
+    if (isHost){
+      state.gameId = out.game_id || state.gameId;
+      setText(els.gameIdOut, state.gameId || '—'); setText(els.gameCodeOut, code);
+      startHeartbeat();
+    } else if (name){
+      setInterval(()=>{ fetch(state.functionsBase + '/participant_heartbeat',{ method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ gameId: out?.game_id, name }) }).catch(()=>{}); }, 25000);
+    }
+
+    if(els.joinLog) els.joinLog.textContent='Joined: '+JSON.stringify({ is_host:isHost, game_id: out?.game_id }, null, 2);
+    startRoomPolling(); startParticipantsRealtime();
+  });
+
 })();
