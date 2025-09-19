@@ -1,7 +1,7 @@
  (function(){
 
   // === UI build version ===
-  window.__MS_UI_VERSION = 'v24';
+  window.__MS_UI_VERSION = 'v25';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
