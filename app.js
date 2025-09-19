@@ -20,15 +20,7 @@
     joinLog: $('joinLog')
   };
 
-  // Minimal, robust show/hide (fix for Join blank screen)
-  const show = (el)=>{ if(!el) return; el.classList.remove('hidden'); el.style.display=''; };
-  const hide = (el)=>{ if(!el) return; el.classList.add('hidden'); el.style.display='none'; };
-  if (els.btnHome) els.btnHome.onclick = ()=>{ show(els.home); hide(els.host); hide(els.join); };
-  if (els.hostBtn) els.hostBtn.onclick = ()=>{ hide(els.home); show(els.host); hide(els.join); };
-  if (els.joinBtn) els.joinBtn.onclick = ()=>{ hide(els.home); hide(els.host); show(els.join); };
-
-
-  // === Answer helpers (non-invasive) ===
+  // --- Answer & identity helpers (minimal) ---
   function getTempPlayerId(code){
     try{
       const k='ms_temp_'+code;
@@ -40,6 +32,14 @@
   function getParticipantId(code){
     try{ return localStorage.getItem('ms_pid_'+code) || null; }catch{ return null; }
   }
+
+
+  // Minimal, robust show/hide (fix for Join blank screen)
+  const show = (el)=>{ if(!el) return; el.classList.remove('hidden'); el.style.display=''; };
+  const hide = (el)=>{ if(!el) return; el.classList.add('hidden'); el.style.display='none'; };
+  if (els.btnHome) els.btnHome.onclick = ()=>{ show(els.home); hide(els.host); hide(els.join); };
+  if (els.hostBtn) els.hostBtn.onclick = ()=>{ hide(els.home); show(els.host); hide(els.join); };
+  if (els.joinBtn) els.joinBtn.onclick = ()=>{ hide(els.home); hide(els.host); show(els.join); };
 
   // State
   const state = {
@@ -95,6 +95,14 @@
     // Card
     const q = out?.question; setText(els.questionText, q?.text || '—'); setText(els.questionClar, q?.clarification || '');
     setText(els.gQuestionText, q?.text || '—'); setText(els.gQuestionClar, q?.clarification || '');
+    // Next card gating: if no question yet, allow host to reveal; else wait until all answered
+    if (els.nextCardBtn) {
+      const ap = out?.answers_progress;
+      const noQuestion = !out?.question || !out?.question?.id;
+      const canNext = noQuestion || ((out?.status==='running') && ap && (ap.total_active>0) && (ap.answered_count>=ap.total_active));
+      els.nextCardBtn.disabled = !canNext;
+    }
+
     // Timer/status
     const endsIso = out?.ends_at || null;
     setText(els.statusOut, out?.status || '—'); setText(els.endsAtOut, endsIso || '—');
@@ -102,54 +110,40 @@
     if(endsIso){ startHostCountdown(endsIso); startGuestCountdown(endsIso); }
     // Participants + counts
     const ppl = out?.participants || [];
-
-    // === Turn & progress based UI updates (non-invasive) ===
-    try{
-      const currentPid = out?.current_turn?.participant_id || null;
-      // Bold current player
-      if (Array.isArray(ppl)){
-        const pHtml = ppl.map(p=>{
-          const nameHtml = (currentPid && p.id===currentPid) ? `<strong>${p.name}</strong>` : p.name;
-          const seat = (p.seat_index!=null? (' · #'+p.seat_index) : '');
-          return `<li>${nameHtml} <span class="meta">${p.role}${seat}</span></li>`;
-        }).join('') || '<li class="meta">No one yet</li>';
-        if (els.hostPeople) els.hostPeople.innerHTML = pHtml;
-        if (els.guestPeople) els.guestPeople.innerHTML = pHtml;
-      }
-      // Host Next Card gating
-      if (els.nextCardBtn){
-        const ap = out?.answers_progress;
-        const canNext = (out?.status==='running') && ap && (ap.total_active>0) && (ap.answered_count>=ap.total_active);
-        els.nextCardBtn.disabled = !canNext;
-      }
-      // Enable/disable answer controls by turn
-      if (state.__answerUI){
-        const code = state.gameCode || (els.joinCode?.value||'').trim();
-        const myPid = getParticipantId(code);
-        const myName = (els.guestName?.value||'').trim();
-        let allow = false;
-        if (out?.status==='running' && out?.current_turn){
-          if (out.current_turn.role==='host' && state.isHostInJoin){ allow = true; }
-          else if (myPid && out.current_turn.participant_id===myPid){ allow = true; }
-          else if (!myPid && myName){
-            const me = (out.participants||[]).find(p => p.name===myName);
-            if (me && me.id===out.current_turn.participant_id) allow = true;
-          }
-        }
-        const uiSet = [state.__answerUI.hostUI, state.__answerUI.guestUI];
-        uiSet.forEach(UI => {
-          if (!UI) return;
-          [UI.mic, UI.kb, UI.done, UI.submit, UI.box].forEach(el => { if (el) el.disabled = !allow; });
-          if (UI.box) UI.box.style.opacity = allow? '1' : '0.5';
-        });
-      }
-    }catch{}
-
-    els.hostPeople.innerHTML  = ppl.map(p=>`<li>${p.name} <span class="meta">(${p.role})</span></li>`).join('') || '<li class="meta">No one yet</li>';
-    els.guestPeople.innerHTML = els.hostPeople.innerHTML;
+    {
+      const currentPid = (typeof out?.current_turn?.participant_id !== 'undefined') ? out.current_turn.participant_id : null;
+      const html = Array.isArray(ppl) && ppl.length ? ppl.map(p=>{
+        const nameHtml = (currentPid && p.id===currentPid) ? `<strong>${p.name}</strong>` : `${p.name}`;
+        const seat = (p.seat_index!=null? (' · #'+p.seat_index) : '');
+        return `<li>${nameHtml} <span class="meta">${p.role}${seat}</span></li>`;
+      }).join('') : '<li class="meta">No one yet</li>';
+      els.hostPeople.innerHTML = html;
+    }
+    if(els.guestPeople) els.guestPeople.innerHTML = els.hostPeople.innerHTML;
     const count = Array.isArray(ppl) ? ppl.length : 0;
     if (els.hostPeopleCount) els.hostPeopleCount.textContent = String(count);
     if (els.guestPeopleCount) els.guestPeopleCount.textContent = String(count);
+
+    // Enable controls only for the current turn
+    try{
+      const turn = out?.current_turn || null;
+      const running = out?.status==='running';
+      const code = state.gameCode || (els.joinCode?.value||'').trim();
+      const pid = getParticipantId(code);
+      const amHost = !!state.isHostInJoin;
+      const allowHost = running && turn && turn.role==='host' && amHost;
+      const allowGuest = running && turn && pid && turn.participant_id===pid;
+
+      function setUI(card, allow){
+        if(!card || !card.__ansUI) return;
+        const ui = card.__ansUI;
+        [ui.mic, ui.kb, ui.done, ui.submit, ui.box].forEach(el=>{ if(el) el.disabled = !allow; });
+        if (ui.box && ui.box.style.display==='none') { /* keep hidden until mic done / keyboard click */ }
+        card.style.opacity = allow? '1' : '0.5';
+      }
+      setUI(state.__ansHost, allowHost);
+      setUI(state.__ansGuest, allowGuest);
+    }catch{}
   }
   function startRoomPolling(){ stopRoomPolling(); state.roomPollHandle=setInterval(pollRoomStateOnce,3000); pollRoomStateOnce(); startGameRealtime(); }
 
@@ -326,82 +320,5 @@
     state.gameChannel = ch;
     log && log('Realtime: subscribed to games row ' + state.gameId);
   }
-
-  // === Answer Controls UI (mic + keyboard) ===
-  (function initAnswerControls(){
-    if (!els.host || !els.join) return;
-    const card = document.createElement('div'); card.id='answerControls'; card.className='card'; card.style.marginTop='8px';
-    card.innerHTML = [
-      '<div class="meta">Your answer</div>',
-      '<div class="row" style="gap:8px;margin:6px 0;">',
-        '<button id="ansMicBtn" class="btn">🎤 Start</button>',
-        '<button id="ansKbBtn" class="btn">⌨️ Type</button>',
-        '<button id="ansDoneBtn" class="btn">Done</button>',
-        '<button id="ansSubmitBtn" class="btn primary" style="display:none">Submit answer</button>',
-      '</div>',
-      '<textarea id="ansBox" placeholder="Your transcribed/typed answer..." style="width:100%;min-height:90px;display:none"></textarea>'
-    ].join('');
-    // Mount under question area for both host & join
-    try{ els.host.appendChild(card.cloneNode(true)); }catch{}
-    try{ els.join.appendChild(card); }catch{}
-
-    function byId(root,id){ return (root && root.querySelector('#'+id)) || null; }
-    const hostRoot = els.host; const joinRoot = els.join;
-    const hostUI = {
-      mic: byId(hostRoot,'ansMicBtn'), kb: byId(hostRoot,'ansKbBtn'), done: byId(hostRoot,'ansDoneBtn'),
-      submit: byId(hostRoot,'ansSubmitBtn'), box: byId(hostRoot,'ansBox')
-    };
-    const guestUI = {
-      mic: byId(joinRoot,'ansMicBtn'), kb: byId(joinRoot,'ansKbBtn'), done: byId(joinRoot,'ansDoneBtn'),
-      submit: byId(joinRoot,'ansSubmitBtn'), box: byId(joinRoot,'ansBox')
-    };
-
-    // Speech recognition shared helpers
-    let recogHost=null, recogGuest=null, recogOnHost=false, recogOnGuest=false;
-    function makeRecog(){
-      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if(!SR) return null;
-      const r = new SR(); r.interimResults = true; r.lang = 'en-US';
-      return r;
-    }
-    function wire(root, ui, isHost){
-      if(!ui || !ui.mic || !ui.kb || !ui.done || !ui.submit || !ui.box) return;
-      let recog = null; let on = false;
-      ui.mic.onclick = ()=>{
-        if(on){ try{ recog && recog.stop(); }catch{}; on=false; ui.mic.textContent='🎤 Start'; return; }
-        recog = makeRecog();
-        if(!recog){ alert('Speech recognition not supported; use ⌨️ Type'); return; }
-        ui.box.value='';
-        recog.onresult = (e)=>{ ui.box.style.display='block'; ui.submit.style.display='inline-block';
-          let s=''; for(let i=0;i<e.results.length;i++){ s += e.results[i][0].transcript + ' '; } ui.box.value=s.trim();
-        };
-        recog.onend = ()=>{ on=false; ui.mic.textContent='🎤 Start'; };
-        try{ recog.start(); on=true; ui.mic.textContent='◼ Stop'; }catch{}
-      };
-      ui.kb.onclick = ()=>{ ui.box.style.display='block'; ui.submit.style.display='inline-block'; ui.box.focus(); };
-      ui.done.onclick = ()=>{ try{ recog && recog.stop(); }catch{}; on=false; ui.mic.textContent='🎤 Start'; if((ui.box.value||'').trim()){ ui.box.style.display='block'; ui.submit.style.display='inline-block'; } };
-      ui.submit.onclick = async ()=>{
-        const text = (ui.box.value||'').trim(); if(!text) return;
-        const code = state.gameCode || (els.joinCode?.value||'').trim(); if(!code) return;
-        // Ensure we have gameId + question from state API
-        try{
-          const rs = await fetch(state.functionsBase + '/get_state?code='+encodeURIComponent(code));
-          const st = await rs.json().catch(()=>({}));
-          const gid = st?.id || st?.game_id || state.gameId; const qid = st?.question?.id || null;
-          if (!gid || !qid) return;
-          const body = { game_id: gid, question_id: qid, text, temp_player_id: getTempPlayerId(code) };
-          // send participant_id if available (backend can ignore safely)
-          const pid = getParticipantId(code); if(pid) body['participant_id']=pid;
-          await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body) });
-          ui.box.value='';
-        }catch{}
-      };
-    }
-    wire(hostRoot, hostUI, true);
-    wire(joinRoot, guestUI, false);
-
-    // Expose enabling/disabling by turn from the polling loop
-    state.__answerUI = { hostUI, guestUI };
-  })();
 
 })();
