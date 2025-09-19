@@ -20,14 +20,21 @@
     joinLog: $('joinLog')
   };
 
-  // === Minimal helpers (non-breaking) ===
-  function ms_getTempId(code){
+  // ===== Minimal helpers (non-breaking) =====
+  function MS_tempId(code){
     try{ const k='ms_temp_'+code; let v=localStorage.getItem(k); if(!v){ v=crypto.randomUUID(); localStorage.setItem(k,v); } return v; }catch{ return null; }
   }
-  function ms_getPid(code){ try{ return localStorage.getItem('ms_pid_'+code) || null; }catch{ return null; } }
-  function ms_buildAnswerCard(){
-    const card=document.createElement('div'); card.className='card'; card.id='msAnswerCard'; card.style.marginTop='8px';
-    card.innerHTML=[
+  function MS_pid(code){ try{ return localStorage.getItem('ms_pid_'+code) || null; }catch{ return null; } }
+
+  function MS_mountAnswerCard(targetEl, idSuffix){
+    if (!targetEl) return null;
+    const existing = document.getElementById('msAnsCard_'+idSuffix);
+    if (existing) return existing;
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.id = 'msAnsCard_'+idSuffix;
+    card.style.marginTop = '8px';
+    card.innerHTML = [
       '<div class="meta">Your answer</div>',
       '<div class="row" style="gap:8px;margin:6px 0;">',
         '<button class="btn" data-ms="mic">🎤 Start</button>',
@@ -37,50 +44,64 @@
       '</div>',
       '<textarea data-ms="box" placeholder="Your transcribed/typed answer..." style="width:100%;min-height:90px;display:none"></textarea>'
     ].join('');
+    targetEl.appendChild(card);
     return card;
   }
-  function ms_mountAnswerCards(){
-    if (document.getElementById('msAnswerCardHost') || document.getElementById('msAnswerCardGuest')) return;
-    const hostQ = els.questionText?.closest('.card') || els.host;
-    const guestQ = els.gQuestionText?.closest('.card') || els.join;
-    if (hostQ){
-      const c=ms_buildAnswerCard(); c.id='msAnswerCardHost'; hostQ.appendChild(c);
-    }
-    if (guestQ){
-      const c=ms_buildAnswerCard(); c.id='msAnswerCardGuest'; guestQ.appendChild(c);
-    }
-  }
-  function ms_wireAnswer(card, role){
+
+  function MS_wireAnswerCard(card){
     if (!card) return;
-    const mic=card.querySelector('[data-ms="mic"]');
-    const kb=card.querySelector('[data-ms="kb"]');
-    const done=card.querySelector('[data-ms="done"]');
-    const submit=card.querySelector('[data-ms="submit"]');
-    const box=card.querySelector('[data-ms="box"]');
-    let recog=null, on=false;
+    if (card.__wired) return; card.__wired = true;
+    const mic = card.querySelector('[data-ms="mic"]');
+    const kb = card.querySelector('[data-ms="kb"]');
+    const done = card.querySelector('[data-ms="done"]');
+    const submit = card.querySelector('[data-ms="submit"]');
+    const box = card.querySelector('[data-ms="box"]');
+    let recog = null, on = false;
+
     function mkRecog(){
-      const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR) return null;
-      const r=new SR(); r.interimResults=true; r.lang='en-US'; 
-      r.onresult=(e)=>{ let s=''; for(let i=0;i<e.results.length;i++){ s+=e.results[i][0].transcript+' '; } box.value=s.trim(); box.style.display='block'; submit.style.display='inline-block'; };
-      r.onend=()=>{ on=false; mic.textContent='🎤 Start'; if((box.value||'').trim()){ box.style.display='block'; submit.style.display='inline-block'; } };
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if(!SR) return null;
+      const r = new SR(); r.interimResults = true; r.lang = 'en-US';
+      r.onresult = (e)=>{
+        let s=''; for(let i=0;i<e.results.length;i++){ s += e.results[i][0].transcript + ' '; }
+        box.value = s.trim(); box.style.display='block'; submit.style.display='inline-block';
+      };
+      r.onend = ()=>{ on=false; mic.textContent='🎤 Start'; if((box.value||'').trim()){ box.style.display='block'; submit.style.display='inline-block'; } };
       return r;
     }
-    mic.onclick=()=>{ if(on){ try{recog&&recog.stop();}catch{}; on=false; mic.textContent='🎤 Start'; return; } recog=mkRecog(); if(!recog){ box.style.display='block'; submit.style.display='inline-block'; box.focus(); return; } box.value=''; try{ recog.start(); on=true; mic.textContent='◼ Stop'; }catch{}; };
-    kb.onclick=()=>{ box.style.display='block'; submit.style.display='inline-block'; box.focus(); };
-    done.onclick=()=>{ try{recog&&recog.stop();}catch{}; on=false; mic.textContent='🎤 Start'; if((box.value||'').trim()){ box.style.display='block'; submit.style.display='inline-block'; } };
-    submit.onclick=async ()=>{
-      const text=(box.value||'').trim(); if(!text) return;
-      const code=state.gameCode || (els.joinCode?.value||'').trim(); if(!code) return;
+
+    mic.addEventListener('click', ()=>{
+      if(on){ try{ recog && recog.stop(); }catch{}; on=false; mic.textContent='🎤 Start'; return; }
+      recog = mkRecog();
+      if(!recog){ box.style.display='block'; submit.style.display='inline-block'; box.focus(); return; }
+      box.value=''; try{ recog.start(); on=true; mic.textContent='◼ Stop'; }catch{}
+    });
+    kb.addEventListener('click', ()=>{ box.style.display='block'; submit.style.display='inline-block'; box.focus(); });
+    done.addEventListener('click', ()=>{ try{ recog && recog.stop(); }catch{}; on=false; mic.textContent='🎤 Start'; if((box.value||'').trim()){ box.style.display='block'; submit.style.display='inline-block'; } });
+    submit.addEventListener('click', async ()=>{
+      const text = (box.value||'').trim(); if(!text) return;
+      const code = state.gameCode || (els.joinCode?.value||'').trim(); if(!code) return;
       try{
-        const rs=await fetch(state.functionsBase + '/get_state?code='+encodeURIComponent(code)); const st=await rs.json().catch(()=>({}));
-        const gid=st?.id || st?.game_id || state.gameId; const qid=st?.question?.id || null; if(!gid||!qid) return;
-        const body={ game_id: gid, question_id: qid, text, temp_player_id: ms_getTempId(code) };
-        const pid=ms_getPid(code); if(pid) body['participant_id']=pid;
-        await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
+        const rs = await fetch(state.functionsBase + '/get_state?code='+encodeURIComponent(code));
+        const st = await rs.json().catch(()=>({}));
+        const gid = st?.id || st?.game_id || state.gameId;
+        const qid = st?.question?.id || null;
+        if (!gid || !qid) return;
+        const body = { game_id: gid, question_id: qid, text, temp_player_id: MS_tempId(code) };
+        const pid = MS_pid(code); if(pid) body['participant_id'] = pid;
+        await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body) });
         box.value='';
       }catch{}
-    };
-    card.__ms = { mic, kb, done, submit, box, role };
+    });
+
+    card.__controls = { mic, kb, done, submit, box };
+  }
+
+  function MS_setControlsEnabled(card, allow){
+    if (!card || !card.__controls) return;
+    const { mic, kb, done, submit, box } = card.__controls;
+    [mic, kb, done, submit, box].forEach(el => { if (el) el.disabled = !allow; });
+    card.style.opacity = allow ? '1' : '0.5';
   }
 
 
@@ -157,58 +178,60 @@
     const count = Array.isArray(ppl) ? ppl.length : 0;
     if (els.hostPeopleCount) els.hostPeopleCount.textContent = String(count);
     if (els.guestPeopleCount) els.guestPeopleCount.textContent = String(count);
+    // ===== Minimal turn UI additions (do not modify existing rendering) =====
+    try{
+      // 0) Ensure answer controls are mounted under question areas
+      const hostQCard = (els.questionText && els.questionText.closest && els.questionText.closest('.card')) || els.host;
+      const guestQCard = (els.gQuestionText && els.gQuestionText.closest && els.gQuestionText.closest('.card')) || els.join;
+      const hostCard = MS_mountAnswerCard(hostQCard, 'host');
+      const guestCard = MS_mountAnswerCard(guestQCard, 'guest');
+      MS_wireAnswerCard(hostCard);
+      MS_wireAnswerCard(guestCard);
 
-    // === Minimal turn UI (non-breaking) ===
-    try {
-      // Enable Reveal for first card (no question yet). After that, require all answers.
+      // 1) Next-card gating: enable when there is NO question yet (first reveal). After that, require all answers.
       if (els.nextCardBtn) {
-        const noQ = !out?.question || !out?.question?.id;
-        const ap = out?.answers_progress;
-        const canNext = noQ || ((out?.status==='running') && ap && (ap.total_active>0) && (ap.answered_count>=ap.total_active));
-        els.nextCardBtn.disabled = !canNext;
+        const hasQ = !!(out && out.question && out.question.id);
+        if (!hasQ) {
+          els.nextCardBtn.disabled = false; // allow first reveal
+        } else {
+          const ap = out && out.answers_progress;
+          const canNext = (out && out.status==='running') && ap && (ap.total_active>0) && (ap.answered_count>=ap.total_active);
+          els.nextCardBtn.disabled = !canNext;
+        }
       }
 
-      // Mount answer controls under the question areas (once)
-      ms_mountAnswerCards();
-      ms_wireAnswer(document.getElementById('msAnswerCardHost'), 'host');
-      ms_wireAnswer(document.getElementById('msAnswerCardGuest'), 'guest');
-
-      // Bold current player only when there is a question
-      if (out?.question?.id && out?.current_turn) {
-        const who = out.current_turn.name;
-        function boldOne(listEl){
+      // 2) Bold current player only after a question exists; do NOT rewrite the list HTML
+      if (out && out.question && out.question.id && out.current_turn) {
+        const curName = out.current_turn.name;
+        function boldList(listEl){
           if(!listEl) return;
           const lis = Array.from(listEl.querySelectorAll('li'));
-          lis.forEach(li => { li.innerHTML = li.innerHTML.replace(/<strong>|<\/strong>/g, ''); });
-          for (const li of lis){
-            const meta = li.querySelector('.meta'); const metaText = meta? meta.textContent : '';
-            const base = meta? li.textContent.replace(metaText,'').trim() : li.textContent.trim();
-            if (base === who || base.startsWith(who+' ')){
-              li.innerHTML = li.innerHTML.replace(who, '<strong>'+who+'</strong>');
+          lis.forEach(li => { li.style.fontWeight = '400'; });
+          for (const li of lis) {
+            // name is the text before the meta span
+            const meta = li.querySelector('.meta');
+            const baseText = meta ? li.textContent.replace(meta.textContent,'').trim() : li.textContent.trim();
+            if (baseText === curName || baseText.startsWith(curName + ' ')) {
+              li.style.fontWeight = '700';
               break;
             }
           }
         }
-        boldOne(els.hostPeople); boldOne(els.guestPeople);
+        boldList(els.hostPeople);
+        boldList(els.guestPeople);
       }
 
-      // Enable icons only for current turn
-      const turn = out?.current_turn || null;
-      const running = out?.status==='running';
-      const code = state.gameCode || (els.joinCode?.value||'').trim();
-      const pid = ms_getPid(code);
-      const allowHost = running && turn && turn.role==='host' && !!state.isHostInJoin;
-      const allowGuest = running && turn && pid && turn.participant_id===pid;
-      function setUI(card, allow){
-        if (!card || !card.__ms) return;
-        const ui = card.__ms;
-        [ui.mic, ui.kb, ui.done, ui.submit, ui.box].forEach(el => { if(el) el.disabled = !allow; });
-        // Textarea + submit remain hidden until mic done or keyboard clicked
-        card.style.opacity = allow? '1' : '0.5';
+      // 3) Enable controls only for the current turn player
+      const code = state.gameCode || (els.joinCode && els.joinCode.value || '').trim();
+      const myPid = MS_pid(code);
+      let allowHost = false, allowGuest = false;
+      if (out && out.status==='running' && out.current_turn) {
+        allowHost = (out.current_turn.role==='host' && !!state.isHostInJoin);
+        allowGuest = !!( (myPid && out.current_turn.participant_id===myPid) || (!myPid && els.guestName && out.current_turn.name === (els.guestName.value||'').trim()) );
       }
-      setUI(document.getElementById('msAnswerCardHost'), allowHost);
-      setUI(document.getElementById('msAnswerCardGuest'), allowGuest);
-    } catch {}
+      MS_setControlsEnabled(hostCard, !!allowHost);
+      MS_setControlsEnabled(guestCard, !!allowGuest);
+    }catch{}
 
   }
   function startRoomPolling(){ stopRoomPolling(); state.roomPollHandle=setInterval(pollRoomStateOnce,3000); pollRoomStateOnce(); startGameRealtime(); }
