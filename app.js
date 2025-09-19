@@ -329,8 +329,7 @@
     });
     const out = await r.json().catch(()=>({}));
     if (!r.ok){ log('Next card failed'); log(out); return; }
-    const q = out.question || {};
-    setText(els.questionText, q.text || '—'); setText(els.questionClar, q.clarification || '');
+    try{ await pollRoomStateOnce(); }catch{}
   });
 
   // End
