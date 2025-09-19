@@ -1,7 +1,7 @@
  (function(){
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v13';
+  const MS_UI_VERSION = 'v14';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -26,7 +26,7 @@
     gQuestionText: $('gQuestionText'), gQuestionClar: $('gQuestionClar'),
     joinLog: $('joinLog')
   };
-  // ===== Minimal turns/answers helpers =====
+  // ===== Minimal turns/answers helpers (final) =====
   function MS_qHostCard(){ try { return (els.questionText && els.questionText.closest && els.questionText.closest('.card')) || null; } catch(e){ return null; } }
   function MS_qGuestCard(){ try { return (els.gQuestionText && els.gQuestionText.closest && els.gQuestionText.closest('.card')) || null; } catch(e){ return null; } }
   function MS_isHostView(){ try { return !!els.host; } catch(e){ return false; } }
@@ -89,7 +89,7 @@
           const qid = out && out.question && out.question.id;
           if (!gid || !qid) return;
 
-          // Resolve participant_id
+          // Resolve participant_id for host reliably
           let pid = null;
           if (isHost && out.current_turn && out.current_turn.role === 'host') {
             pid = out.current_turn.participant_id;
@@ -179,7 +179,7 @@
   // Shared room polling
   function stopRoomPolling(){ if(state.roomPollHandle){ clearInterval(state.roomPollHandle); state.roomPollHandle=null; } }
   async function pollRoomStateOnce(){
-    // ===== Minimal turn/answer UI (guarded) =====
+    // ===== Turn/Answer UI (final, minimal) =====
     try{
       // Next gating: first reveal allowed; after that require all answers if progress present
       if (els.nextCardBtn){
@@ -188,18 +188,18 @@
           els.nextCardBtn.disabled = false;
         } else if (out.answers_progress){
           const ap = out.answers_progress;
-          els.nextCardBtn.disabled = (out.status==='running') && ap && (ap.total_active>0) && (ap.answered_count<ap.total_active);
+          els.nextCardBtn.disabled = ap && (ap.total_active>0) && (ap.answered_count<ap.total_active);
         }
       }
 
-      const showAns = !!(out && out.status==='running' && out.question && out.question.id);
+      const showAns = !!(out && out.question && out.question.id); // allow strictly by question presence
       if (showAns){
-        const hc = MS_qHostCard && MS_qHostCard(); const gc = MS_qGuestCard && MS_qGuestCard();
-        const hostCard = MS_mountAnsCard && MS_mountAnsCard(hc, 'msAnsHost');
-        const guestCard = MS_mountAnsCard && MS_mountAnsCard(gc, 'msAnsGuest');
-        MS_wireAnsCard && MS_wireAnsCard(hostCard); MS_wireAnsCard && MS_wireAnsCard(guestCard);
+        const hc = MS_qHostCard(); const gc = MS_qGuestCard();
+        const hostCard = MS_mountAnsCard(hc, 'msAnsHost');
+        const guestCard = MS_mountAnsCard(gc, 'msAnsGuest');
+        MS_wireAnsCard(hostCard); MS_wireAnsCard(guestCard);
 
-        // Bold current player
+        // Bold current player if provided
         if (out.current_turn && (els.hostPeople || els.guestPeople)){
           const cur = out.current_turn.name;
           function boldList(ul){
@@ -218,19 +218,22 @@
           boldList(els.hostPeople); boldList(els.guestPeople);
         }
 
-        // Enable controls only for the current player
-        const isHost = MS_isHostView && MS_isHostView();
+        // Enable controls: host on host view when host's turn; guests by participant_id match
+        const isHost = MS_isHostView();
         const code = (window.state && (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
         const pid = code ? localStorage.getItem('ms_pid_'+code) : null;
         let allowHost=false, allowGuest=false;
         if (out.current_turn){
           allowHost = (out.current_turn.role==='host' && isHost);
           allowGuest = !!( (pid && out.current_turn.participant_id===pid) || (!pid && els.guestName && out.current_turn.name===(els.guestName.value||'').trim()) );
+        } else {
+          // If backend doesn't send current_turn yet, allow host so the round can proceed
+          allowHost = isHost;
         }
-        MS_setEnabled && MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
-        MS_setEnabled && MS_setEnabled(document.getElementById('msAnsGuest'), !!allowGuest);
+        MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
+        MS_setEnabled(document.getElementById('msAnsGuest'), !!allowGuest);
       } else {
-        MS_unmount && MS_unmount('msAnsHost'); MS_unmount && MS_unmount('msAnsGuest');
+        MS_unmount('msAnsHost'); MS_unmount('msAnsGuest');
       }
     }catch(e){}
 
