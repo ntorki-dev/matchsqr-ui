@@ -66,7 +66,7 @@
   function stopHeartbeat(){ if(state.heartbeatHandle){ clearInterval(state.heartbeatHandle); state.heartbeatHandle=null; } }
   function startHeartbeat(){
     stopHeartbeat();
-    const beat=()=>{ if(!state.session?.access_token||!state.gameId) return;
+    const beat=()=>{ if(!state.gameId) return;
       fetch(state.functionsBase+'/heartbeat',{method:'POST',headers:{'authorization':'Bearer '+state.session.access_token,'content-type':'application/json'},body:JSON.stringify({gameId:state.gameId})}).catch(()=>{});
     };
     state.heartbeatHandle=setInterval(beat,20000); beat();
@@ -78,6 +78,7 @@
     if(!state.functionsBase || !state.gameCode) return;
     const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
     const out = await r.json().catch(()=>({}));
+        try{ if(out?.participant_id && code){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     // Card
     const q = out?.question; setText(els.questionText, q?.text || '—'); setText(els.questionClar, q?.clarification || '');
     setText(els.gQuestionText, q?.text || '—'); setText(els.gQuestionClar, q?.clarification || '');
@@ -131,9 +132,10 @@
     if (state.session?.access_token) headers['authorization'] = 'Bearer ' + state.session.access_token;
 
     const r = await fetch(state.functionsBase + '/join_game_guest', {
-      method:'POST', headers, body: JSON.stringify({ code })
+      method:'POST', headers, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{}; return pid? { code, participant_id: pid } : { code }; })())
     });
     const out = await r.json().catch(()=>({}));
+        try{ if(out?.participant_id && code){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
     const isHost = !!out?.is_host;
@@ -153,6 +155,7 @@
     if(!state.session?.access_token){ log('Please login first'); return; }
     const r = await fetch(state.functionsBase + '/create_game', { method:'POST', headers:{ 'authorization':'Bearer '+state.session.access_token }});
     const out = await r.json().catch(()=>({}));
+        try{ if(out?.participant_id && code){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){
       if (out?.error === 'host_has_active_game'){
         log('Active game exists; auto-joining as host with code '+out.code);
@@ -174,6 +177,7 @@
       body: JSON.stringify({ gameId: state.gameId })
     });
     const out = await r.json().catch(()=>({}));
+        try{ if(out?.participant_id && code){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ log('Start failed'); log(out); return; }
     log('Start ok'); applyHostGame(out.game||out);
   });
@@ -188,6 +192,7 @@
       body: JSON.stringify({ gameId: state.gameId })
     });
     const out = await r.json().catch(()=>({}));
+        try{ if(out?.participant_id && code){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ log('Next card failed'); log(out); return; }
     const q = out.question || {};
     setText(els.questionText, q.text || '—'); setText(els.questionClar, q.clarification || '');
@@ -203,6 +208,7 @@
       body: JSON.stringify({ gameId: state.gameId, code: state.gameCode })
     });
     const out = await r.json().catch(()=>({}));
+        try{ if(out?.participant_id && code){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ log('End failed'); log(out); return; }
     log('End ok'); log(out);
     stopHeartbeat(); stopRoomPolling(); clearHostCountdown();
@@ -219,8 +225,11 @@
     const headers = { 'content-type':'application/json' };
     if (state.session?.access_token) headers['authorization']='Bearer '+state.session.access_token;
 
-    const r = await fetch(state.functionsBase + '/join_game_guest', { method:'POST', headers, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null; }catch{}; return pid? { code, name, participant_id: pid } : { code, name }; })()) }) ;
+    const r = await fetch(state.functionsBase + '/join_game_guest', {
+      method:'POST', headers, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{}; return pid? { code, name, participant_id: pid } : { code, name }; })())
+    });
     const out = await r.json().catch(()=>({}));
+        try{ if(out?.participant_id && code){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
     const isHost = !!out?.is_host;
@@ -232,10 +241,10 @@
       setText(els.gameIdOut, state.gameId || '—'); setText(els.gameCodeOut, code);
       startHeartbeat();
     } else if (name){
-      setInterval(()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null; }catch{}; const body = pid? { participant_id: pid } : { gameId: out?.game_id, name }; fetch(state.functionsBase + '/participant_heartbeat',{ method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body) }).catch(()=>{}); }, 25000);
+      setInterval(()=>{ let pid = null; try{ pid = localStorage.getItem('ms_pid_'+code)||null; }catch{}; const body = pid? { participant_id: pid } : { gameId: out?.game_id, name }; fetch(state.functionsBase + '/participant_heartbeat', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body) }).catch(()=>{}); }, 25000);
     }
 
-    try{ if(!isHost && out?.participant_id && code){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}; if(els.joinLog) els.joinLog.textContent='Joined: '+JSON.stringify({ is_host:isHost, game_id: out?.game_id, participant_id: out?.participant_id }, null, 2);
+    if(els.joinLog) els.joinLog.textContent='Joined: '+JSON.stringify({ is_host:isHost, game_id: out?.game_id }, null, 2);
     startRoomPolling();
   });
 
@@ -246,6 +255,7 @@
     try{
       const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
       const out = await r.json().catch(()=>({}));
+        try{ if(out?.participant_id && code){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
       if (out && out.game_id) state.gameId = out.game_id;
     }catch{}
   }
