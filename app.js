@@ -27,6 +27,20 @@
   if (els.hostBtn) els.hostBtn.onclick = ()=>{ hide(els.home); show(els.host); hide(els.join); };
   if (els.joinBtn) els.joinBtn.onclick = ()=>{ hide(els.home); hide(els.host); show(els.join); };
 
+
+  // === Answer helpers (non-invasive) ===
+  function getTempPlayerId(code){
+    try{
+      const k='ms_temp_'+code;
+      let v=localStorage.getItem(k);
+      if(!v){ v=crypto.randomUUID(); localStorage.setItem(k,v); }
+      return v;
+    }catch{ return null; }
+  }
+  function getParticipantId(code){
+    try{ return localStorage.getItem('ms_pid_'+code) || null; }catch{ return null; }
+  }
+
   // State
   const state = {
     supa: null, session: null, functionsBase: null,
@@ -78,7 +92,6 @@
     if(!state.functionsBase || !state.gameCode) return;
     const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
     const out = await r.json().catch(()=>({}));
-    try{ window.__lastGetState = out; }catch{}
     // Card
     const q = out?.question; setText(els.questionText, q?.text || '—'); setText(els.questionClar, q?.clarification || '');
     setText(els.gQuestionText, q?.text || '—'); setText(els.gQuestionClar, q?.clarification || '');
@@ -89,6 +102,49 @@
     if(endsIso){ startHostCountdown(endsIso); startGuestCountdown(endsIso); }
     // Participants + counts
     const ppl = out?.participants || [];
+
+    // === Turn & progress based UI updates (non-invasive) ===
+    try{
+      const currentPid = out?.current_turn?.participant_id || null;
+      // Bold current player
+      if (Array.isArray(ppl)){
+        const pHtml = ppl.map(p=>{
+          const nameHtml = (currentPid && p.id===currentPid) ? `<strong>${p.name}</strong>` : p.name;
+          const seat = (p.seat_index!=null? (' · #'+p.seat_index) : '');
+          return `<li>${nameHtml} <span class="meta">${p.role}${seat}</span></li>`;
+        }).join('') || '<li class="meta">No one yet</li>';
+        if (els.hostPeople) els.hostPeople.innerHTML = pHtml;
+        if (els.guestPeople) els.guestPeople.innerHTML = pHtml;
+      }
+      // Host Next Card gating
+      if (els.nextCardBtn){
+        const ap = out?.answers_progress;
+        const canNext = (out?.status==='running') && ap && (ap.total_active>0) && (ap.answered_count>=ap.total_active);
+        els.nextCardBtn.disabled = !canNext;
+      }
+      // Enable/disable answer controls by turn
+      if (state.__answerUI){
+        const code = state.gameCode || (els.joinCode?.value||'').trim();
+        const myPid = getParticipantId(code);
+        const myName = (els.guestName?.value||'').trim();
+        let allow = false;
+        if (out?.status==='running' && out?.current_turn){
+          if (out.current_turn.role==='host' && state.isHostInJoin){ allow = true; }
+          else if (myPid && out.current_turn.participant_id===myPid){ allow = true; }
+          else if (!myPid && myName){
+            const me = (out.participants||[]).find(p => p.name===myName);
+            if (me && me.id===out.current_turn.participant_id) allow = true;
+          }
+        }
+        const uiSet = [state.__answerUI.hostUI, state.__answerUI.guestUI];
+        uiSet.forEach(UI => {
+          if (!UI) return;
+          [UI.mic, UI.kb, UI.done, UI.submit, UI.box].forEach(el => { if (el) el.disabled = !allow; });
+          if (UI.box) UI.box.style.opacity = allow? '1' : '0.5';
+        });
+      }
+    }catch{}
+
     els.hostPeople.innerHTML  = ppl.map(p=>`<li>${p.name} <span class="meta">(${p.role})</span></li>`).join('') || '<li class="meta">No one yet</li>';
     els.guestPeople.innerHTML = els.hostPeople.innerHTML;
     const count = Array.isArray(ppl) ? ppl.length : 0;
@@ -135,10 +191,8 @@
       method:'POST', headers, body: JSON.stringify({ code })
     });
     const out = await r.json().catch(()=>({}));
-    try{ window.__lastGetState = out; }catch{}
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
-    try{ if(out?.participant_id && code){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     const isHost = !!out?.is_host;
     if (!isHost){ if(els.joinLog) els.joinLog.textContent='This code belongs to an existing room, but you are not the host.'; return; }
 
@@ -156,7 +210,6 @@
     if(!state.session?.access_token){ log('Please login first'); return; }
     const r = await fetch(state.functionsBase + '/create_game', { method:'POST', headers:{ 'authorization':'Bearer '+state.session.access_token }});
     const out = await r.json().catch(()=>({}));
-    try{ window.__lastGetState = out; }catch{}
     if (!r.ok){
       if (out?.error === 'host_has_active_game'){
         log('Active game exists; auto-joining as host with code '+out.code);
@@ -178,7 +231,6 @@
       body: JSON.stringify({ gameId: state.gameId })
     });
     const out = await r.json().catch(()=>({}));
-    try{ window.__lastGetState = out; }catch{}
     if (!r.ok){ log('Start failed'); log(out); return; }
     log('Start ok'); applyHostGame(out.game||out);
   });
@@ -193,7 +245,6 @@
       body: JSON.stringify({ gameId: state.gameId })
     });
     const out = await r.json().catch(()=>({}));
-    try{ window.__lastGetState = out; }catch{}
     if (!r.ok){ log('Next card failed'); log(out); return; }
     const q = out.question || {};
     setText(els.questionText, q.text || '—'); setText(els.questionClar, q.clarification || '');
@@ -209,7 +260,6 @@
       body: JSON.stringify({ gameId: state.gameId, code: state.gameCode })
     });
     const out = await r.json().catch(()=>({}));
-    try{ window.__lastGetState = out; }catch{}
     if (!r.ok){ log('End failed'); log(out); return; }
     log('End ok'); log(out);
     stopHeartbeat(); stopRoomPolling(); clearHostCountdown();
@@ -230,10 +280,8 @@
       method:'POST', headers, body: JSON.stringify({ code, name })
     });
     const out = await r.json().catch(()=>({}));
-    try{ window.__lastGetState = out; }catch{}
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
-    try{ if(out?.participant_id && code){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     const isHost = !!out?.is_host;
     state.isHostInJoin = isHost;
     state.gameCode = code;
@@ -257,7 +305,6 @@
     try{
       const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
       const out = await r.json().catch(()=>({}));
-    try{ window.__lastGetState = out; }catch{}
       if (out && out.game_id) state.gameId = out.game_id;
     }catch{}
   }
@@ -280,113 +327,81 @@
     log && log('Realtime: subscribed to games row ' + state.gameId);
   }
 
-  // ----- Answer Controls (turn-based) -----
-  ;(function(){
-    const hostSec = document.getElementById('hostSection');
-    const joinSec = document.getElementById('joinSection');
+  // === Answer Controls UI (mic + keyboard) ===
+  (function initAnswerControls(){
+    if (!els.host || !els.join) return;
+    const card = document.createElement('div'); card.id='answerControls'; card.className='card'; card.style.marginTop='8px';
+    card.innerHTML = [
+      '<div class="meta">Your answer</div>',
+      '<div class="row" style="gap:8px;margin:6px 0;">',
+        '<button id="ansMicBtn" class="btn">🎤 Start</button>',
+        '<button id="ansKbBtn" class="btn">⌨️ Type</button>',
+        '<button id="ansDoneBtn" class="btn">Done</button>',
+        '<button id="ansSubmitBtn" class="btn primary">Submit answer</button>',
+      '</div>',
+      '<textarea id="ansBox" placeholder="Your transcribed/typed answer..." style="width:100%;min-height:90px;"></textarea>'
+    ].join('');
+    // Mount under question area for both host & join
+    try{ els.host.appendChild(card.cloneNode(true)); }catch{}
+    try{ els.join.appendChild(card); }catch{}
 
-    function makeControls(idPrefix){
-      const wrap = document.createElement('div'); wrap.className='card'; wrap.style.marginTop='8px'; wrap.id=idPrefix+'Answer';
-      wrap.innerHTML = `
-        <div class="meta">Your answer</div>
-        <div class="row" style="margin:6px 0">
-          <button id="${idPrefix}MicBtn" class="btn">🎤 Start</button>
-          <button id="${idPrefix}KbBtn" class="btn">⌨️ Keyboard</button>
-          <button id="${idPrefix}DoneBtn" class="btn">Done</button>
-          <button id="${idPrefix}SubmitBtn" class="btn primary">Submit answer</button>
-        </div>
-        <textarea id="${idPrefix}Box" placeholder="Your answer..." style="width:100%;min-height:90px"></textarea>
-      `;
-      return wrap;
-    }
+    function byId(root,id){ return (root && root.querySelector('#'+id)) || null; }
+    const hostRoot = els.host; const joinRoot = els.join;
+    const hostUI = {
+      mic: byId(hostRoot,'ansMicBtn'), kb: byId(hostRoot,'ansKbBtn'), done: byId(hostRoot,'ansDoneBtn'),
+      submit: byId(hostRoot,'ansSubmitBtn'), box: byId(hostRoot,'ansBox')
+    };
+    const guestUI = {
+      mic: byId(joinRoot,'ansMicBtn'), kb: byId(joinRoot,'ansKbBtn'), done: byId(joinRoot,'ansDoneBtn'),
+      submit: byId(joinRoot,'ansSubmitBtn'), box: byId(joinRoot,'ansBox')
+    };
 
-    const hControls = makeControls('h');
-    const gControls = makeControls('g');
-
-    function mountBelowQuestion(sectionEl){
-      if (!sectionEl) return;
-      sectionEl.appendChild(sectionEl.id==='hostSection' ? hControls : gControls);
-    }
-    mountBelowQuestion(hostSec);
-    mountBelowQuestion(joinSec);
-
-    // Speech recognition (browser-native)
-    function speech(){
+    // Speech recognition shared helpers
+    let recogHost=null, recogGuest=null, recogOnHost=false, recogOnGuest=false;
+    function makeRecog(){
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if(!SR) return null;
-      const r = new SR(); r.interimResults = true; r.lang='en-US';
+      const r = new SR(); r.interimResults = true; r.lang = 'en-US';
       return r;
     }
-
-    function wire(prefix){
-      const mic = document.getElementById(prefix+'MicBtn');
-      const kb  = document.getElementById(prefix+'KbBtn');
-      const done= document.getElementById(prefix+'DoneBtn');
-      const sub = document.getElementById(prefix+'SubmitBtn');
-      const box = document.getElementById(prefix+'Box');
-
-      let recog = null, active = false;
-      if (mic) mic.onclick = ()=>{
-        if (active){ try{ recog && recog.stop(); }catch{}; active=false; mic.textContent='🎤 Start'; return; }
-        recog = speech();
-        if (!recog){ alert('Speech recognition not supported in this browser. Use keyboard.'); return; }
-        box.value=''; mic.textContent='◼ Stop'; active=true;
-        recog.onresult = (e)=>{ let s=''; for(let i=0;i<e.results.length;i++){ s+=e.results[i][0].transcript+' '; } box.value=s.trim(); };
-        recog.onend = ()=>{ active=false; mic.textContent='🎤 Start'; };
-        try{ recog.start(); }catch{ active=false; mic.textContent='🎤 Start'; }
+    function wire(root, ui, isHost){
+      if(!ui || !ui.mic || !ui.kb || !ui.done || !ui.submit || !ui.box) return;
+      let recog = null; let on = false;
+      ui.mic.onclick = ()=>{
+        if(on){ try{ recog && recog.stop(); }catch{}; on=false; ui.mic.textContent='🎤 Start'; return; }
+        recog = makeRecog();
+        if(!recog){ alert('Speech recognition not supported; use ⌨️ Type'); return; }
+        ui.box.value='';
+        recog.onresult = (e)=>{
+          let s=''; for(let i=0;i<e.results.length;i++){ s += e.results[i][0].transcript + ' '; } ui.box.value=s.trim();
+        };
+        recog.onend = ()=>{ on=false; ui.mic.textContent='🎤 Start'; };
+        try{ recog.start(); on=true; ui.mic.textContent='◼ Stop'; }catch{}
       };
-      if (kb)  kb.onclick = ()=>{ box.focus(); };
-      if (done) done.onclick = ()=>{ try{ recog && recog.stop(); }catch{}; active=false; if(mic) mic.textContent='🎤 Start'; };
-
-      if (sub) sub.onclick = async ()=>{
-        const text = (box.value||'').trim(); if(!text) return;
-        const code = state.gameCode || '';
-        // use last polled state
-        const gs = window.__lastGetState || {};
-        const gid = gs.id || state.gameId;
-        const qid = gs?.question?.id || null;
-        if (!gid || !qid) return;
-        // temp player id for anonymous retention
-        let tmp=null; try{ const k='ms_temp_'+code; tmp=localStorage.getItem(k); if(!tmp){ tmp=crypto.randomUUID(); localStorage.setItem(k,tmp); } }catch{}
-        const body = { game_id: gid, question_id: qid, text, temp_player_id: tmp };
-        try{ const pid = localStorage.getItem('ms_pid_'+code); if(pid) (body as any).participant_id = pid; }catch{}
-
-        const r = await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body) });
-        const out = await r.json().catch(()=>({}));
-    try{ window.__lastGetState = out; }catch{}
-        if (r.ok){ box.value=''; }
+      ui.kb.onclick = ()=>{ ui.box.focus(); };
+      ui.done.onclick = ()=>{ try{ recog && recog.stop(); }catch{}; on=false; ui.mic.textContent='🎤 Start'; };
+      ui.submit.onclick = async ()=>{
+        const text = (ui.box.value||'').trim(); if(!text) return;
+        const code = state.gameCode || (els.joinCode?.value||'').trim(); if(!code) return;
+        // Ensure we have gameId + question from state API
+        try{
+          const rs = await fetch(state.functionsBase + '/get_state?code='+encodeURIComponent(code));
+          const st = await rs.json().catch(()=>({}));
+          const gid = st?.id || st?.game_id || state.gameId; const qid = st?.question?.id || null;
+          if (!gid || !qid) return;
+          const body = { game_id: gid, question_id: qid, text, temp_player_id: getTempPlayerId(code) };
+          // send participant_id if available (backend can ignore safely)
+          const pid = getParticipantId(code); if(pid) body['participant_id']=pid;
+          await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body) });
+          ui.box.value='';
+        }catch{}
       };
     }
+    wire(hostRoot, hostUI, true);
+    wire(joinRoot, guestUI, false);
 
-    wire('h'); wire('g');
-
-    // Gate controls visibility/enabled by turn
-    const _poll = pollRoomStateOnce;
-    pollRoomStateOnce = async function(){
-      await _poll();
-      try{
-        const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode||'')); 
-        const out = await r.json().catch(()=>({}));
-    try{ window.__lastGetState = out; }catch{}
-        window.__lastGetState = out;
-
-        const turnPid = out?.current_turn?.participant_id || null;
-        const statusRunning = out?.status==='running';
-        const mePid = (function(){ try{ return localStorage.getItem('ms_pid_'+(state.gameCode||''))||null; }catch{ return null; } })();
-        const amHost = !!state.isHostInJoin;
-
-        const allow = statusRunning && ((amHost && out?.current_turn?.role==='host') || (!!mePid && mePid===turnPid));
-        const sets = [
-          ['hMicBtn','hKbBtn','hDoneBtn','hSubmitBtn','hBox','hAnswer'],
-          ['gMicBtn','gKbBtn','gDoneBtn','gSubmitBtn','gBox','gAnswer']
-        ];
-        sets.forEach(ids=>{
-          const [mic,kb,done,sub,box,wrap]=ids.map(id=>document.getElementById(id));
-          [mic,kb,done,sub,box].forEach(el=>{ if(!el) return; (el as any).disabled = !allow; });
-          if (wrap) wrap.style.opacity = allow ? '1' : '0.4';
-        });
-      }catch{}
-    };
+    // Expose enabling/disabling by turn from the polling loop
+    state.__answerUI = { hostUI, guestUI };
   })();
 
 })();
