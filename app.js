@@ -131,13 +131,12 @@
     if (state.session?.access_token) headers['authorization'] = 'Bearer ' + state.session.access_token;
 
     const r = await fetch(state.functionsBase + '/join_game_guest', {
-      method:'POST', headers, body: JSON.stringify((()=>{let pid=null;try{pid=localStorage.getItem('ms_pid_'+(els.joinCode?.value||code||'').trim())||null;}catch{};return pid?{code,participant_id:pid}:{code};})())
+      method:'POST', headers, body: JSON.stringify({ code })
     });
     const out = await r.json().catch(()=>({}));
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
     const isHost = !!out?.is_host;
-    try{ if(!isHost && out?.participant_id && els.joinCode){ localStorage.setItem('ms_pid_'+(els.joinCode.value||state.gameCode||''), out.participant_id); } }catch{}
     if (!isHost){ if(els.joinLog) els.joinLog.textContent='This code belongs to an existing room, but you are not the host.'; return; }
 
     state.isHostInJoin = true;
@@ -220,14 +219,11 @@
     const headers = { 'content-type':'application/json' };
     if (state.session?.access_token) headers['authorization']='Bearer '+state.session.access_token;
 
-    const r = await fetch(state.functionsBase + '/join_game_guest', {
-      method:'POST', headers, body: JSON.stringify((()=>{let pid=null;try{pid=localStorage.getItem('ms_pid_'+(els.joinCode?.value||'').trim())||null;}catch{};return pid?{code,name,participant_id:pid}:{code,name};})())
-    });
+    const r = await fetch(state.functionsBase + '/join_game_guest', { method:'POST', headers, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null; }catch{}; return pid? { code, name, participant_id: pid } : { code, name }; })()) }) ;
     const out = await r.json().catch(()=>({}));
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
     const isHost = !!out?.is_host;
-    try{ if(!isHost && out?.participant_id && els.joinCode){ localStorage.setItem('ms_pid_'+(els.joinCode.value||state.gameCode||''), out.participant_id); } }catch{}
     state.isHostInJoin = isHost;
     state.gameCode = code;
 
@@ -236,10 +232,10 @@
       setText(els.gameIdOut, state.gameId || '—'); setText(els.gameCodeOut, code);
       startHeartbeat();
     } else if (name){
-      setInterval(()=>{ (()=>{let pid=null;try{pid=localStorage.getItem('ms_pid_'+(els.joinCode?.value||state.gameCode||'').trim())||null;}catch{};const body=pid?{participant_id:pid}:{gameId: out?.game_id, name};return fetch(state.functionsBase + '/participant_heartbeat',{ method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body) });})().catch(()=>{}); }, 25000);
+      setInterval(()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null; }catch{}; const body = pid? { participant_id: pid } : { gameId: out?.game_id, name }; fetch(state.functionsBase + '/participant_heartbeat',{ method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body) }).catch(()=>{}); }, 25000);
     }
 
-    if(els.joinLog) els.joinLog.textContent='Joined: '+JSON.stringify({ is_host:isHost, game_id: out?.game_id }, null, 2);
+    try{ if(!isHost && out?.participant_id && code){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}; if(els.joinLog) els.joinLog.textContent='Joined: '+JSON.stringify({ is_host:isHost, game_id: out?.game_id, participant_id: out?.participant_id }, null, 2);
     startRoomPolling();
   });
 
