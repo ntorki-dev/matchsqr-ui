@@ -1,7 +1,7 @@
  (function(){
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v11';
+  const MS_UI_VERSION = 'v12';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -80,17 +80,31 @@
       done && done.addEventListener('click', ()=>{ try{ recog&&recog.stop(); }catch(err){}; on=false; try{ mic.textContent='🎤 Start'; if((box.value||'').trim()){ box.style.display='block'; submit.style.display='inline-block'; } }catch(err){} });
       submit && submit.addEventListener('click', async ()=>{
         try{
+          const isHost = MS_isHostView();
           const code = (window.state&& (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
           if (!code) return;
           const rs = await fetch(state.functionsBase + '/get_state?code='+encodeURIComponent(code));
-          const st = await rs.json().catch(()=>({}));
-          const gid = st && (st.id || st.game_id || state.gameId);
-          const qid = st && st.question && st.question.id;
+          const out = await rs.json().catch(()=>({}));
+          const gid = out && (out.id || out.game_id || state.gameId);
+          const qid = out && out.question && out.question.id;
           if (!gid || !qid) return;
+
+          // Resolve participant_id robustly
+          let pid = null;
+          if (isHost && out.current_turn && out.current_turn.role === 'host') {
+            pid = out.current_turn.participant_id; // host participant id
+            if (!pid && out.participants && out.participants.length){
+              const hostRow = out.participants.find((p)=>p.role==='host');
+              if (hostRow) pid = hostRow.id;
+            }
+          } else {
+            pid = localStorage.getItem('ms_pid_'+code);
+          }
+
           const k='ms_temp_'+code; let temp=localStorage.getItem(k); if(!temp){ temp=crypto.randomUUID(); localStorage.setItem(k,temp); }
-          const pid = localStorage.getItem('ms_pid_'+code);
-          const body = { game_id: gid, question_id: qid, text: (box.value||'').trim(), temp_player_id: temp };
-          if (pid) body['participant_id']=pid;
+
+          const body:any = { game_id: gid, question_id: qid, text: (box.value||'').trim(), temp_player_id: temp };
+          if (pid) (body as any)['participant_id']=pid;
           await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
           box.value='';
         }catch(err){}
@@ -185,9 +199,9 @@
     const count = Array.isArray(ppl) ? ppl.length : 0;
     if (els.hostPeopleCount) els.hostPeopleCount.textContent = String(count);
     if (els.guestPeopleCount) els.guestPeopleCount.textContent = String(count);
-    // ===== Minimal turn/answer UI (guarded) =====
+    // ===== Turn/Answer UI (guarded) =====
     try{
-      // Next gating: first reveal always allowed; after that require all answers if progress is present
+      // Next gating
       if (els.nextCardBtn){
         const hasQ = !!(out && out.question && out.question.id);
         if (!hasQ){
@@ -225,13 +239,12 @@
         }
 
         // Enable controls only for the current player
+        const isHost = MS_isHostView();
         const code = (window.state && (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
         const pid = code ? localStorage.getItem('ms_pid_'+code) : null;
-        const isHostView = MS_isHostView();
         let allowHost=false, allowGuest=false;
         if (out.current_turn){
-          // Host is allowed when it's host's turn AND we're on the host view (no dependency on state.isHostInJoin)
-          allowHost = (out.current_turn.role==='host' && isHostView);
+          allowHost = (out.current_turn.role==='host' && isHost);
           allowGuest = !!( (pid && out.current_turn.participant_id===pid) || (!pid && els.guestName && out.current_turn.name===(els.guestName.value||'').trim()) );
         }
         MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
