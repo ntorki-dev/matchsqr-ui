@@ -337,9 +337,9 @@
         '<button id="ansMicBtn" class="btn">🎤 Start</button>',
         '<button id="ansKbBtn" class="btn">⌨️ Type</button>',
         '<button id="ansDoneBtn" class="btn">Done</button>',
-        '<button id="ansSubmitBtn" class="btn primary">Submit answer</button>',
+        '<button id="ansSubmitBtn" class="btn primary" style="display:none">Submit answer</button>',
       '</div>',
-      '<textarea id="ansBox" placeholder="Your transcribed/typed answer..." style="width:100%;min-height:90px;"></textarea>'
+      '<textarea id="ansBox" placeholder="Your transcribed/typed answer..." style="width:100%;min-height:90px;display:none"></textarea>'
     ].join('');
     // Mount under question area for both host & join
     try{ els.host.appendChild(card.cloneNode(true)); }catch{}
@@ -372,14 +372,14 @@
         recog = makeRecog();
         if(!recog){ alert('Speech recognition not supported; use ⌨️ Type'); return; }
         ui.box.value='';
-        recog.onresult = (e)=>{
+        recog.onresult = (e)=>{ ui.box.style.display='block'; ui.submit.style.display='inline-block';
           let s=''; for(let i=0;i<e.results.length;i++){ s += e.results[i][0].transcript + ' '; } ui.box.value=s.trim();
         };
         recog.onend = ()=>{ on=false; ui.mic.textContent='🎤 Start'; };
         try{ recog.start(); on=true; ui.mic.textContent='◼ Stop'; }catch{}
       };
-      ui.kb.onclick = ()=>{ ui.box.focus(); };
-      ui.done.onclick = ()=>{ try{ recog && recog.stop(); }catch{}; on=false; ui.mic.textContent='🎤 Start'; };
+      ui.kb.onclick = ()=>{ ui.box.style.display='block'; ui.submit.style.display='inline-block'; ui.box.focus(); };
+      ui.done.onclick = ()=>{ try{ recog && recog.stop(); }catch{}; on=false; ui.mic.textContent='🎤 Start'; if((ui.box.value||'').trim()){ ui.box.style.display='block'; ui.submit.style.display='inline-block'; } };
       ui.submit.onclick = async ()=>{
         const text = (ui.box.value||'').trim(); if(!text) return;
         const code = state.gameCode || (els.joinCode?.value||'').trim(); if(!code) return;
