@@ -1,7 +1,7 @@
  (function(){
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v21';
+  const MS_UI_VERSION = 'v22';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -95,12 +95,12 @@
           if(on){ try{recog&&recog.stop();}catch(err){}; on=false; mic.textContent='🎤 Start'; return; }
           var r = mkRecog();
           if(!r){ box.style.display='block'; submit.style.display='inline-block'; box.focus(); return; }
-          recog = r; box.value=''; try{ recog.start(); on=true; mic.textContent='◼ Stop'; }catch(err){}
+          recog = r; box.value=''; try{ if (typeof pollRoomStateOnce === 'function') { await pollRoomStateOnce(); } }catch(_e){} try{ recog.start(); on=true; mic.textContent='◼ Stop'; }catch(err){}
         }catch(err){}
       });
       kb && kb.addEventListener('click', function(){ try{ box.style.display='block'; submit.style.display='inline-block'; box.focus(); }catch(err){} });
       done && done.addEventListener('click', function(){ try{ recog&&recog.stop(); }catch(err){}; on=false; try{ mic.textContent='🎤 Start'; if((box.value||'').trim()){ box.style.display='block'; submit.style.display='inline-block'; } }catch(err){} });
-      submit && submit.addEventListener('click', async function(){
+      submit && submit.addEventListener('click', async function(){ try{ submit.disabled=true; }catch(e){};
         try{
           var isHost = MS_isHostView();
           var code = (window.state&& (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
@@ -137,8 +137,12 @@
             }
           } catch(e) {}
     
-          await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
-          box.value='';
+          var __resp = await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
+var __json = null; try{ __json = await __resp.clone().json(); }catch(_e){}
+try{ var lg = (MS_isHostView()? els.hostLog : els.joinLog); if(lg){ lg.textContent += '\nsubmit_answer '+String(__resp.status)+' '+JSON.stringify(__json||{}); } }catch(_e){}
+try{ submit.disabled=false; }catch(e){}
+
+          box.value=''; try{ if (typeof pollRoomStateOnce === 'function') { await pollRoomStateOnce(); } }catch(_e){}
         }catch(err){}
       });
       card.__ms = { mic: mic, kb: kb, done: done, submit: submit, box: box };
