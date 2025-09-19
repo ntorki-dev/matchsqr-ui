@@ -1,7 +1,7 @@
  (function(){
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v15';
+  const MS_UI_VERSION = 'v16';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -116,7 +116,7 @@
     const endsIso = out?.ends_at || null;
     setText(els.statusOut, out?.status || '—'); setText(els.endsAtOut, endsIso || '—');
     setText(els.gStatus, out?.status || '—'); setText(els.gEndsAt, endsIso || '—');
-    if(endsIso){ startHostCountdown(endsIso); startGuestCountdown(endsIso); }
+    if (out?.status==='running' && endsIso) { startHostCountdown(endsIso); startGuestCountdown(endsIso); } else { try { clearHostCountdown(); } catch(e) {} }
     // Participants + counts
     const ppl = out?.participants || [];
     els.hostPeople.innerHTML  = ppl.map(p=>`<li>${p.name} <span class="meta">(${p.role})</span></li>`).join('') || '<li class="meta">No one yet</li>';
