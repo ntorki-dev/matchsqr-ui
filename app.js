@@ -1,7 +1,7 @@
  (function(){
 
   // === UI build version ===
-  window.__MS_UI_VERSION = 'v25';
+  window.__MS_UI_VERSION = 'v26';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
@@ -120,7 +120,9 @@
           var rs = await fetch(state.functionsBase + '/get_state?code='+encodeURIComponent(code));
           var out = await rs.json().catch(function(){ return {}; });
           var gid = out && (out.id || out.game_id || state.gameId);
+try{ var lg = (document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg){ lg.textContent += '\n[submit] gid='+gid; } }catch(_e){}
           var qid = out && out.question && out.question.id;
+try{ var lg2 = (document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg2){ lg2.textContent += ' qid='+qid; } }catch(_e){}
           if (!gid || !qid) return;
           var pid = null;
           if (isHost && out.current_turn && out.current_turn.role === 'host') {
@@ -139,7 +141,7 @@
             }
           }
           var k='ms_temp_'+code; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
-          var body = { game_id: gid, question_id: qid, text: (box.value||'').trim(), temp_player_id: temp };
+          var body = { game_id: gid, question_id: qid, text: (box.value||'').trim(), temp_player_id: temp }; try{ var lg3=(document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg3){ lg3.textContent += ' pid='+(pid||''); } }catch(_e){}
           if (pid) body.participant_id = pid;
           try {
             if (!pid) {
