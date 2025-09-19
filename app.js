@@ -28,6 +28,17 @@
   if (els.joinBtn) els.joinBtn.onclick = ()=>{ hide(els.home); hide(els.host); show(els.join); };
 
   // State
+
+  // Per-room temp id for guest submissions (for submit_answer compatibility)
+  function getTempPlayerId(code){
+    try{
+      const k='ms_temp_'+code;
+      let v=localStorage.getItem(k);
+      if(!v){ v=crypto.randomUUID(); localStorage.setItem(k,v); }
+      return v;
+    }catch{ return null; }
+  }
+
   const state = {
     supa: null, session: null, functionsBase: null,
     gameId: null, gameCode: null, status: null, endsAt: null,
@@ -66,7 +77,7 @@
   function stopHeartbeat(){ if(state.heartbeatHandle){ clearInterval(state.heartbeatHandle); state.heartbeatHandle=null; } }
   function startHeartbeat(){
     stopHeartbeat();
-    const beat=()=>{ if(!state.gameId) return;
+    const beat=()=>{ if(!state.session?.access_token||!state.gameId) return;
       fetch(state.functionsBase+'/heartbeat',{method:'POST',headers:{'authorization':'Bearer '+state.session.access_token,'content-type':'application/json'},body:JSON.stringify({gameId:state.gameId})}).catch(()=>{});
     };
     state.heartbeatHandle=setInterval(beat,20000); beat();
@@ -78,7 +89,6 @@
     if(!state.functionsBase || !state.gameCode) return;
     const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
     const out = await r.json().catch(()=>({}));
-    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     // Card
     const q = out?.question; setText(els.questionText, q?.text || '—'); setText(els.questionClar, q?.clarification || '');
     setText(els.gQuestionText, q?.text || '—'); setText(els.gQuestionClar, q?.clarification || '');
@@ -132,12 +142,12 @@
     if (state.session?.access_token) headers['authorization'] = 'Bearer ' + state.session.access_token;
 
     const r = await fetch(state.functionsBase + '/join_game_guest', {
-      method:'POST', headers, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{}; return pid? { code, participant_id: pid } : { code }; })())
+      method:'POST', headers, body: JSON.stringify({ code })
     });
     const out = await r.json().catch(()=>({}));
-    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
+    try{ if(out?.participant_id && code){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     const isHost = !!out?.is_host;
     if (!isHost){ if(els.joinLog) els.joinLog.textContent='This code belongs to an existing room, but you are not the host.'; return; }
 
@@ -155,7 +165,6 @@
     if(!state.session?.access_token){ log('Please login first'); return; }
     const r = await fetch(state.functionsBase + '/create_game', { method:'POST', headers:{ 'authorization':'Bearer '+state.session.access_token }});
     const out = await r.json().catch(()=>({}));
-    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){
       if (out?.error === 'host_has_active_game'){
         log('Active game exists; auto-joining as host with code '+out.code);
@@ -177,7 +186,6 @@
       body: JSON.stringify({ gameId: state.gameId })
     });
     const out = await r.json().catch(()=>({}));
-    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ log('Start failed'); log(out); return; }
     log('Start ok'); applyHostGame(out.game||out);
   });
@@ -192,7 +200,6 @@
       body: JSON.stringify({ gameId: state.gameId })
     });
     const out = await r.json().catch(()=>({}));
-    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ log('Next card failed'); log(out); return; }
     const q = out.question || {};
     setText(els.questionText, q.text || '—'); setText(els.questionClar, q.clarification || '');
@@ -208,7 +215,6 @@
       body: JSON.stringify({ gameId: state.gameId, code: state.gameCode })
     });
     const out = await r.json().catch(()=>({}));
-    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ log('End failed'); log(out); return; }
     log('End ok'); log(out);
     stopHeartbeat(); stopRoomPolling(); clearHostCountdown();
@@ -226,12 +232,12 @@
     if (state.session?.access_token) headers['authorization']='Bearer '+state.session.access_token;
 
     const r = await fetch(state.functionsBase + '/join_game_guest', {
-      method:'POST', headers, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{}; return pid? { code, name, participant_id: pid } : { code, name }; })())
+      method:'POST', headers, body: JSON.stringify({ code, name })
     });
     const out = await r.json().catch(()=>({}));
-    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
+    try{ if(out?.participant_id && code){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     const isHost = !!out?.is_host;
     state.isHostInJoin = isHost;
     state.gameCode = code;
@@ -241,7 +247,7 @@
       setText(els.gameIdOut, state.gameId || '—'); setText(els.gameCodeOut, code);
       startHeartbeat();
     } else if (name){
-      setInterval(()=>{ fetch(state.functionsBase + '/participant_heartbeat',{ method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null; }catch{}; return pid? { participant_id: pid } : { gameId: out?.game_id, name }; })()) }).catch(()=>{}); }, 25000);
+      setInterval(()=>{ fetch(state.functionsBase + '/participant_heartbeat',{ method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ gameId: out?.game_id, name }) }).catch(()=>{}); }, 25000);
     }
 
     if(els.joinLog) els.joinLog.textContent='Joined: '+JSON.stringify({ is_host:isHost, game_id: out?.game_id }, null, 2);
@@ -255,7 +261,6 @@
     try{
       const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
       const out = await r.json().catch(()=>({}));
-    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
       if (out && out.game_id) state.gameId = out.game_id;
     }catch{}
   }
@@ -278,27 +283,110 @@
     log && log('Realtime: subscribed to games row ' + state.gameId);
   }
 
+  // ===== Answer Controls UI =====
+  const AnswerUI = (function(){
+    const micBtn = document.createElement('button');
+    micBtn.id = 'ansMicBtn'; micBtn.className = 'btn'; micBtn.textContent = '🎤 Start';
+    const kbBtn  = document.createElement('button');
+    kbBtn.id = 'ansKbBtn'; kbBtn.className = 'btn'; kbBtn.textContent = '⌨️ Type';
+    const doneBtn = document.createElement('button');
+    doneBtn.id = 'ansDoneBtn'; doneBtn.className = 'btn'; doneBtn.textContent = 'Done';
+    const submitBtn = document.createElement('button');
+    submitBtn.id = 'ansSubmitBtn'; submitBtn.className='btn primary'; submitBtn.textContent = 'Submit answer';
+    const box = document.createElement('textarea');
+    box.id = 'ansBox'; box.placeholder = 'Your transcribed/typed answer...'; box.style.width='100%'; box.style.minHeight='90px';
 
-  // Leave beacon to accelerate removal
-  (function(){
-    function sendLeave(){
-      try{
-        const code = (els.joinCode?.value||'').trim();
-        const pid = (function(){ try{ return localStorage.getItem('ms_pid_'+code)||null; }catch{} return null; })();
-        const name = (els.guestName?.value||'').trim();
-        if(state && state.gameId){
-          if(state.isHostInJoin){
-            const body = pid? { gameId: state.gameId, participant_id: pid, leave: true } : { gameId: state.gameId, leave: true };
-            navigator.sendBeacon((window.CONFIG?.FUNCTIONS_BASE||'') + '/heartbeat', JSON.stringify(body));
-          }else{
-            const body = pid? { participant_id: pid, leave: true } : { gameId: state.gameId, name, leave: true };
-            navigator.sendBeacon((window.CONFIG?.FUNCTIONS_BASE||'') + '/participant_heartbeat', JSON.stringify(body));
-          }
-        }
-      }catch{}
+    const container = document.createElement('div');
+    container.id='answerControls'; container.className='card'; container.style.marginTop='8px';
+    const title = document.createElement('div'); title.className='meta'; title.textContent='Your answer (turn-based)';
+    const row = document.createElement('div'); row.className='row';
+    row.appendChild(micBtn); row.appendChild(kbBtn); row.appendChild(doneBtn); row.appendChild(submitBtn);
+    container.appendChild(title); container.appendChild(row); container.appendChild(box);
+
+    function mount(where){
+      if(!where) return;
+      // Insert after question block if exists, else append
+      where.appendChild(container);
     }
-    window.addEventListener('pagehide', sendLeave);
-    window.addEventListener('beforeunload', sendLeave);
+    return { mount, micBtn, kbBtn, doneBtn, submitBtn, box, container };
   })();
+
+  // Mount into both panels (host and join)
+  AnswerUI.mount(els.hostSection);
+  AnswerUI.mount(els.joinSection);
+
+  // ===== Speech recognition (Web Speech API) =====
+  let recog = null, recognizing = false, transcriptBuf = '';
+  function ensureRecognizer(){
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if(!SR) return null;
+    const r = new SR(); r.interimResults = true; r.lang = 'en-US';
+    r.onresult = (e)=>{
+      let s = '';
+      for(let i=0;i<e.results.length;i++){ s += e.results[i][0].transcript + ' '; }
+      transcriptBuf = s.trim();
+      AnswerUI.box.value = transcriptBuf;
+    };
+    r.onend = ()=>{ recognizing = false; AnswerUI.micBtn.textContent='🎤 Start'; };
+    return r;
+  }
+  AnswerUI.micBtn.onclick = ()=>{
+    if(recognizing){ try{ recog && recog.stop(); }catch{}; recognizing=false; AnswerUI.micBtn.textContent='🎤 Start'; return; }
+    recog = ensureRecognizer();
+    if(!recog){ alert('Speech recognition not supported; use ⌨️ Type'); return; }
+    transcriptBuf=''; AnswerUI.box.value='';
+    recog.start(); recognizing = true; AnswerUI.micBtn.textContent='◼ Stop';
+  };
+  AnswerUI.kbBtn.onclick = ()=>{ AnswerUI.box.focus(); };
+  AnswerUI.doneBtn.onclick = ()=>{ if(recognizing){ try{ recog && recog.stop(); }catch{}; recognizing=false; AnswerUI.micBtn.textContent='🎤 Start'; } };
+
+  // ===== Turn engine (read-only from server) =====
+  function isMyTurn(out){
+    const turn = out?.current_turn;
+    if (!turn) return false;
+    const code = state.gameCode;
+    let myPid = null; try { myPid = localStorage.getItem('ms_pid_'+code) || null; }catch{}
+    // Host can answer when turn.role==='host' and this tab is host
+    if (state.isHostInJoin && turn.role === 'host') return true;
+    // Guests: match participant_id
+    if (myPid && turn.participant_id === myPid) return true;
+    return false;
+  }
+
+  // Gating UI on every state poll
+  const _origPoll = pollRoomStateOnce;
+  pollRoomStateOnce = async function(){
+    await _origPoll();
+    try{
+      const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode||''));
+      const out = await r.json().catch(()=>({}));
+      const allow = isMyTurn(out) && out?.status==='running' && !out?.blocked_reason;
+      AnswerUI.container.style.opacity = allow? '1' : '0.4';
+      AnswerUI.micBtn.disabled = AnswerUI.kbBtn.disabled = AnswerUI.doneBtn.disabled = AnswerUI.submitBtn.disabled = !allow;
+    }catch{}
+  };
+
+  // Submit answer
+  AnswerUI.submitBtn.onclick = async ()=>{
+    const text = (AnswerUI.box.value||'').trim();
+    if (!text) return;
+    const code = state.gameCode; if(!code) return;
+    // We need game_id and question_id from the latest state
+    const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(code));
+    const out = await r.json().catch(()=>({}));
+    const qid = out?.question?.id || null;
+    const gid = out?.id || out?.game_id || state.gameId || null;
+    if (!gid || !qid) return;
+    const tempId = getTempPlayerId(code);
+
+    const body = { game_id: gid, question_id: qid, text, temp_player_id: tempId };
+    // also include participant_id if the server supports it (ignored otherwise)
+    try{ const pid = localStorage.getItem('ms_pid_'+code); if(pid) body['participant_id'] = pid; }catch{}
+
+    const rr = await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body) });
+    const jout = await rr.json().catch(()=>({}));
+    // Clear box on success
+    if (rr.ok){ AnswerUI.box.value = ''; transcriptBuf=''; }
+  };
 
 })();
