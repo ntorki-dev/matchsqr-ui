@@ -1,4 +1,13 @@
  (function(){
+
+  // === UI build version ===
+  const MS_UI_VERSION = 'v5';
+  try { 
+    const _el = document.getElementById('hostLog'); 
+    if (_el) { 
+      _el.textContent = (_el.textContent ? _el.textContent + "\n" : "") + "UI version: " + MS_UI_VERSION; 
+    } 
+  } catch {}
   const $ = (id) => document.getElementById(id);
   const logEl = $('hostLog');
   const log = (msg) => { if (!logEl) return; const t = typeof msg==='string'?msg:JSON.stringify(msg,null,2); logEl.textContent=(logEl.textContent?logEl.textContent+"\n":"")+t; logEl.scrollTop=logEl.scrollHeight; };
@@ -19,85 +28,6 @@
     gQuestionText: $('gQuestionText'), gQuestionClar: $('gQuestionClar'),
     joinLog: $('joinLog')
   };
-  // ===== Minimal helpers (non-breaking, fully guarded) =====
-  function MS_tempId(code){
-    try{ const k='ms_temp_'+code; let v=localStorage.getItem(k); if(!v){ v=crypto.randomUUID(); localStorage.setItem(k,v); } return v; }catch{ return null; }
-  }
-  function MS_pid(code){ try{ return localStorage.getItem('ms_pid_'+code) || null; }catch{ return null; } }
-  function MS_qCardHost(){ try{ return (els.questionText && els.questionText.closest && els.questionText.closest('.card')) || els.host; }catch{ return null; } }
-  function MS_qCardGuest(){ try{ return (els.gQuestionText && els.gQuestionText.closest && els.gQuestionText.closest('.card')) || els.join; }catch{ return null; } }
-  function MS_mountAnswerCard(targetEl, id){
-    try{
-      if (!targetEl) return null;
-      const ex = document.getElementById(id); if (ex) return ex;
-      const card = document.createElement('div'); card.className='card'; card.id=id; card.style.marginTop='8px';
-      card.innerHTML = [
-        '<div class="meta">Your answer</div>',
-        '<div class="row" style="gap:8px;margin:6px 0;">',
-          '<button class="btn" data-ms="mic">🎤 Start</button>',
-          '<button class="btn" data-ms="kb">⌨️ Type</button>',
-          '<button class="btn" data-ms="done">Done</button>',
-          '<button class="btn primary" data-ms="submit" style="display:none">Submit</button>',
-        '</div>',
-        '<textarea data-ms="box" placeholder="Your transcribed/typed answer..." style="width:100%;min-height:90px;display:none"></textarea>'
-      ].join('');
-      targetEl.appendChild(card);
-      return card;
-    }catch{ return null; }
-  }
-  function MS_wireAnswer(card){
-    try{
-      if (!card || card.__wired) return; card.__wired = true;
-      const mic = card.querySelector('[data-ms="mic"]');
-      const kb = card.querySelector('[data-ms="kb"]');
-      const done = card.querySelector('[data-ms="done"]');
-      const submit = card.querySelector('[data-ms="submit"]');
-      const box = card.querySelector('[data-ms="box"]');
-      let recog = null, on = false;
-      function mkRecog(){
-        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if(!SR) return null;
-        const r = new SR(); r.interimResults = true; r.lang = 'en-US';
-        r.onresult = (e)=>{ try{ let s=''; for(let i=0;i<e.results.length;i++){ s += e.results[i][0].transcript + ' '; } box.value=s.trim(); box.style.display='block'; submit.style.display='inline-block'; }catch{} };
-        r.onend = ()=>{ on=false; try{ mic.textContent='🎤 Start'; if((box.value||'').trim()){ box.style.display='block'; submit.style.display='inline-block'; } }catch{} };
-        return r;
-      }
-      mic && mic.addEventListener('click', ()=>{
-        try{
-          if(on){ try{ recog && recog.stop(); }catch{}; on=false; mic.textContent='🎤 Start'; return; }
-          recog = mkRecog();
-          if(!recog){ box.style.display='block'; submit.style.display='inline-block'; box.focus(); return; }
-          box.value=''; try{ recog.start(); on=true; mic.textContent='◼ Stop'; }catch{}
-        }catch{}
-      });
-      kb && kb.addEventListener('click', ()=>{ try{ box.style.display='block'; submit.style.display='inline-block'; box.focus(); }catch{} });
-      done && done.addEventListener('click', ()=>{ try{ recog && recog.stop(); }catch{}; on=false; try{ mic.textContent='🎤 Start'; if((box.value||'').trim()){ box.style.display='block'; submit.style.display='inline-block'; } }catch{} });
-      submit && submit.addEventListener('click', async ()=>{
-        try{
-          const text=(box.value||'').trim(); if(!text) return;
-          const code = state.gameCode || (els.joinCode&&els.joinCode.value||'').trim(); if(!code) return;
-          const rs = await fetch(state.functionsBase + '/get_state?code='+encodeURIComponent(code));
-          const st = await rs.json().catch(()=>({}));
-          const gid = st?.id || st?.game_id || state.gameId; const qid = st?.question?.id || null; if(!gid||!qid) return;
-          const body = { game_id: gid, question_id: qid, text, temp_player_id: MS_tempId(code) };
-          const pid = MS_pid(code); if(pid) body['participant_id']=pid;
-          await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
-          box.value='';
-        }catch{}
-      });
-      card.__controls = { mic, kb, done, submit, box };
-    }catch{}
-  }
-  function MS_setControlsEnabled(card, allow){
-    try{
-      if(!card || !card.__controls) return;
-      const { mic, kb, done, submit, box } = card.__controls;
-      [mic,kb,done,submit,box].forEach(el => { if(el) el.disabled = !allow; });
-      if (box && box.style.display==='none') { /* hidden until mic done or keyboard click */ }
-      card.style.opacity = allow? '1' : '0.5';
-    }catch{}
-  }
-
 
   // Minimal, robust show/hide (fix for Join blank screen)
   const show = (el)=>{ if(!el) return; el.classList.remove('hidden'); el.style.display=''; };
@@ -145,7 +75,7 @@
   function stopHeartbeat(){ if(state.heartbeatHandle){ clearInterval(state.heartbeatHandle); state.heartbeatHandle=null; } }
   function startHeartbeat(){
     stopHeartbeat();
-    const beat=()=>{ if(!state.session?.access_token||!state.gameId) return;
+    const beat=()=>{ if(!state.gameId) return;
       fetch(state.functionsBase+'/heartbeat',{method:'POST',headers:{'authorization':'Bearer '+state.session.access_token,'content-type':'application/json'},body:JSON.stringify({gameId:state.gameId})}).catch(()=>{});
     };
     state.heartbeatHandle=setInterval(beat,20000); beat();
@@ -157,6 +87,7 @@
     if(!state.functionsBase || !state.gameCode) return;
     const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
     const out = await r.json().catch(()=>({}));
+    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     // Card
     const q = out?.question; setText(els.questionText, q?.text || '—'); setText(els.questionClar, q?.clarification || '');
     setText(els.gQuestionText, q?.text || '—'); setText(els.gQuestionClar, q?.clarification || '');
@@ -172,54 +103,6 @@
     const count = Array.isArray(ppl) ? ppl.length : 0;
     if (els.hostPeopleCount) els.hostPeopleCount.textContent = String(count);
     if (els.guestPeopleCount) els.guestPeopleCount.textContent = String(count);
-    // ===== Turn/Answer UI (guarded; does not touch existing handlers) =====
-    try {
-      // Mount answer controls under question cards (host & guest); wire once
-      const hostQ = MS_qCardHost(); const guestQ = MS_qCardGuest();
-      const hostCard = MS_mountAnswerCard(hostQ, 'msAnsHost');
-      const guestCard = MS_mountAnswerCard(guestQ, 'msAnsGuest');
-      MS_wireAnswer(hostCard); MS_wireAnswer(guestCard);
-
-      // Enable first reveal: only constrain next button AFTER a question exists AND progress info is available
-      if (els.nextCardBtn) {
-        const hasQ = !!(out && out.question && out.question.id);
-        if (hasQ && out.answers_progress) {
-          const ap = out.answers_progress;
-          const gate = (out.status==='running') && ap && (ap.total_active>0) && (ap.answered_count<ap.total_active);
-          if (gate) els.nextCardBtn.disabled = true; // do not force-enable; only restrict
-        }
-      }
-
-      // Bold current player ONLY after a question exists; do not rewrite list HTML
-      if (out && out.question && out.question.id && out.current_turn) {
-        const cur = out.current_turn.name;
-        function boldList(ul){
-          try{
-            if(!ul) return;
-            const lis = Array.from(ul.querySelectorAll('li'));
-            lis.forEach(li => li.style.fontWeight='400');
-            for (const li of lis){
-              const meta = li.querySelector('.meta'); const metaText = meta? meta.textContent : '';
-              const base = meta? li.textContent.replace(metaText,'').trim() : li.textContent.trim();
-              if (base === cur || base.startsWith(cur+' ')) { li.style.fontWeight='700'; break; }
-            }
-          }catch{}
-        }
-        boldList(els.hostPeople); boldList(els.guestPeople);
-      }
-
-      // Enable controls only for the current player (safe, optional)
-      const code = state.gameCode || (els.joinCode&&els.joinCode.value||'').trim();
-      const myPid = MS_pid(code);
-      let allowHost = false, allowGuest = false;
-      if (out && out.status==='running' && out.current_turn) {
-        allowHost = (out.current_turn.role==='host' && !!state.isHostInJoin);
-        allowGuest = !!( (myPid && out.current_turn.participant_id===myPid) || (!myPid && els.guestName && out.current_turn.name===(els.guestName.value||'').trim()) );
-      }
-      MS_setControlsEnabled(hostCard, !!allowHost);
-      MS_setControlsEnabled(guestCard, !!allowGuest);
-    } catch {}
-
   }
   function startRoomPolling(){ stopRoomPolling(); state.roomPollHandle=setInterval(pollRoomStateOnce,3000); pollRoomStateOnce(); startGameRealtime(); }
 
@@ -258,9 +141,10 @@
     if (state.session?.access_token) headers['authorization'] = 'Bearer ' + state.session.access_token;
 
     const r = await fetch(state.functionsBase + '/join_game_guest', {
-      method:'POST', headers, body: JSON.stringify({ code })
+      method:'POST', headers, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{}; return pid? { code, participant_id: pid } : { code }; })())
     });
     const out = await r.json().catch(()=>({}));
+    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
     const isHost = !!out?.is_host;
@@ -280,6 +164,7 @@
     if(!state.session?.access_token){ log('Please login first'); return; }
     const r = await fetch(state.functionsBase + '/create_game', { method:'POST', headers:{ 'authorization':'Bearer '+state.session.access_token }});
     const out = await r.json().catch(()=>({}));
+    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){
       if (out?.error === 'host_has_active_game'){
         log('Active game exists; auto-joining as host with code '+out.code);
@@ -301,6 +186,7 @@
       body: JSON.stringify({ gameId: state.gameId })
     });
     const out = await r.json().catch(()=>({}));
+    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ log('Start failed'); log(out); return; }
     log('Start ok'); applyHostGame(out.game||out);
   });
@@ -315,6 +201,7 @@
       body: JSON.stringify({ gameId: state.gameId })
     });
     const out = await r.json().catch(()=>({}));
+    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ log('Next card failed'); log(out); return; }
     const q = out.question || {};
     setText(els.questionText, q.text || '—'); setText(els.questionClar, q.clarification || '');
@@ -330,6 +217,7 @@
       body: JSON.stringify({ gameId: state.gameId, code: state.gameCode })
     });
     const out = await r.json().catch(()=>({}));
+    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ log('End failed'); log(out); return; }
     log('End ok'); log(out);
     stopHeartbeat(); stopRoomPolling(); clearHostCountdown();
@@ -347,9 +235,10 @@
     if (state.session?.access_token) headers['authorization']='Bearer '+state.session.access_token;
 
     const r = await fetch(state.functionsBase + '/join_game_guest', {
-      method:'POST', headers, body: JSON.stringify({ code, name })
+      method:'POST', headers, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{}; return pid? { code, name, participant_id: pid } : { code, name }; })())
     });
     const out = await r.json().catch(()=>({}));
+    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
     const isHost = !!out?.is_host;
@@ -361,7 +250,7 @@
       setText(els.gameIdOut, state.gameId || '—'); setText(els.gameCodeOut, code);
       startHeartbeat();
     } else if (name){
-      setInterval(()=>{ fetch(state.functionsBase + '/participant_heartbeat',{ method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ gameId: out?.game_id, name }) }).catch(()=>{}); }, 25000);
+      setInterval(()=>{ fetch(state.functionsBase + '/participant_heartbeat',{ method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null; }catch{}; return pid? { participant_id: pid } : { gameId: out?.game_id, name }; })()) }).catch(()=>{}); }, 25000);
     }
 
     if(els.joinLog) els.joinLog.textContent='Joined: '+JSON.stringify({ is_host:isHost, game_id: out?.game_id }, null, 2);
@@ -375,6 +264,7 @@
     try{
       const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
       const out = await r.json().catch(()=>({}));
+    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
       if (out && out.game_id) state.gameId = out.game_id;
     }catch{}
   }
@@ -396,5 +286,28 @@
     state.gameChannel = ch;
     log && log('Realtime: subscribed to games row ' + state.gameId);
   }
+
+
+  // Leave beacon to accelerate removal
+  (function(){
+    function sendLeave(){
+      try{
+        const code = (els.joinCode?.value||'').trim();
+        const pid = (function(){ try{ return localStorage.getItem('ms_pid_'+code)||null; }catch{} return null; })();
+        const name = (els.guestName?.value||'').trim();
+        if(state && state.gameId){
+          if(state.isHostInJoin){
+            const body = pid? { gameId: state.gameId, participant_id: pid, leave: true } : { gameId: state.gameId, leave: true };
+            navigator.sendBeacon((window.CONFIG?.FUNCTIONS_BASE||'') + '/heartbeat', JSON.stringify(body));
+          }else{
+            const body = pid? { participant_id: pid, leave: true } : { gameId: state.gameId, name, leave: true };
+            navigator.sendBeacon((window.CONFIG?.FUNCTIONS_BASE||'') + '/participant_heartbeat', JSON.stringify(body));
+          }
+        }
+      }catch{}
+    }
+    window.addEventListener('pagehide', sendLeave);
+    window.addEventListener('beforeunload', sendLeave);
+  })();
 
 })();
