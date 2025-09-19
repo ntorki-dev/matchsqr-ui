@@ -1,7 +1,7 @@
  (function(){
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v12';
+  const MS_UI_VERSION = 'v13';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -89,10 +89,10 @@
           const qid = out && out.question && out.question.id;
           if (!gid || !qid) return;
 
-          // Resolve participant_id robustly
+          // Resolve participant_id
           let pid = null;
           if (isHost && out.current_turn && out.current_turn.role === 'host') {
-            pid = out.current_turn.participant_id; // host participant id
+            pid = out.current_turn.participant_id;
             if (!pid && out.participants && out.participants.length){
               const hostRow = out.participants.find((p)=>p.role==='host');
               if (hostRow) pid = hostRow.id;
@@ -102,9 +102,8 @@
           }
 
           const k='ms_temp_'+code; let temp=localStorage.getItem(k); if(!temp){ temp=crypto.randomUUID(); localStorage.setItem(k,temp); }
-
-          const body:any = { game_id: gid, question_id: qid, text: (box.value||'').trim(), temp_player_id: temp };
-          if (pid) (body as any)['participant_id']=pid;
+          const body = { game_id: gid, question_id: qid, text: (box.value||'').trim(), temp_player_id: temp };
+          if (pid) body.participant_id = pid;
           await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
           box.value='';
         }catch(err){}
@@ -180,28 +179,9 @@
   // Shared room polling
   function stopRoomPolling(){ if(state.roomPollHandle){ clearInterval(state.roomPollHandle); state.roomPollHandle=null; } }
   async function pollRoomStateOnce(){
-    if(!state.functionsBase || !state.gameCode) return;
-    const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
-    const out = await r.json().catch(()=>({}));
-    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
-    // Card
-    const q = out?.question; setText(els.questionText, q?.text || '—'); setText(els.questionClar, q?.clarification || '');
-    setText(els.gQuestionText, q?.text || '—'); setText(els.gQuestionClar, q?.clarification || '');
-    // Timer/status
-    const endsIso = out?.ends_at || null;
-    setText(els.statusOut, out?.status || '—'); setText(els.endsAtOut, endsIso || '—');
-    setText(els.gStatus, out?.status || '—'); setText(els.gEndsAt, endsIso || '—');
-    if(endsIso){ startHostCountdown(endsIso); startGuestCountdown(endsIso); }
-    // Participants + counts
-    const ppl = out?.participants || [];
-    els.hostPeople.innerHTML  = ppl.map(p=>`<li>${p.name} <span class="meta">(${p.role})</span></li>`).join('') || '<li class="meta">No one yet</li>';
-    els.guestPeople.innerHTML = els.hostPeople.innerHTML;
-    const count = Array.isArray(ppl) ? ppl.length : 0;
-    if (els.hostPeopleCount) els.hostPeopleCount.textContent = String(count);
-    if (els.guestPeopleCount) els.guestPeopleCount.textContent = String(count);
-    // ===== Turn/Answer UI (guarded) =====
+    // ===== Minimal turn/answer UI (guarded) =====
     try{
-      // Next gating
+      // Next gating: first reveal allowed; after that require all answers if progress present
       if (els.nextCardBtn){
         const hasQ = !!(out && out.question && out.question.id);
         if (!hasQ){
@@ -214,10 +194,10 @@
 
       const showAns = !!(out && out.status==='running' && out.question && out.question.id);
       if (showAns){
-        const hc = MS_qHostCard(); const gc = MS_qGuestCard();
-        const hostCard = MS_mountAnsCard(hc, 'msAnsHost');
-        const guestCard = MS_mountAnsCard(gc, 'msAnsGuest');
-        MS_wireAnsCard(hostCard); MS_wireAnsCard(guestCard);
+        const hc = MS_qHostCard && MS_qHostCard(); const gc = MS_qGuestCard && MS_qGuestCard();
+        const hostCard = MS_mountAnsCard && MS_mountAnsCard(hc, 'msAnsHost');
+        const guestCard = MS_mountAnsCard && MS_mountAnsCard(gc, 'msAnsGuest');
+        MS_wireAnsCard && MS_wireAnsCard(hostCard); MS_wireAnsCard && MS_wireAnsCard(guestCard);
 
         // Bold current player
         if (out.current_turn && (els.hostPeople || els.guestPeople)){
@@ -239,7 +219,7 @@
         }
 
         // Enable controls only for the current player
-        const isHost = MS_isHostView();
+        const isHost = MS_isHostView && MS_isHostView();
         const code = (window.state && (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
         const pid = code ? localStorage.getItem('ms_pid_'+code) : null;
         let allowHost=false, allowGuest=false;
@@ -247,10 +227,10 @@
           allowHost = (out.current_turn.role==='host' && isHost);
           allowGuest = !!( (pid && out.current_turn.participant_id===pid) || (!pid && els.guestName && out.current_turn.name===(els.guestName.value||'').trim()) );
         }
-        MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
-        MS_setEnabled(document.getElementById('msAnsGuest'), !!allowGuest);
+        MS_setEnabled && MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
+        MS_setEnabled && MS_setEnabled(document.getElementById('msAnsGuest'), !!allowGuest);
       } else {
-        MS_unmount('msAnsHost'); MS_unmount('msAnsGuest');
+        MS_unmount && MS_unmount('msAnsHost'); MS_unmount && MS_unmount('msAnsGuest');
       }
     }catch(e){}
 
