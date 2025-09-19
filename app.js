@@ -1,7 +1,7 @@
  (function(){
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v17';
+  const MS_UI_VERSION = 'v19';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -52,7 +52,7 @@
   // ===== MS answer/turn helpers (v17) =====
   function MS_qHostCard(){ try { return (els.questionText && els.questionText.closest && els.questionText.closest('.card')) || null; } catch(e){ return null; } }
   function MS_qGuestCard(){ try { return (els.gQuestionText && els.gQuestionText.closest && els.gQuestionText.closest('.card')) || null; } catch(e){ return null; } }
-  function MS_isHostView(){ try { return !!els.host; } catch(e){ return false; } }
+  function MS_isHostView(){ try { return !!(els && els.questionText) && !(els && els.gQuestionText); } catch(e){ return false; } }
   function MS_mountAnsCard(target, id){
     try{
       if (!target) return null;
@@ -111,9 +111,9 @@
           var qid = out && out.question && out.question.id;
           if (!gid || !qid) return;
           var pid = null;
-          if (isHost && out.current_turn && out.current_turn.role === 'host') {
+          if (out && out.current_turn && out.current_turn.role === 'host' && isHost) {
             pid = out.current_turn.participant_id;
-            if (!pid && out.participants && out.participants.length){
+            if (!pid && out && out.participants && out.participants.length){
               var hostRow = out.participants.find(function(p){ return p.role==='host'; });
               if (hostRow) pid = hostRow.id;
             }
@@ -129,6 +129,14 @@
           var k='ms_temp_'+code; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
           var body = { game_id: gid, question_id: qid, text: (box.value||'').trim(), temp_player_id: temp };
           if (pid) body.participant_id = pid;
+          try {
+            if (!pid) {
+              var nm = (els.guestName && (els.guestName.value||'').trim()) || '';
+              if (!nm && out && out.current_turn && out.current_turn.role==='guest') { nm = out.current_turn.name || ''; }
+              if (nm) body.name = nm;
+            }
+          } catch(e) {}
+    
           await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
           box.value='';
         }catch(err){}
