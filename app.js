@@ -1,10 +1,10 @@
  (function(){
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v23';
+  window.__MS_UI_VERSION = 'v24';
   try {
-    const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
-    const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
+    const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
+    const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
   } catch (e) {}
   // Global error logger (won't affect existing behavior)
   try{
@@ -15,8 +15,8 @@
   // === UI build version ===
   const MS_UI_VERSION = 'v17';
   try {
-    const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
-    const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
+    const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
+    const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
   } catch (e) {}
 
   // === Compatibility shim for get_state / next_question (non-invasive) ===
