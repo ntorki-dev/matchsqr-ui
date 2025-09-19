@@ -220,7 +220,7 @@
     if (state.session?.access_token) headers['authorization']='Bearer '+state.session.access_token;
 
     const r = await fetch(state.functionsBase + '/join_game_guest', {
-      method:'POST', headers, body: JSON.stringify({ code, name })
+      method:'POST', headers, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{}; return pid? { code, name, participant_id: pid } : { code, name }; })())
     });
     const out = await r.json().catch(()=>({}));
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
@@ -234,10 +234,12 @@
       setText(els.gameIdOut, state.gameId || '—'); setText(els.gameCodeOut, code);
       startHeartbeat();
     } else if (name){
-      setInterval(()=>{ fetch(state.functionsBase + '/participant_heartbeat',{ method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ gameId: out?.game_id, name }) }).catch(()=>{}); }, 25000);
+      setInterval(()=>{ let pid=null; try{ pid = localStorage.getItem('ms_pid_'+code)||null; }catch{}; const body = pid? { participant_id: pid } : { gameId: out?.game_id, name };
+        fetch(state.functionsBase + '/participant_heartbeat',{ method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body) }).catch(()=>{}); }, 25000);
     }
 
-    if(els.joinLog) els.joinLog.textContent='Joined: '+JSON.stringify({ is_host:isHost, game_id: out?.game_id }, null, 2);
+    try{ if(!isHost && out?.participant_id){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
+    if(els.joinLog) els.joinLog.textContent='Joined: '+JSON.stringify({ is_host:isHost, game_id: out?.game_id, participant_id: out?.participant_id }, null, 2);
     startRoomPolling();
   });
 
