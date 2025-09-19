@@ -1,7 +1,7 @@
  (function(){
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v10';
+  const MS_UI_VERSION = 'v11';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -26,9 +26,10 @@
     gQuestionText: $('gQuestionText'), gQuestionClar: $('gQuestionClar'),
     joinLog: $('joinLog')
   };
-  // ===== Minimal turns/answers helpers (non-breaking) =====
+  // ===== Minimal turns/answers helpers =====
   function MS_qHostCard(){ try { return (els.questionText && els.questionText.closest && els.questionText.closest('.card')) || null; } catch(e){ return null; } }
   function MS_qGuestCard(){ try { return (els.gQuestionText && els.gQuestionText.closest && els.gQuestionText.closest('.card')) || null; } catch(e){ return null; } }
+  function MS_isHostView(){ try { return !!els.host; } catch(e){ return false; } }
 
   function MS_mountAnsCard(target, id){
     try{
@@ -186,18 +187,17 @@
     if (els.guestPeopleCount) els.guestPeopleCount.textContent = String(count);
     // ===== Minimal turn/answer UI (guarded) =====
     try{
-      // Gate next button: never block first reveal
+      // Next gating: first reveal always allowed; after that require all answers if progress is present
       if (els.nextCardBtn){
         const hasQ = !!(out && out.question && out.question.id);
         if (!hasQ){
-          els.nextCardBtn.disabled = false; // allow first reveal
+          els.nextCardBtn.disabled = false;
         } else if (out.answers_progress){
           const ap = out.answers_progress;
           els.nextCardBtn.disabled = (out.status==='running') && ap && (ap.total_active>0) && (ap.answered_count<ap.total_active);
         }
       }
 
-      // Only when in a running game with a current question do we mount answer UI and bold the current player
       const showAns = !!(out && out.status==='running' && out.question && out.question.id);
       if (showAns){
         const hc = MS_qHostCard(); const gc = MS_qGuestCard();
@@ -205,7 +205,7 @@
         const guestCard = MS_mountAnsCard(gc, 'msAnsGuest');
         MS_wireAnsCard(hostCard); MS_wireAnsCard(guestCard);
 
-        // Bold current player, DOM-safe
+        // Bold current player
         if (out.current_turn && (els.hostPeople || els.guestPeople)){
           const cur = out.current_turn.name;
           function boldList(ul){
@@ -227,15 +227,16 @@
         // Enable controls only for the current player
         const code = (window.state && (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
         const pid = code ? localStorage.getItem('ms_pid_'+code) : null;
+        const isHostView = MS_isHostView();
         let allowHost=false, allowGuest=false;
         if (out.current_turn){
-          allowHost = (out.current_turn.role==='host' && !!state.isHostInJoin);
+          // Host is allowed when it's host's turn AND we're on the host view (no dependency on state.isHostInJoin)
+          allowHost = (out.current_turn.role==='host' && isHostView);
           allowGuest = !!( (pid && out.current_turn.participant_id===pid) || (!pid && els.guestName && out.current_turn.name===(els.guestName.value||'').trim()) );
         }
         MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
         MS_setEnabled(document.getElementById('msAnsGuest'), !!allowGuest);
       } else {
-        // Not in round view: ensure answer UI is not shown
         MS_unmount('msAnsHost'); MS_unmount('msAnsGuest');
       }
     }catch(e){}
