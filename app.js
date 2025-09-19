@@ -1,7 +1,7 @@
  (function(){
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v19';
+  const MS_UI_VERSION = 'v20';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -52,7 +52,15 @@
   // ===== MS answer/turn helpers (v17) =====
   function MS_qHostCard(){ try { return (els.questionText && els.questionText.closest && els.questionText.closest('.card')) || null; } catch(e){ return null; } }
   function MS_qGuestCard(){ try { return (els.gQuestionText && els.gQuestionText.closest && els.gQuestionText.closest('.card')) || null; } catch(e){ return null; } }
-  function MS_isHostView(){ try { return !!(els && els.questionText) && !(els && els.gQuestionText); } catch(e){ return false; } }
+  function MS_isHostView(){ 
+    try { 
+      if (typeof window !== 'undefined' && els && els.host) { 
+        var st = window.getComputedStyle ? window.getComputedStyle(els.host) : null;
+        if (st && st.display !== 'none' && st.visibility !== 'hidden' && st.opacity !== '0') return true;
+      }
+      return false; 
+    } catch(e){ return false; } 
+  } catch(e){ return false; } }
   function MS_mountAnsCard(target, id){
     try{
       if (!target) return null;
@@ -111,9 +119,9 @@
           var qid = out && out.question && out.question.id;
           if (!gid || !qid) return;
           var pid = null;
-          if (out && out.current_turn && out.current_turn.role === 'host' && isHost) {
+          if (isHost && out.current_turn && out.current_turn.role === 'host') {
             pid = out.current_turn.participant_id;
-            if (!pid && out && out.participants && out.participants.length){
+            if (!pid && out.participants && out.participants.length){
               var hostRow = out.participants.find(function(p){ return p.role==='host'; });
               if (hostRow) pid = hostRow.id;
             }
