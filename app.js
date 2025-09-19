@@ -1,11 +1,34 @@
  (function(){
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v14';
+  const MS_UI_VERSION = 'v15';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
   } catch (e) {}
+
+  // === Compatibility shim for get_state / next_question (non-invasive) ===
+  try {
+    const __origFetch = window.fetch;
+    window.fetch = async function(resource, init){
+      const res = await __origFetch(resource, init);
+      try {
+        const url = (typeof resource === 'string') ? resource : (resource && resource.url) || '';
+        if (url.includes('/get_state') || url.includes('/next_question')){
+          const ct = res.headers && res.headers.get('content-type') || '';
+          if (ct.includes('application/json')){
+            const data = await res.clone().json().catch(()=>null);
+            if (data && typeof data === 'object'){
+              if (data.ends_at && !data.endsAt) data.endsAt = data.ends_at;
+              const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+              return new Response(blob, { status: res.status, statusText: res.statusText, headers: { 'content-type': 'application/json' } });
+            }
+          }
+        }
+      } catch(e) {}
+      return res;
+    }
+  } catch(e) {}
   const $ = (id) => document.getElementById(id);
   const logEl = $('hostLog');
   const log = (msg) => { if (!logEl) return; const t = typeof msg==='string'?msg:JSON.stringify(msg,null,2); logEl.textContent=(logEl.textContent?logEl.textContent+"\n":"")+t; logEl.scrollTop=logEl.scrollHeight; };
@@ -26,103 +49,6 @@
     gQuestionText: $('gQuestionText'), gQuestionClar: $('gQuestionClar'),
     joinLog: $('joinLog')
   };
-  // ===== Minimal turns/answers helpers (final) =====
-  function MS_qHostCard(){ try { return (els.questionText && els.questionText.closest && els.questionText.closest('.card')) || null; } catch(e){ return null; } }
-  function MS_qGuestCard(){ try { return (els.gQuestionText && els.gQuestionText.closest && els.gQuestionText.closest('.card')) || null; } catch(e){ return null; } }
-  function MS_isHostView(){ try { return !!els.host; } catch(e){ return false; } }
-
-  function MS_mountAnsCard(target, id){
-    try{
-      if (!target) return null;
-      const ex = document.getElementById(id); if (ex) return ex;
-      const card = document.createElement('div'); card.className = 'card'; card.id = id; card.style.marginTop = '8px';
-      card.innerHTML = [
-        '<div class="meta">Your answer</div>',
-        '<div class="row" style="gap:8px;margin:6px 0;">',
-          '<button class="btn" data-ms="mic">🎤 Start</button>',
-          '<button class="btn" data-ms="kb">⌨️ Type</button>',
-          '<button class="btn" data-ms="done">Done</button>',
-          '<button class="btn primary" data-ms="submit" style="display:none">Submit</button>',
-        '</div>',
-        '<textarea data-ms="box" placeholder="Your transcribed/typed answer..." style="width:100%;min-height:90px;display:none"></textarea>'
-      ].join('');
-      target.appendChild(card);
-      return card;
-    } catch(e){ return null; }
-  }
-  function MS_wireAnsCard(card){
-    try{
-      if (!card || card.__msWired) return; card.__msWired = true;
-      const mic = card.querySelector('[data-ms="mic"]');
-      const kb = card.querySelector('[data-ms="kb"]');
-      const done = card.querySelector('[data-ms="done"]');
-      const submit = card.querySelector('[data-ms="submit"]');
-      const box = card.querySelector('[data-ms="box"]');
-      let recog = null, on = false;
-      function mkRecog(){
-        try{
-          const SR = window.SpeechRecognition || window.webkitSpeechRecognition; if(!SR) return null;
-          const r = new SR(); r.interimResults = true; r.lang = 'en-US';
-          r.onresult = (e)=>{ try{ let s=''; for(let i=0;i<e.results.length;i++){ s+= e.results[i][0].transcript+' '; } box.value=s.trim(); box.style.display='block'; submit.style.display='inline-block'; }catch(err){} };
-          r.onend = ()=>{ on=false; try{ mic.textContent='🎤 Start'; if((box.value||'').trim()){ box.style.display='block'; submit.style.display='inline-block'; } }catch(err){} };
-          return r;
-        }catch(err){ return null; }
-      }
-      mic && mic.addEventListener('click', ()=>{
-        try{
-          if(on){ try{recog&&recog.stop();}catch(err){}; on=false; mic.textContent='🎤 Start'; return; }
-          const r = mkRecog();
-          if(!r){ box.style.display='block'; submit.style.display='inline-block'; box.focus(); return; }
-          recog = r; box.value=''; try{ recog.start(); on=true; mic.textContent='◼ Stop'; }catch(err){}
-        }catch(err){}
-      });
-      kb && kb.addEventListener('click', ()=>{ try{ box.style.display='block'; submit.style.display='inline-block'; box.focus(); }catch(err){} });
-      done && done.addEventListener('click', ()=>{ try{ recog&&recog.stop(); }catch(err){}; on=false; try{ mic.textContent='🎤 Start'; if((box.value||'').trim()){ box.style.display='block'; submit.style.display='inline-block'; } }catch(err){} });
-      submit && submit.addEventListener('click', async ()=>{
-        try{
-          const isHost = MS_isHostView();
-          const code = (window.state&& (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
-          if (!code) return;
-          const rs = await fetch(state.functionsBase + '/get_state?code='+encodeURIComponent(code));
-          const out = await rs.json().catch(()=>({}));
-          const gid = out && (out.id || out.game_id || state.gameId);
-          const qid = out && out.question && out.question.id;
-          if (!gid || !qid) return;
-
-          // Resolve participant_id for host reliably
-          let pid = null;
-          if (isHost && out.current_turn && out.current_turn.role === 'host') {
-            pid = out.current_turn.participant_id;
-            if (!pid && out.participants && out.participants.length){
-              const hostRow = out.participants.find((p)=>p.role==='host');
-              if (hostRow) pid = hostRow.id;
-            }
-          } else {
-            pid = localStorage.getItem('ms_pid_'+code);
-          }
-
-          const k='ms_temp_'+code; let temp=localStorage.getItem(k); if(!temp){ temp=crypto.randomUUID(); localStorage.setItem(k,temp); }
-          const body = { game_id: gid, question_id: qid, text: (box.value||'').trim(), temp_player_id: temp };
-          if (pid) body.participant_id = pid;
-          await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
-          box.value='';
-        }catch(err){}
-      });
-      card.__ms = { mic, kb, done, submit, box };
-    }catch(e){}
-  }
-  function MS_setEnabled(card, allow){
-    try{
-      if (!card || !card.__ms) return;
-      const {mic,kb,done,submit,box} = card.__ms;
-      [mic,kb,done,submit,box].forEach(el => { if (el) el.disabled = !allow; });
-      card.style.opacity = allow? '1' : '0.5';
-    }catch(e){}
-  }
-  function MS_unmount(id){
-    try{ const el = document.getElementById(id); if (el && el.parentNode) el.parentNode.removeChild(el); }catch(e){}
-  }
-
 
   // Minimal, robust show/hide (fix for Join blank screen)
   const show = (el)=>{ if(!el) return; el.classList.remove('hidden'); el.style.display=''; };
@@ -179,64 +105,25 @@
   // Shared room polling
   function stopRoomPolling(){ if(state.roomPollHandle){ clearInterval(state.roomPollHandle); state.roomPollHandle=null; } }
   async function pollRoomStateOnce(){
-    // ===== Turn/Answer UI (final, minimal) =====
-    try{
-      // Next gating: first reveal allowed; after that require all answers if progress present
-      if (els.nextCardBtn){
-        const hasQ = !!(out && out.question && out.question.id);
-        if (!hasQ){
-          els.nextCardBtn.disabled = false;
-        } else if (out.answers_progress){
-          const ap = out.answers_progress;
-          els.nextCardBtn.disabled = ap && (ap.total_active>0) && (ap.answered_count<ap.total_active);
-        }
-      }
-
-      const showAns = !!(out && out.question && out.question.id); // allow strictly by question presence
-      if (showAns){
-        const hc = MS_qHostCard(); const gc = MS_qGuestCard();
-        const hostCard = MS_mountAnsCard(hc, 'msAnsHost');
-        const guestCard = MS_mountAnsCard(gc, 'msAnsGuest');
-        MS_wireAnsCard(hostCard); MS_wireAnsCard(guestCard);
-
-        // Bold current player if provided
-        if (out.current_turn && (els.hostPeople || els.guestPeople)){
-          const cur = out.current_turn.name;
-          function boldList(ul){
-            try{
-              if(!ul) return;
-              const lis = Array.prototype.slice.call(ul.querySelectorAll('li'));
-              lis.forEach(li => li.style.fontWeight='400');
-              for (let i=0;i<lis.length;i++){
-                const li = lis[i];
-                const meta = li.querySelector('.meta'); const mtxt = meta? meta.textContent : '';
-                const base = mtxt? li.textContent.replace(mtxt,'').trim() : li.textContent.trim();
-                if (base === cur || base.indexOf(cur+' ')==0){ li.style.fontWeight='700'; break; }
-              }
-            }catch(err){}
-          }
-          boldList(els.hostPeople); boldList(els.guestPeople);
-        }
-
-        // Enable controls: host on host view when host's turn; guests by participant_id match
-        const isHost = MS_isHostView();
-        const code = (window.state && (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
-        const pid = code ? localStorage.getItem('ms_pid_'+code) : null;
-        let allowHost=false, allowGuest=false;
-        if (out.current_turn){
-          allowHost = (out.current_turn.role==='host' && isHost);
-          allowGuest = !!( (pid && out.current_turn.participant_id===pid) || (!pid && els.guestName && out.current_turn.name===(els.guestName.value||'').trim()) );
-        } else {
-          // If backend doesn't send current_turn yet, allow host so the round can proceed
-          allowHost = isHost;
-        }
-        MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
-        MS_setEnabled(document.getElementById('msAnsGuest'), !!allowGuest);
-      } else {
-        MS_unmount('msAnsHost'); MS_unmount('msAnsGuest');
-      }
-    }catch(e){}
-
+    if(!state.functionsBase || !state.gameCode) return;
+    const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
+    const out = await r.json().catch(()=>({}));
+    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
+    // Card
+    const q = out?.question; setText(els.questionText, q?.text || '—'); setText(els.questionClar, q?.clarification || '');
+    setText(els.gQuestionText, q?.text || '—'); setText(els.gQuestionClar, q?.clarification || '');
+    // Timer/status
+    const endsIso = out?.ends_at || null;
+    setText(els.statusOut, out?.status || '—'); setText(els.endsAtOut, endsIso || '—');
+    setText(els.gStatus, out?.status || '—'); setText(els.gEndsAt, endsIso || '—');
+    if(endsIso){ startHostCountdown(endsIso); startGuestCountdown(endsIso); }
+    // Participants + counts
+    const ppl = out?.participants || [];
+    els.hostPeople.innerHTML  = ppl.map(p=>`<li>${p.name} <span class="meta">(${p.role})</span></li>`).join('') || '<li class="meta">No one yet</li>';
+    els.guestPeople.innerHTML = els.hostPeople.innerHTML;
+    const count = Array.isArray(ppl) ? ppl.length : 0;
+    if (els.hostPeopleCount) els.hostPeopleCount.textContent = String(count);
+    if (els.guestPeopleCount) els.guestPeopleCount.textContent = String(count);
   }
   function startRoomPolling(){ stopRoomPolling(); state.roomPollHandle=setInterval(pollRoomStateOnce,3000); pollRoomStateOnce(); startGameRealtime(); }
 
