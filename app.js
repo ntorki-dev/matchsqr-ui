@@ -1,27 +1,9 @@
  (function(){
 
-  // v42: robust UUID helpers for guest temp ids
-  function __msIsUuid(x){
-    return typeof x === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(x);
-  }
-  function __msUuidv4(){
-    try{ if (crypto && crypto.randomUUID) return crypto.randomUUID(); }catch(_){}
-    try{
-      const arr = new Uint8Array(16); (crypto&&crypto.getRandomValues)? crypto.getRandomValues(arr) : (function(a){ for(let i=0;i<a.length;i++) a[i] = Math.floor(Math.random()*256); })(arr);
-      arr[6] = (arr[6] & 0x0f) | 0x40; // version 4
-      arr[8] = (arr[8] & 0x3f) | 0x80; // variant 10
-      const hex = [...arr].map(b => b.toString(16).padStart(2,'0')).join('');
-      return hex.slice(0,8)+'-'+hex.slice(8,12)+'-'+hex.slice(12,16)+'-'+hex.slice(16,20)+'-'+hex.slice(20);
-    }catch(_){
-      // last-resort fallback
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){ const r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8); return v.toString(16); });
-    }
-  }
-
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v43';
+      window.__MS_UI_VERSION = 'v44';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -63,7 +45,7 @@
   }catch(e){}
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v43';
+  const MS_UI_VERSION = 'v44';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -172,6 +154,7 @@ submit && submit.addEventListener('click', async function(){
           // Resolve ids from DOM stamp or cached ctx
           var sourceEl = card && card.getAttribute('data-gid') ? card : null;
           var code = (window.state && (state.gameCode || ((els.joinCode&&els.joinCode.value)||'').trim())) || null;
+          var cardId = (card && card.id) || '';
           if (!sourceEl){
             try{
               if (els && els.questionText && els.questionText.getAttribute('data-gid')) sourceEl = els.questionText;
@@ -204,11 +187,17 @@ submit && submit.addEventListener('click', async function(){
           }catch(_){}
 
           // Ensure temp id
-          var k='ms_temp_'+String(gid||''); var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
+          var k='ms_temp_'+String(gid); var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
 
           var body = { game_id: gid, question_id: qid, text: text, temp_player_id: temp };
           if (pid) body.participant_id = pid;
-          /* name optional for anonymous guests; backend ignores it */
+          try {
+            if (!pid) {
+              var nm = (els && els.guestName && (els.guestName.value||'').trim()) || '';
+              if (!nm && (window.__ms_ctx && window.__ms_ctx.turn) && window.__ms_ctx.turn.role==='guest') { nm = window.__ms_ctx.turn.name || ''; }
+              if (nm) body.name = nm;
+            }
+          } catch(e) {}
 
           var resp = await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
           try{ var lg2=(document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg2){ lg2.textContent += '\nsubmit_answer '+String(resp.status); } }catch(_){}
@@ -292,8 +281,7 @@ submit && submit.addEventListener('click', async function(){
     if(!state.functionsBase || !state.gameCode) return;
     const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
     const out = await r.json().catch(()=>({}));
-    try{ var __pid=out&&out.participant_id||null; var __gid=out&&(out.game_id||out.id)||null; if(__pid && __gid) localStorage.setItem('ms_pid_'+String(__gid), String(__pid)); }catch{}
-    try{ var __pid = out && out.participant_id || null; var __gid = out && (out.game_id || out.id) || null; if(__pid && typeof code!=='undefined' && code) localStorage.setItem('ms_pid_'+String(code), String(__pid)); if(__pid && __gid) localStorage.setItem('ms_pid_'+String(__gid), String(__pid)); }catch{}
+    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     // Card
     const q = out?.question; setText(els.questionText, q?.text || '—'); setText(els.questionClar, q?.clarification || '');
     setText(els.gQuestionText, q?.text || '—'); setText(els.gQuestionClar, q?.clarification || '');
@@ -316,8 +304,9 @@ submit && submit.addEventListener('click', async function(){
       // Gate Next only after a question exists and progress indicates pending answers
       if (els.nextCardBtn && hasQ && out && out.answers_progress){
         var ap = out.answers_progress;
-        var shouldDisable = ap && (ap.total_active>0) && (ap.answered_count<ap.total_active);
-        els.nextCardBtn.disabled = !!shouldDisable;
+        if (ap && (ap.total_active>0) && (ap.answered_count<ap.total_active)){
+          els.nextCardBtn.disabled = true;
+        }
       }
 
       if (hasQ){
@@ -384,7 +373,6 @@ submit && submit.addEventListener('click', async function(){
         
         // Resolve ids from stamped DOM or cached ctx
         var sourceEl = card && card.getAttribute('data-gid') ? card : null;
-          var code = (window.state && (state.gameCode || ((els.joinCode&&els.joinCode.value)||'').trim())) || null;
         if (!sourceEl){
           try{
             if (els && els.questionText && els.questionText.getAttribute('data-gid')) sourceEl = els.questionText;
@@ -482,7 +470,7 @@ submit && submit.addEventListener('click', async function(){
       method:'POST', headers, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{}; return pid? { code, participant_id: pid } : { code }; })())
     });
     const out = await r.json().catch(()=>({}));
-    try{ var __pid = out && out.participant_id || null; var __code = out && out.code || state.gameCode || null; var __gid = out && (out.game_id || out.id) || null; if(__pid && __code) localStorage.setItem('ms_pid_'+String(__code), String(__pid)); if(__pid && __gid) localStorage.setItem('ms_pid_'+String(__gid), String(__pid)); }catch{}
+    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
     const isHost = !!out?.is_host;
