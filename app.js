@@ -1,9 +1,9 @@
-  (function(){
+ (function(){
 
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v36';
+      window.__MS_UI_VERSION = 'v37';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
