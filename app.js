@@ -3,7 +3,7 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v28';
+      window.__MS_UI_VERSION = 'v29';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
       var _j = document.getElementById('joinLog');
@@ -116,7 +116,8 @@
           var isHost = MS_isHostView();
           var code = (window.state&& (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
           if (!code) return;
-          var rs = await fetch(state.functionsBase + '/get_state?code='+encodeURIComponent(code));
+          logLine('[submit] resolve ' + qs);
+    var rs = await fetch(state.functionsBase + '/get_state?' + qs);
           var out = await rs.json().catch(function(){ return {}; });
           var gid = out && (out.id || out.game_id || state.gameId);
           var qid = out && out.question && out.question.id;
@@ -129,7 +130,8 @@
               if (hostRow) pid = hostRow.id;
             }
           } else {
-            pid = localStorage.getItem('ms_pid_'+code);
+            var __seed2 = code || (out && (out.code || out.id)) || (window.state && (state.gameCode || state.gameId)) || 'ms';
+pid = localStorage.getItem('ms_pid_'+__seed2);
             // Fallback by name if no pid
             if (!pid && out.participants && els.guestName){
               var nm = (els.guestName.value||'').trim();
@@ -137,7 +139,8 @@
               if (row) pid = row.id;
             }
           }
-          var k='ms_temp_'+code; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
+          var __seed = code || (out && (out.code || out.id)) || (window.state && (state.gameCode || state.gameId)) || 'ms';
+var k='ms_temp_'+__seed; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
           var body = { game_id: gid, question_id: qid, text: (box.value||'').trim(), temp_player_id: temp };
           if (pid) body.participant_id = pid;
           try {
@@ -299,7 +302,36 @@
     }catch(e){}
 
   }
-  // === v28: delegated submit handler (surgical) ===
+  
+  // v29: robust code resolver (does not change any existing state)
+  function msResolveCode(){
+    try{
+      if (window.state){
+        if (state.gameCode) return String(state.gameCode).trim();
+        if (state.code) return String(state.code).trim();
+        if (state.game_code) return String(state.game_code).trim();
+      }
+      // Try common host DOM outputs
+      var candidates = [];
+      try{ if (els && els.gameCodeOut && els.gameCodeOut.textContent) candidates.push(els.gameCodeOut.textContent); }catch(_){}
+      try{ if (els && els.hostCodeOut && els.hostCodeOut.textContent) candidates.push(els.hostCodeOut.textContent); }catch(_){}
+      try{ if (els && els.codeOut && els.codeOut.textContent) candidates.push(els.codeOut.textContent); }catch(_){}
+      // Try any 6-digit code in the page
+      candidates.push(document.body ? document.body.innerText || '' : '');
+      for (var i=0;i<candidates.length;i++){
+        var m = String(candidates[i]||'').match(/\b\d{6}\b/);
+        if (m && m[0]) return m[0];
+      }
+      // Try URL
+      try{
+        var u = new URL(location.href);
+        var c = u.searchParams.get('code') || u.hash.replace('#','');
+        if (c && /\b\d{4,8}\b/.test(c)) return c.trim();
+      }catch(_){}
+      return null;
+    } catch(e){ return null; }
+  }
+// === v28: delegated submit handler (surgical) ===
   (function(){
     if (window.__msDelegatedSubmit) return; window.__msDelegatedSubmit = true;
     function logLine(msg){
@@ -318,7 +350,8 @@
         var code = (window.state && (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
         if (!code){ logLine('[submit] missing code'); card.__submitting=false; try{ submit.disabled=false; }catch(_e){}; return; }
         // Get fresh state to resolve gid/qid/turn
-        var rs = await fetch(state.functionsBase + '/get_state?code='+encodeURIComponent(code));
+        logLine('[submit] resolve ' + qs);
+    var rs = await fetch(state.functionsBase + '/get_state?' + qs);
         var out = await rs.json().catch(function(){ return {}; });
         var gid = out && (out.id || out.game_id || state.gameId);
         var qid = out && out.question && out.question.id;
@@ -332,9 +365,11 @@
             for (var i=0;i<out.participants.length;i++){ if (out.participants[i].role==='host'){ pid = out.participants[i].id; break; } }
           }
         } else {
-          pid = localStorage.getItem('ms_pid_'+code);
+          var __seed2 = code || (out && (out.code || out.id)) || (window.state && (state.gameCode || state.gameId)) || 'ms';
+pid = localStorage.getItem('ms_pid_'+__seed2);
         }
-        var k='ms_temp_'+code; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
+        var __seed = code || (out && (out.code || out.id)) || (window.state && (state.gameCode || state.gameId)) || 'ms';
+var k='ms_temp_'+__seed; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
         var body = { game_id: gid, question_id: qid, text: text, temp_player_id: temp };
         if (pid) body.participant_id = pid;
         if (!pid){ // anonymous guest: include name
