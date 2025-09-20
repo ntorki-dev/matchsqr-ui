@@ -1,26 +1,9 @@
  (function(){
 
-  ;(function(){
-    try{
-      var ex = document.getElementById('msDebug');
-      if (!ex){
-        var dv = document.createElement('div');
-        dv.id='msDebug';
-        dv.style.position='fixed'; dv.style.right='8px'; dv.style.bottom='8px';
-        dv.style.maxWidth='40vw'; dv.style.maxHeight='35vh'; dv.style.overflow='auto';
-        dv.style.background='rgba(0,0,0,0.6)'; dv.style.color='#fff'; dv.style.font='12px/1.4 monospace';
-        dv.style.padding='8px'; dv.style.borderRadius='8px'; dv.style.zIndex=99999;
-        dv.textContent='UI version: v46';
-        document.body.appendChild(dv);
-      }
-      window.__msLog = function(msg){ try{ var dv=document.getElementById('msDebug'); if(dv){ dv.textContent += '\n'+msg; dv.scrollTop = dv.scrollHeight; } }catch(e){} };
-    }catch(e){}
-  })();
-
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v46';
+      window.__MS_UI_VERSION = 'v47';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -62,7 +45,7 @@
   }catch(e){}
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v46';
+  const MS_UI_VERSION = 'v47';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -170,9 +153,6 @@ submit && submit.addEventListener('click', async function(){
 
           // Resolve ids from DOM stamp or cached ctx
           var sourceEl = card && card.getAttribute('data-gid') ? card : null;
-          var cardId = (card && card.id) || '';
-          var turn = (window.__ms_ctx && window.__ms_ctx.turn) || null;
-          var code = (window.state && (state.gameCode || ((els.joinCode&&els.joinCode.value)||'').trim())) || null;
           if (!sourceEl){
             try{
               if (els && els.questionText && els.questionText.getAttribute('data-gid')) sourceEl = els.questionText;
