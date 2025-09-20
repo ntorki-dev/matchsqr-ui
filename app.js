@@ -1,61 +1,78 @@
  (function(){
 
-  // === Match Square UI version ===
+  // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v40';
-      var _h = document.getElementById('hostLog'); if (_h) { _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: v40'; }
-      var _j = document.getElementById('joinLog'); if (_j) { _j.textContent = (_j.textContent? _j.textContent+'\n':'') + 'UI version: v40'; }
-    }
-  }catch(e){}
+      window.__MS_UI_VERSION = 'v41';
+      var _h = document.getElementById('hostLog');
+      if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
-  // v40: fetch tracker — persist ms_pid under code and gid; cache context from get_state
+  // v36: stamp gid/qid on every /get_state response (no code dependency)
   (function(){
     try{
-      if (window.__msPidTracker) return; window.__msPidTracker = true;
+      if (window.__msStampFetch) return; window.__msStampFetch = true;
       var OF = window.fetch;
       window.fetch = async function(resource, init){
         var res = await OF(resource, init);
         try{
           var url = (typeof resource === 'string') ? resource : (resource && resource.url) || '';
-          var isJSON = res.headers && /application\/json/.test(String(res.headers.get('content-type')||''));
-          if (!isJSON) return res;
-          var data = await res.clone().json().catch(function(){ return null; });
-          if (!data || typeof data !== 'object') return res;
-
-          // On create/join responses, persist participant_id for both code and gid
-          if (url.indexOf('/create_game') !== -1 || url.indexOf('/join_game') !== -1 || url.indexOf('/join_game_guest') !== -1 || url.indexOf('/join_game_host') !== -1) {
-            try{
-              var pid = data.participant_id || (data.game && data.game.participant_id) || null;
-              var code = data.code || (data.game && data.game.code) || null;
-              var gid  = data.game_id || data.id || (data.game && data.game.id) || null;
-              if (pid && code){ try{ localStorage.setItem('ms_pid_'+String(code), String(pid)); }catch(_e){} }
-              if (pid && gid ){ try{ localStorage.setItem('ms_pid_'+String(gid),  String(pid)); }catch(_e){} }
-            }catch(_e){}
-          }
-
-          // On get_state responses, cache minimal context for any consumers
           if (url.indexOf('/get_state') !== -1){
-            try{
-              var ctx = {
-                gid:  data.id || null,
-                code: data.code || null,
-                qid:  (data.question && data.question.id) || null,
-                turn: data.current_turn || null,
-                participants: Array.isArray(data.participants) ? data.participants : []
-              };
-              window.__ms_ctx = ctx;
-              try{ localStorage.setItem('ms_ctx_json', JSON.stringify(ctx)); }catch(_){}
-              // Also store ms_pid for gid if present in get_state (some backends echo participant_id)
-              if (data.participant_id && ctx.gid){ try{ localStorage.setItem('ms_pid_'+String(ctx.gid), String(data.participant_id)); }catch(_e){} }
-              if (data.participant_id && ctx.code){ try{ localStorage.setItem('ms_pid_'+String(ctx.code), String(data.participant_id)); }catch(_e){} }
-            }catch(_e){}
+            var ct = res.headers && res.headers.get('content-type') || '';
+            if (ct.indexOf('application/json') !== -1){
+              var data = await res.clone().json().catch(function(){ return null; });
+              if (data && typeof data === 'object'){
+                try{ window.__ms_ctx = { gid: data.id || null, qid: (data.question && data.question.id) || null, turn: data.current_turn || null, participants: Array.isArray(data.participants)? data.participants : [] }; }catch(_){}
+                var gid = data.id || null; var qid = (data.question && data.question.id) || null;
+                var stamp = function(el){
+                  if (!el) return;
+                  try{ if (gid) el.setAttribute('data-gid', String(gid)); }catch(_){}
+                  try{ if (qid) el.setAttribute('data-qid', String(qid)); }catch(_){}
+                };
+                try{ stamp(document.getElementById('msAnsHost')); }catch(_){}
+                try{ stamp(document.getElementById('msAnsGuest')); }catch(_){}
+                try{ if (typeof els !== 'undefined'){ stamp(els.questionText); stamp(els.gQuestionText); } }catch(_){}
+              }
+            }
           }
         }catch(_e){}
         return res;
       };
     }catch(_e){}
   })();
+      var _j = document.getElementById('joinLog');
+      if (_j) _j.textContent = (_j.textContent? _j.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
+    }
+  }catch(e){}
+
+  // === UI build version ===
+  const MS_UI_VERSION = 'v41';
+  try {
+    const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
+    const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
+  } catch (e) {}
+
+  // === Compatibility shim for get_state / next_question (non-invasive) ===
+  try {
+    const __origFetch = window.fetch;
+    window.fetch = async function(resource, init){
+      const res = await __origFetch(resource, init);
+      try {
+        const url = (typeof resource === 'string') ? resource : (resource && resource.url) || '';
+        if (url.includes('/get_state') || url.includes('/next_question')){
+          const ct = res.headers && res.headers.get('content-type') || '';
+          if (ct.includes('application/json')){
+            const data = await res.clone().json().catch(()=>null);
+            if (data && typeof data === 'object'){
+              if (data.ends_at && !data.endsAt) data.endsAt = data.ends_at;
+              const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+              return new Response(blob, { status: res.status, statusText: res.statusText, headers: { 'content-type': 'application/json' } });
+            }
+          }
+        }
+      } catch(e) {}
+      return res;
+    }
+  } catch(e) {}
   const $ = (id) => document.getElementById(id);
   const logEl = $('hostLog');
   const log = (msg) => { if (!logEl) return; const t = typeof msg==='string'?msg:JSON.stringify(msg,null,2); logEl.textContent=(logEl.textContent?logEl.textContent+"\n":"")+t; logEl.scrollTop=logEl.scrollHeight; };
@@ -76,6 +93,128 @@
     gQuestionText: $('gQuestionText'), gQuestionClar: $('gQuestionClar'),
     joinLog: $('joinLog')
   };
+  // ===== MS answer/turn helpers (v17) =====
+  function MS_qHostCard(){ try { return (els.questionText && els.questionText.closest && els.questionText.closest('.card')) || null; } catch(e){ return null; } }
+  function MS_qGuestCard(){ try { return (els.gQuestionText && els.gQuestionText.closest && els.gQuestionText.closest('.card')) || null; } catch(e){ return null; } }
+  function MS_isHostView(){ try { return !!els.host; } catch(e){ return false; } }
+  function MS_mountAnsCard(target, id){
+    try{
+      if (!target) return null;
+      var ex = document.getElementById(id); if (ex) return ex;
+      var card = document.createElement('div'); card.className = 'card'; card.id = id; card.style.marginTop = '8px';
+      card.innerHTML = [
+        '<div class="meta">Your answer</div>',
+        '<div class="row" style="gap:8px;margin:6px 0;">',
+          '<button class="btn" data-ms="mic">🎤 Start</button>',
+          '<button class="btn" data-ms="kb">⌨️ Type</button>',
+          '<button class="btn" data-ms="done">Done</button>',
+          '<button class="btn primary" data-ms="submit" style="display:none">Submit</button>',
+        '</div>',
+        '<textarea data-ms="box" placeholder="Your transcribed/typed answer..." style="width:100%;min-height:90px;display:none"></textarea>'
+      ].join('');
+      target.appendChild(card);
+      return card;
+    } catch(e){ return null; }
+  }
+  function MS_wireAnsCard(card){
+    try{
+      if (!card || card.__msWired) return; card.__msWired = true;
+      var mic = card.querySelector('[data-ms="mic"]');
+      var kb = card.querySelector('[data-ms="kb"]');
+      var done = card.querySelector('[data-ms="done"]');
+      var submit = card.querySelector('[data-ms="submit"]');
+      var box = card.querySelector('[data-ms="box"]');
+      var recog = null, on = false;
+      function mkRecog(){
+        try{
+          var SR = window.SpeechRecognition || window.webkitSpeechRecognition; if(!SR) return null;
+          var r = new SR(); r.interimResults = true; r.lang = 'en-US';
+          r.onresult = function(e){ try{ var s=''; for(var i=0;i<e.results.length;i++){ s+= e.results[i][0].transcript+' '; } box.value=s.trim(); box.style.display='block'; submit.style.display='inline-block'; }catch(err){} };
+          r.onend = function(){ on=false; try{ mic.textContent='🎤 Start'; if((box.value||'').trim()){ box.style.display='block'; submit.style.display='inline-block'; } }catch(err){} };
+          return r;
+        }catch(err){ return null; }
+      }
+      mic && mic.addEventListener('click', function(){
+        try{
+          if(on){ try{recog&&recog.stop();}catch(err){}; on=false; mic.textContent='🎤 Start'; return; }
+          var r = mkRecog();
+          if(!r){ box.style.display='block'; submit.style.display='inline-block'; box.focus(); return; }
+          recog = r; box.value=''; try{ recog.start(); on=true; mic.textContent='◼ Stop'; }catch(err){}
+        }catch(err){}
+      });
+      kb && kb.addEventListener('click', function(){ try{ box.style.display='block'; submit.style.display='inline-block'; box.focus(); }catch(err){} });
+      done && done.addEventListener('click', function(){ try{ recog&&recog.stop(); }catch(err){}; on=false; try{ mic.textContent='🎤 Start'; if((box.value||'').trim()){ box.style.display='block'; submit.style.display='inline-block'; } }catch(err){} });
+      
+submit && submit.addEventListener('click', async function(){
+        try{
+          if (card.__submitting) return;
+          card.__submitting = true; try{ submit.disabled = true; }catch(_){}
+          var text = (box.value||'').trim(); if (!text) { card.__submitting=false; try{ submit.disabled=false; }catch(_e){}; return; }
+
+          // Resolve ids from DOM stamp or cached ctx
+          var sourceEl = card && card.getAttribute('data-gid') ? card : null;
+          var code = (window.state && (state.gameCode || ((els.joinCode&&els.joinCode.value)||'').trim())) || null;
+          if (!sourceEl){
+            try{
+              if (els && els.questionText && els.questionText.getAttribute('data-gid')) sourceEl = els.questionText;
+              else if (els && els.gQuestionText && els.gQuestionText.getAttribute('data-gid')) sourceEl = els.gQuestionText;
+            }catch(_){}
+          }
+          var gid = sourceEl ? sourceEl.getAttribute('data-gid') : null;
+          var qid = sourceEl ? sourceEl.getAttribute('data-qid') : null;
+          if (!gid || !qid){
+            var ctx = (window.__ms_ctx||{});
+            gid = gid || ctx.gid || (window.state && (state.gameId||state.game_id)) || null;
+            qid = qid || ctx.qid || null;
+          }
+          if (!gid || !qid){ try{ var lg=(document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg){ lg.textContent += '\n[submit] missing ids (gid/qid)'; } }catch(_e){}; card.__submitting=false; try{ submit.disabled=false; }catch(_e){}; return; }
+
+          // Resolve participant id (host turn only) or anonymous guest with name
+          var pid = null;
+          try{
+            var turn = (window.__ms_ctx && window.__ms_ctx.turn) || null;
+            var people = (window.__ms_ctx && window.__ms_ctx.participants) || [];
+            if (turn && turn.role === 'host'){
+              pid = turn.participant_id || null;
+              if (!pid && Array.isArray(people)){
+                for (var i=0;i<people.length;i++){ if (people[i].role==='host'){ pid = people[i].id; break; } }
+              }
+            } else {
+              // no pid for anonymous guest
+              pid = null;
+            }
+          }catch(_){}
+
+          // Ensure temp id
+          var k='ms_temp_'+String(gid||''); var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
+
+          var body = { game_id: gid, question_id: qid, text: text, temp_player_id: temp };
+          if (pid) body.participant_id = pid;
+          /* name optional for anonymous guests; backend ignores it */
+
+          var resp = await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
+          try{ var lg2=(document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg2){ lg2.textContent += '\nsubmit_answer '+String(resp.status); } }catch(_){}
+          if (resp.ok){ try{ box.value=''; }catch(_e){}; try{ if (typeof pollRoomStateOnce==='function') await pollRoomStateOnce(); }catch(_e){} }
+          card.__submitting=false; try{ submit.disabled=false; }catch(_){}
+        }catch(err){ try{ card.__submitting=false; submit.disabled=false; }catch(_){}
+        }
+      });
+
+      card.__ms = { mic: mic, kb: kb, done: done, submit: submit, box: box };
+    }catch(e){}
+  }
+  function MS_setEnabled(card, allow){
+    try{
+      if (!card || !card.__ms) return;
+      var c = card.__ms;
+      [c.mic,c.kb,c.done,c.submit,c.box].forEach(function(el){ if (el) el.disabled = !allow; });
+      card.style.opacity = allow? '1' : '0.5';
+    }catch(e){}
+  }
+  function MS_unmount(id){
+    try{ var el = document.getElementById(id); if (el && el.parentNode) el.parentNode.removeChild(el); }catch(e){}
+  }
+
 
   // Minimal, robust show/hide (fix for Join blank screen)
   const show = (el)=>{ if(!el) return; el.classList.remove('hidden'); el.style.display=''; };
@@ -135,7 +274,8 @@
     if(!state.functionsBase || !state.gameCode) return;
     const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
     const out = await r.json().catch(()=>({}));
-    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
+    try{ var __pid=out&&out.participant_id||null; var __gid=out&&(out.game_id||out.id)||null; if(__pid && __gid) localStorage.setItem('ms_pid_'+String(__gid), String(__pid)); }catch{}
+    try{ var __pid = out && out.participant_id || null; var __gid = out && (out.game_id || out.id) || null; if(__pid && typeof code!=='undefined' && code) localStorage.setItem('ms_pid_'+String(code), String(__pid)); if(__pid && __gid) localStorage.setItem('ms_pid_'+String(__gid), String(__pid)); }catch{}
     // Card
     const q = out?.question; setText(els.questionText, q?.text || '—'); setText(els.questionClar, q?.clarification || '');
     setText(els.gQuestionText, q?.text || '—'); setText(els.gQuestionClar, q?.clarification || '');
@@ -143,7 +283,7 @@
     const endsIso = out?.ends_at || null;
     setText(els.statusOut, out?.status || '—'); setText(els.endsAtOut, endsIso || '—');
     setText(els.gStatus, out?.status || '—'); setText(els.gEndsAt, endsIso || '—');
-    if(endsIso){ startHostCountdown(endsIso); startGuestCountdown(endsIso); }
+    if (out?.status==='running' && endsIso) { startHostCountdown(endsIso); startGuestCountdown(endsIso); } else { try { clearHostCountdown(); } catch(e) {} }
     // Participants + counts
     const ppl = out?.participants || [];
     els.hostPeople.innerHTML  = ppl.map(p=>`<li>${p.name} <span class="meta">(${p.role})</span></li>`).join('') || '<li class="meta">No one yet</li>';
@@ -151,7 +291,139 @@
     const count = Array.isArray(ppl) ? ppl.length : 0;
     if (els.hostPeopleCount) els.hostPeopleCount.textContent = String(count);
     if (els.guestPeopleCount) els.guestPeopleCount.textContent = String(count);
+    // ===== MS v17: turn/answer UI (minimal, non-invasive) =====
+    try{
+      var hasQ = !!(out && out.question && out.question.id);
+
+      // Gate Next only after a question exists and progress indicates pending answers
+      if (els.nextCardBtn && hasQ && out && out.answers_progress){
+        var ap = out.answers_progress;
+        var shouldDisable = ap && (ap.total_active>0) && (ap.answered_count<ap.total_active);
+        els.nextCardBtn.disabled = !!shouldDisable;
+      }
+
+      if (hasQ){
+        // Mount under the question cards
+        var hc = MS_qHostCard(); var gc = MS_qGuestCard();
+        var hostCard = MS_mountAnsCard(hc, 'msAnsHost');
+        var guestCard = MS_mountAnsCard(gc, 'msAnsGuest');
+        MS_wireAnsCard(hostCard); MS_wireAnsCard(guestCard);
+
+        // Bold current player by name
+        if (out.current_turn && (els.hostPeople || els.guestPeople)){
+          var cur = out.current_turn.name;
+          function boldList(ul){
+            try{
+              if(!ul) return;
+              var lis = Array.prototype.slice.call(ul.querySelectorAll('li'));
+              lis.forEach(function(li){ li.style.fontWeight='400'; });
+              for (var i=0;i<lis.length;i++){
+                var li = lis[i];
+                var meta = li.querySelector('.meta'); var mtxt = meta? meta.textContent : '';
+                var base = mtxt? li.textContent.replace(mtxt,'').trim() : li.textContent.trim();
+                if (base === cur || base.indexOf(cur+' ')==0){ li.style.fontWeight='700'; break; }
+              }
+            }catch(err){}
+          }
+          boldList(els.hostPeople); boldList(els.guestPeople);
+        }
+
+        // Enable controls only for current turn
+        var isHost = MS_isHostView();
+        var code = (window.state && (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
+        var pid = code ? localStorage.getItem('ms_pid_'+code) : null;
+        var allowHost=false, allowGuest=false;
+        if (out.current_turn){
+          allowHost = (out.current_turn.role==='host' && isHost);
+          allowGuest = !!( (pid && out.current_turn.participant_id===pid) || (!pid && els.guestName && out.current_turn.name===(els.guestName.value||'').trim()) );
+        } else {
+          allowHost = isHost; // If backend hasn't sent turn yet, allow host
+        }
+        MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
+        MS_setEnabled(document.getElementById('msAnsGuest'), !!allowGuest);
+      } else {
+        MS_unmount('msAnsHost'); MS_unmount('msAnsGuest');
+      }
+    }catch(e){}
+
   }
+  // === v28: delegated submit handler (surgical) ===
+  (function(){
+    if (window.__msDelegatedSubmit) return; window.__msDelegatedSubmit = true;
+    function logLine(msg){
+      try{ var lg = (document.getElementById('hostLog')||document.getElementById('joinLog')); if (lg){ lg.textContent += '\n'+msg; } }catch(_e){}
+    }
+    async function submitFromCard(card){
+      try{
+        if (!card || card.__submitting || card.__ms) return;
+        var box = card.querySelector('[data-ms="box"]');
+        var submit = card.querySelector('[data-ms="submit"]');
+        if (!box || !submit) return;
+        var text = (box.value||'').trim();
+        if (!text){ logLine('[submit] blocked: empty text'); return; }
+        card.__submitting = true; try{ submit.disabled = true; }catch(_){}
+
+        
+        // Resolve ids from stamped DOM or cached ctx
+        var sourceEl = card && card.getAttribute('data-gid') ? card : null;
+          var code = (window.state && (state.gameCode || ((els.joinCode&&els.joinCode.value)||'').trim())) || null;
+        if (!sourceEl){
+          try{
+            if (els && els.questionText && els.questionText.getAttribute('data-gid')) sourceEl = els.questionText;
+            else if (els && els.gQuestionText && els.gQuestionText.getAttribute('data-gid')) sourceEl = els.gQuestionText;
+          }catch(_){}
+        }
+        var gid = sourceEl ? sourceEl.getAttribute('data-gid') : null;
+        var qid = sourceEl ? sourceEl.getAttribute('data-qid') : null;
+        var out = { current_turn: (window.__ms_ctx && window.__ms_ctx.turn) || null, participants: (window.__ms_ctx && window.__ms_ctx.participants) || [] };
+        if (!gid || !qid){ logLine('[submit] missing ids (gid/qid)'); card.__submitting=false; try{ submit.disabled=false; }catch(_e){}; return; }
+    
+
+        // Resolve participant_id
+        var pid = null;
+        if (out && out.current_turn && out.current_turn.role === 'host'){
+          pid = out.current_turn.participant_id || null;
+          if (!pid && out.participants && out.participants.length){
+            for (var i=0;i<out.participants.length;i++){ if (out.participants[i].role==='host'){ pid = out.participants[i].id; break; } }
+          }
+        } else {
+          pid = localStorage.getItem('ms_pid_'+code);
+        }
+        var k='ms_temp_'+code; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
+        var body = { game_id: gid, question_id: qid, text: text, temp_player_id: temp };
+        if (pid) body.participant_id = pid;
+        if (!pid){ // anonymous guest: include name
+          try{
+            var nm = (els.guestName && (els.guestName.value||'').trim()) || '';
+            if (!nm && out && out.current_turn && out.current_turn.role==='guest') nm = out.current_turn.name || '';
+            if (nm) body.name = nm;
+          }catch(_e){}
+        }
+        logLine('[submit] sending ' + JSON.stringify({hasPid:!!pid, hasName: !!body.name, len: text.length}));
+        var resp = await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
+        var j = null; try{ j = await resp.clone().json(); }catch(_e){}
+        logLine('submit_answer ' + String(resp.status) + ' ' + JSON.stringify(j||{}));
+
+        if (resp.ok){
+          try{ box.value=''; }catch(_){}
+          try{ if (typeof pollRoomStateOnce === 'function') { await pollRoomStateOnce(); } }catch(_){}
+        }
+        card.__submitting=false; try{ submit.disabled=false; }catch(_){}
+      } catch(e){
+        logLine('[submit] error ' + String(e));
+        try{ card.__submitting=false; var submit = card.querySelector('[data-ms=\"submit\"]'); if(submit) submit.disabled=false; }catch(_){}
+      }
+    }
+    document.addEventListener('click', function(ev){
+      try{
+        var t = ev.target;
+        if (!t) return;
+        if (t.matches && t.matches('[data-ms=\"submit\"]')){ submitFromCard(t.closest('.card')); return; }
+        if (t.closest){ var btn = t.closest('[data-ms=\"submit\"]'); if (btn){ submitFromCard(btn.closest('.card')); return; } }
+      }catch(_e){}
+    }, true);
+  })();
+
   function startRoomPolling(){ stopRoomPolling(); state.roomPollHandle=setInterval(pollRoomStateOnce,3000); pollRoomStateOnce(); startGameRealtime(); }
 
   // Apply game to host UI
@@ -192,7 +464,7 @@
       method:'POST', headers, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{}; return pid? { code, participant_id: pid } : { code }; })())
     });
     const out = await r.json().catch(()=>({}));
-    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
+    try{ var __pid = out && out.participant_id || null; var __code = out && out.code || state.gameCode || null; var __gid = out && (out.game_id || out.id) || null; if(__pid && __code) localStorage.setItem('ms_pid_'+String(__code), String(__pid)); if(__pid && __gid) localStorage.setItem('ms_pid_'+String(__gid), String(__pid)); }catch{}
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
     const isHost = !!out?.is_host;
