@@ -1,7 +1,7 @@
  (function(){
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v17';
+  const MS_UI_VERSION = 'v16';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -49,105 +49,6 @@
     gQuestionText: $('gQuestionText'), gQuestionClar: $('gQuestionClar'),
     joinLog: $('joinLog')
   };
-  // ===== MS answer/turn helpers (v17) =====
-  function MS_qHostCard(){ try { return (els.questionText && els.questionText.closest && els.questionText.closest('.card')) || null; } catch(e){ return null; } }
-  function MS_qGuestCard(){ try { return (els.gQuestionText && els.gQuestionText.closest && els.gQuestionText.closest('.card')) || null; } catch(e){ return null; } }
-  function MS_isHostView(){ try { return !!els.host; } catch(e){ return false; } }
-  function MS_mountAnsCard(target, id){
-    try{
-      if (!target) return null;
-      var ex = document.getElementById(id); if (ex) return ex;
-      var card = document.createElement('div'); card.className = 'card'; card.id = id; card.style.marginTop = '8px';
-      card.innerHTML = [
-        '<div class="meta">Your answer</div>',
-        '<div class="row" style="gap:8px;margin:6px 0;">',
-          '<button class="btn" data-ms="mic">🎤 Start</button>',
-          '<button class="btn" data-ms="kb">⌨️ Type</button>',
-          '<button class="btn" data-ms="done">Done</button>',
-          '<button class="btn primary" data-ms="submit" style="display:none">Submit</button>',
-        '</div>',
-        '<textarea data-ms="box" placeholder="Your transcribed/typed answer..." style="width:100%;min-height:90px;display:none"></textarea>'
-      ].join('');
-      target.appendChild(card);
-      return card;
-    } catch(e){ return null; }
-  }
-  function MS_wireAnsCard(card){
-    try{
-      if (!card || card.__msWired) return; card.__msWired = true;
-      var mic = card.querySelector('[data-ms="mic"]');
-      var kb = card.querySelector('[data-ms="kb"]');
-      var done = card.querySelector('[data-ms="done"]');
-      var submit = card.querySelector('[data-ms="submit"]');
-      var box = card.querySelector('[data-ms="box"]');
-      var recog = null, on = false;
-      function mkRecog(){
-        try{
-          var SR = window.SpeechRecognition || window.webkitSpeechRecognition; if(!SR) return null;
-          var r = new SR(); r.interimResults = true; r.lang = 'en-US';
-          r.onresult = function(e){ try{ var s=''; for(var i=0;i<e.results.length;i++){ s+= e.results[i][0].transcript+' '; } box.value=s.trim(); box.style.display='block'; submit.style.display='inline-block'; }catch(err){} };
-          r.onend = function(){ on=false; try{ mic.textContent='🎤 Start'; if((box.value||'').trim()){ box.style.display='block'; submit.style.display='inline-block'; } }catch(err){} };
-          return r;
-        }catch(err){ return null; }
-      }
-      mic && mic.addEventListener('click', function(){
-        try{
-          if(on){ try{recog&&recog.stop();}catch(err){}; on=false; mic.textContent='🎤 Start'; return; }
-          var r = mkRecog();
-          if(!r){ box.style.display='block'; submit.style.display='inline-block'; box.focus(); return; }
-          recog = r; box.value=''; try{ recog.start(); on=true; mic.textContent='◼ Stop'; }catch(err){}
-        }catch(err){}
-      });
-      kb && kb.addEventListener('click', function(){ try{ box.style.display='block'; submit.style.display='inline-block'; box.focus(); }catch(err){} });
-      done && done.addEventListener('click', function(){ try{ recog&&recog.stop(); }catch(err){}; on=false; try{ mic.textContent='🎤 Start'; if((box.value||'').trim()){ box.style.display='block'; submit.style.display='inline-block'; } }catch(err){} });
-      submit && submit.addEventListener('click', async function(){
-        try{
-          var isHost = MS_isHostView();
-          var code = (window.state&& (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
-          if (!code) return;
-          var rs = await fetch(state.functionsBase + '/get_state?code='+encodeURIComponent(code));
-          var out = await rs.json().catch(function(){ return {}; });
-          var gid = out && (out.id || out.game_id || state.gameId);
-          var qid = out && out.question && out.question.id;
-          if (!gid || !qid) return;
-          var pid = null;
-          if (isHost && out.current_turn && out.current_turn.role === 'host') {
-            pid = out.current_turn.participant_id;
-            if (!pid && out.participants && out.participants.length){
-              var hostRow = out.participants.find(function(p){ return p.role==='host'; });
-              if (hostRow) pid = hostRow.id;
-            }
-          } else {
-            pid = localStorage.getItem('ms_pid_'+code);
-            // Fallback by name if no pid
-            if (!pid && out.participants && els.guestName){
-              var nm = (els.guestName.value||'').trim();
-              var row = out.participants.find(function(p){ return p.name===nm; });
-              if (row) pid = row.id;
-            }
-          }
-          var k='ms_temp_'+code; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
-          var body = { game_id: gid, question_id: qid, text: (box.value||'').trim(), temp_player_id: temp };
-          if (pid) body.participant_id = pid;
-          await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
-          box.value='';
-        }catch(err){}
-      });
-      card.__ms = { mic: mic, kb: kb, done: done, submit: submit, box: box };
-    }catch(e){}
-  }
-  function MS_setEnabled(card, allow){
-    try{
-      if (!card || !card.__ms) return;
-      var c = card.__ms;
-      [c.mic,c.kb,c.done,c.submit,c.box].forEach(function(el){ if (el) el.disabled = !allow; });
-      card.style.opacity = allow? '1' : '0.5';
-    }catch(e){}
-  }
-  function MS_unmount(id){
-    try{ var el = document.getElementById(id); if (el && el.parentNode) el.parentNode.removeChild(el); }catch(e){}
-  }
-
 
   // Minimal, robust show/hide (fix for Join blank screen)
   const show = (el)=>{ if(!el) return; el.classList.remove('hidden'); el.style.display=''; };
@@ -223,62 +124,6 @@
     const count = Array.isArray(ppl) ? ppl.length : 0;
     if (els.hostPeopleCount) els.hostPeopleCount.textContent = String(count);
     if (els.guestPeopleCount) els.guestPeopleCount.textContent = String(count);
-    // ===== MS v17: turn/answer UI (minimal, non-invasive) =====
-    try{
-      var hasQ = !!(out && out.question && out.question.id);
-
-      // Gate Next only after a question exists and progress indicates pending answers
-      if (els.nextCardBtn && hasQ && out && out.answers_progress){
-        var ap = out.answers_progress;
-        if (ap && (ap.total_active>0) && (ap.answered_count<ap.total_active)){
-          els.nextCardBtn.disabled = true;
-        }
-      }
-
-      if (hasQ){
-        // Mount under the question cards
-        var hc = MS_qHostCard(); var gc = MS_qGuestCard();
-        var hostCard = MS_mountAnsCard(hc, 'msAnsHost');
-        var guestCard = MS_mountAnsCard(gc, 'msAnsGuest');
-        MS_wireAnsCard(hostCard); MS_wireAnsCard(guestCard);
-
-        // Bold current player by name
-        if (out.current_turn && (els.hostPeople || els.guestPeople)){
-          var cur = out.current_turn.name;
-          function boldList(ul){
-            try{
-              if(!ul) return;
-              var lis = Array.prototype.slice.call(ul.querySelectorAll('li'));
-              lis.forEach(function(li){ li.style.fontWeight='400'; });
-              for (var i=0;i<lis.length;i++){
-                var li = lis[i];
-                var meta = li.querySelector('.meta'); var mtxt = meta? meta.textContent : '';
-                var base = mtxt? li.textContent.replace(mtxt,'').trim() : li.textContent.trim();
-                if (base === cur || base.indexOf(cur+' ')==0){ li.style.fontWeight='700'; break; }
-              }
-            }catch(err){}
-          }
-          boldList(els.hostPeople); boldList(els.guestPeople);
-        }
-
-        // Enable controls only for current turn
-        var isHost = MS_isHostView();
-        var code = (window.state && (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
-        var pid = code ? localStorage.getItem('ms_pid_'+code) : null;
-        var allowHost=false, allowGuest=false;
-        if (out.current_turn){
-          allowHost = (out.current_turn.role==='host' && isHost);
-          allowGuest = !!( (pid && out.current_turn.participant_id===pid) || (!pid && els.guestName && out.current_turn.name===(els.guestName.value||'').trim()) );
-        } else {
-          allowHost = isHost; // If backend hasn't sent turn yet, allow host
-        }
-        MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
-        MS_setEnabled(document.getElementById('msAnsGuest'), !!allowGuest);
-      } else {
-        MS_unmount('msAnsHost'); MS_unmount('msAnsGuest');
-      }
-    }catch(e){}
-
   }
   function startRoomPolling(){ stopRoomPolling(); state.roomPollHandle=setInterval(pollRoomStateOnce,3000); pollRoomStateOnce(); startGameRealtime(); }
 
