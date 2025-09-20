@@ -1,22 +1,21 @@
  (function(){
 
-  // === UI build version ===
-  window.__MS_UI_VERSION = 'v26';
-  try {
-    const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
-    const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
-  } catch (e) {}
-  // Global error logger (won't affect existing behavior)
+  // === Non-conflicting UI version ===
   try{
-    window.onerror = function(m,s,l,c,e){ try{ const lg = (document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg){ lg.textContent += '\n[JS Error] '+m+' @'+s+':'+l; } }catch(_e){} };
-    window.addEventListener('unhandledrejection', function(ev){ try{ const lg = (document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg){ lg.textContent += '\n[Promise Error] '+String(ev.reason||''); } }catch(_e){} });
-  }catch(_e){}
+    if (!window.__MS_UI_VERSION) {
+      window.__MS_UI_VERSION = 'v27';
+      var _h = document.getElementById('hostLog');
+      if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
+      var _j = document.getElementById('joinLog');
+      if (_j) _j.textContent = (_j.textContent? _j.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
+    }
+  }catch(e){}
 
   // === UI build version ===
   const MS_UI_VERSION = 'v17';
   try {
-    const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
-    const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
+    const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
+    const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
   } catch (e) {}
 
   // === Compatibility shim for get_state / next_question (non-invasive) ===
@@ -120,9 +119,7 @@
           var rs = await fetch(state.functionsBase + '/get_state?code='+encodeURIComponent(code));
           var out = await rs.json().catch(function(){ return {}; });
           var gid = out && (out.id || out.game_id || state.gameId);
-try{ var lg = (document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg){ lg.textContent += '\n[submit] gid='+gid; } }catch(_e){}
           var qid = out && out.question && out.question.id;
-try{ var lg2 = (document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg2){ lg2.textContent += ' qid='+qid; } }catch(_e){}
           if (!gid || !qid) return;
           var pid = null;
           if (isHost && out.current_turn && out.current_turn.role === 'host') {
@@ -141,7 +138,7 @@ try{ var lg2 = (document.getElementById('hostLog')||document.getElementById('joi
             }
           }
           var k='ms_temp_'+code; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
-          var body = { game_id: gid, question_id: qid, text: (box.value||'').trim(), temp_player_id: temp }; try{ var lg3=(document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg3){ lg3.textContent += ' pid='+(pid||''); } }catch(_e){}
+          var body = { game_id: gid, question_id: qid, text: (box.value||'').trim(), temp_player_id: temp };
           if (pid) body.participant_id = pid;
           try {
             if (!pid) {
@@ -150,7 +147,7 @@ try{ var lg2 = (document.getElementById('hostLog')||document.getElementById('joi
               if (nm) body.name = nm;
             }
           } catch(e) {}
-
+    
           await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
           box.value='';
         }catch(err){}
