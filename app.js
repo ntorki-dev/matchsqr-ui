@@ -3,9 +3,45 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v32';
+      window.__MS_UI_VERSION = 'v33';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
+
+  // v33: fetch tracker — persist minimal context on /get_state responses
+  (function(){
+    try{
+      if (window.__msCtxTracker) return; window.__msCtxTracker = true;
+      var OF = window.fetch;
+      window.fetch = async function(resource, init){
+        var res = await OF(resource, init);
+        try{
+          var url = (typeof resource === 'string') ? resource : (resource && resource.url) || '';
+          if (url.indexOf('/get_state') !== -1){
+            var ct = res.headers && res.headers.get('content-type') || '';
+            if (ct.indexOf('application/json') !== -1){
+              var data = await res.clone().json().catch(function(){ return null; });
+              if (data && typeof data === 'object'){
+                var ctx = {
+                  gid:  data.id || null,
+                  code: data.code || null,
+                  qid:  (data.question && data.question.id) || null,
+                  turn: data.current_turn || null,
+                  participants: Array.isArray(data.participants) ? data.participants : []
+                };
+                try{ window.__ms_ctx = ctx; }catch(_){}
+                try{ localStorage.setItem('ms_ctx_json', JSON.stringify(ctx)); }catch(_){}
+                try{
+                  if (ctx.code && ctx.gid) localStorage.setItem('ms_gid_'+String(ctx.code), String(ctx.gid));
+                  if (ctx.code) localStorage.setItem('ms_code_current', String(ctx.code));
+                }catch(_){}
+              }
+            }
+          }
+        }catch(_e){}
+        return res;
+      };
+    }catch(_e){}
+  })();
       var _j = document.getElementById('joinLog');
       if (_j) _j.textContent = (_j.textContent? _j.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
     }
@@ -297,7 +333,9 @@
         MS_unmount('msAnsHost'); MS_unmount('msAnsGuest');
       }
     }catch(e){}
-  // === v32: delegated submit handler (ctx-based) ===
+
+  }
+  // === v28: delegated submit handler (surgical) ===
   (function(){
     if (window.__msDelegatedSubmit) return; window.__msDelegatedSubmit = true;
     function logLine(msg){
@@ -313,40 +351,36 @@
         if (!text){ logLine('[submit] blocked: empty text'); return; }
         card.__submitting = true; try{ submit.disabled = true; }catch(_){}
 
-        var ctx = (window.__ms_ctx||{});
-        var gid = ctx.gid || (window.state && (state.gameId||state.game_id)) || null;
-        var qid = ctx.qid || null;
-        var turn = ctx.turn || null;
-        var people = ctx.participants || [];
-
-        if (!gid || !qid){ logLine('[submit] missing ids from ctx'); card.__submitting=false; try{ submit.disabled=false; }catch(_e){}; return; }
+        var code = (window.state && (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
+        if (!code){ logLine('[submit] missing code'); card.__submitting=false; try{ submit.disabled=false; }catch(_e){}; return; }
+        // Get fresh state to resolve gid/qid/turn
+        var rs = await fetch(state.functionsBase + '/get_state?code='+encodeURIComponent(code));
+        var out = await rs.json().catch(function(){ return {}; });
+        var gid = out && (out.id || out.game_id || state.gameId);
+        var qid = out && out.question && out.question.id;
+        if (!gid || !qid){ logLine('[submit] missing ids'); card.__submitting=false; try{ submit.disabled=false; }catch(_e){}; return; }
 
         // Resolve participant_id
         var pid = null;
-        if (turn && turn.role === 'host'){
-          pid = turn.participant_id || null;
-          if (!pid && Array.isArray(people)){
-            for (var i=0;i<people.length;i++){ if (people[i].role==='host'){ pid = people[i].id; break; } }
+        if (out && out.current_turn && out.current_turn.role === 'host'){
+          pid = out.current_turn.participant_id || null;
+          if (!pid && out.participants && out.participants.length){
+            for (var i=0;i<out.participants.length;i++){ if (out.participants[i].role==='host'){ pid = out.participants[i].id; break; } }
           }
         } else {
-          var seed = (gid||'') + ':' + (qid||'');
-          pid = localStorage.getItem('ms_pid_'+seed);
+          pid = localStorage.getItem('ms_pid_'+code);
         }
-
-        // Ensure temp id for anonymous guests
-        var seed2 = (gid||'') + ':' + (qid||'');
-        var k='ms_temp_'+seed2; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
-
+        var k='ms_temp_'+code; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
         var body = { game_id: gid, question_id: qid, text: text, temp_player_id: temp };
         if (pid) body.participant_id = pid;
         if (!pid){ // anonymous guest: include name
           try{
-            var nm = (els && els.guestName && (els.guestName.value||'').trim()) || '';
-            if (!nm && turn && turn.role==='guest') nm = turn.name || '';
+            var nm = (els.guestName && (els.guestName.value||'').trim()) || '';
+            if (!nm && out && out.current_turn && out.current_turn.role==='guest') nm = out.current_turn.name || '';
             if (nm) body.name = nm;
           }catch(_e){}
         }
-
+        logLine('[submit] sending ' + JSON.stringify({hasPid:!!pid, hasName: !!body.name, len: text.length}));
         var resp = await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
         var j = null; try{ j = await resp.clone().json(); }catch(_e){}
         logLine('submit_answer ' + String(resp.status) + ' ' + JSON.stringify(j||{}));
@@ -371,8 +405,6 @@
     }, true);
   })();
 
-
-  }
   function startRoomPolling(){ stopRoomPolling(); state.roomPollHandle=setInterval(pollRoomStateOnce,3000); pollRoomStateOnce(); startGameRealtime(); }
 
   // Apply game to host UI
