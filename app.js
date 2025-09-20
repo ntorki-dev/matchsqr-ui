@@ -3,36 +3,9 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v31';
+      window.__MS_UI_VERSION = 'v32';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
-
-  // v31: non-invasive fetch tracker to persist code/id (no response mutation)
-  (function(){
-    try{
-      if (window.__msTrackFetch) return; window.__msTrackFetch = true;
-      var __origFetch = window.fetch;
-      window.fetch = async function(resource, init){
-        var res = await __origFetch(resource, init);
-        try{
-          var url = (typeof resource === 'string') ? resource : (resource && resource.url) || '';
-          if (url.indexOf('/get_state') !== -1 || url.indexOf('/next_question') !== -1 || url.indexOf('/create') !== -1 || url.indexOf('/join') !== -1){
-            var ct = res.headers && res.headers.get('content-type') || '';
-            if (ct.indexOf('application/json') !== -1){
-              var data = await res.clone().json().catch(function(){ return null; });
-              if (data && typeof data === 'object'){
-                var code = data.code || (data.game && data.game.code) || null;
-                var gid  = data.id   || (data.game && data.game.id)   || null;
-                if (code){ try{ localStorage.setItem('ms_code_current', String(code)); }catch(_){} }
-                if (code && gid){ try{ localStorage.setItem('ms_gid_'+String(code), String(gid)); }catch(_){} }
-              }
-            }
-          }
-        }catch(_e){}
-        return res;
-      };
-    }catch(_e){}
-  })();
       var _j = document.getElementById('joinLog');
       if (_j) _j.textContent = (_j.textContent? _j.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
     }
@@ -143,8 +116,7 @@
           var isHost = MS_isHostView();
           var code = (window.state&& (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
           if (!code) return;
-          logLine('[submit] resolve ' + qs);
-    var rs = await fetch(state.functionsBase + '/get_state?' + qs);
+          var rs = await fetch(state.functionsBase + '/get_state?code='+encodeURIComponent(code));
           var out = await rs.json().catch(function(){ return {}; });
           var gid = out && (out.id || out.game_id || state.gameId);
           var qid = out && out.question && out.question.id;
@@ -157,8 +129,7 @@
               if (hostRow) pid = hostRow.id;
             }
           } else {
-            var __seed2 = code || (out && (out.code || out.id)) || (window.state && (state.gameCode || state.gameId)) || 'ms';
-pid = localStorage.getItem('ms_pid_'+__seed2);
+            pid = localStorage.getItem('ms_pid_'+code);
             // Fallback by name if no pid
             if (!pid && out.participants && els.guestName){
               var nm = (els.guestName.value||'').trim();
@@ -166,8 +137,7 @@ pid = localStorage.getItem('ms_pid_'+__seed2);
               if (row) pid = row.id;
             }
           }
-          var __seed = code || (out && (out.code || out.id)) || (window.state && (state.gameCode || state.gameId)) || 'ms';
-var k='ms_temp_'+__seed; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
+          var k='ms_temp_'+code; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
           var body = { game_id: gid, question_id: qid, text: (box.value||'').trim(), temp_player_id: temp };
           if (pid) body.participant_id = pid;
           try {
@@ -327,38 +297,7 @@ var k='ms_temp_'+__seed; var temp=localStorage.getItem(k); if(!temp){ try{ temp=
         MS_unmount('msAnsHost'); MS_unmount('msAnsGuest');
       }
     }catch(e){}
-
-  }
-  
-  // v29: robust code resolver (does not change any existing state)
-  function msResolveCode(){
-    try{
-      if (window.state){
-        if (state.gameCode) return String(state.gameCode).trim();
-        if (state.code) return String(state.code).trim();
-        if (state.game_code) return String(state.game_code).trim();
-      }
-      // Try common host DOM outputs
-      var candidates = [];
-      try{ if (els && els.gameCodeOut && els.gameCodeOut.textContent) candidates.push(els.gameCodeOut.textContent); }catch(_){}
-      try{ if (els && els.hostCodeOut && els.hostCodeOut.textContent) candidates.push(els.hostCodeOut.textContent); }catch(_){}
-      try{ if (els && els.codeOut && els.codeOut.textContent) candidates.push(els.codeOut.textContent); }catch(_){}
-      // Try any 6-digit code in the page
-      candidates.push(document.body ? document.body.innerText || '' : '');
-      for (var i=0;i<candidates.length;i++){
-        var m = String(candidates[i]||'').match(/\b\d{6}\b/);
-        if (m && m[0]) return m[0];
-      }
-      // Try URL
-      try{
-        var u = new URL(location.href);
-        var c = u.searchParams.get('code') || u.hash.replace('#','');
-        if (c && /\b\d{4,8}\b/.test(c)) return c.trim();
-      }catch(_){}
-      return null;
-    } catch(e){ return null; }
-  }
-// === v28: delegated submit handler (surgical) ===
+  // === v32: delegated submit handler (ctx-based) ===
   (function(){
     if (window.__msDelegatedSubmit) return; window.__msDelegatedSubmit = true;
     function logLine(msg){
@@ -374,39 +313,40 @@ var k='ms_temp_'+__seed; var temp=localStorage.getItem(k); if(!temp){ try{ temp=
         if (!text){ logLine('[submit] blocked: empty text'); return; }
         card.__submitting = true; try{ submit.disabled = true; }catch(_){}
 
-        var code = (window.state && (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
-        if (!code){ logLine('[submit] missing code'); card.__submitting=false; try{ submit.disabled=false; }catch(_e){}; return; }
-        // Get fresh state to resolve gid/qid/turn
-        logLine('[submit] resolve ' + qs);
-    var rs = await fetch(state.functionsBase + '/get_state?' + qs);
-        var out = await rs.json().catch(function(){ return {}; });
-        var gid = out && (out.id || out.game_id || state.gameId);
-        var qid = out && out.question && out.question.id;
-        if (!gid || !qid){ logLine('[submit] missing ids'); card.__submitting=false; try{ submit.disabled=false; }catch(_e){}; return; }
+        var ctx = (window.__ms_ctx||{});
+        var gid = ctx.gid || (window.state && (state.gameId||state.game_id)) || null;
+        var qid = ctx.qid || null;
+        var turn = ctx.turn || null;
+        var people = ctx.participants || [];
+
+        if (!gid || !qid){ logLine('[submit] missing ids from ctx'); card.__submitting=false; try{ submit.disabled=false; }catch(_e){}; return; }
 
         // Resolve participant_id
         var pid = null;
-        if (out && out.current_turn && out.current_turn.role === 'host'){
-          pid = out.current_turn.participant_id || null;
-          if (!pid && out.participants && out.participants.length){
-            for (var i=0;i<out.participants.length;i++){ if (out.participants[i].role==='host'){ pid = out.participants[i].id; break; } }
+        if (turn && turn.role === 'host'){
+          pid = turn.participant_id || null;
+          if (!pid && Array.isArray(people)){
+            for (var i=0;i<people.length;i++){ if (people[i].role==='host'){ pid = people[i].id; break; } }
           }
         } else {
-          var __seed2 = code || (out && (out.code || out.id)) || (window.state && (state.gameCode || state.gameId)) || 'ms';
-pid = localStorage.getItem('ms_pid_'+__seed2);
+          var seed = (gid||'') + ':' + (qid||'');
+          pid = localStorage.getItem('ms_pid_'+seed);
         }
-        var __seed = code || (out && (out.code || out.id)) || (window.state && (state.gameCode || state.gameId)) || 'ms';
-var k='ms_temp_'+__seed; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
+
+        // Ensure temp id for anonymous guests
+        var seed2 = (gid||'') + ':' + (qid||'');
+        var k='ms_temp_'+seed2; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
+
         var body = { game_id: gid, question_id: qid, text: text, temp_player_id: temp };
         if (pid) body.participant_id = pid;
         if (!pid){ // anonymous guest: include name
           try{
-            var nm = (els.guestName && (els.guestName.value||'').trim()) || '';
-            if (!nm && out && out.current_turn && out.current_turn.role==='guest') nm = out.current_turn.name || '';
+            var nm = (els && els.guestName && (els.guestName.value||'').trim()) || '';
+            if (!nm && turn && turn.role==='guest') nm = turn.name || '';
             if (nm) body.name = nm;
           }catch(_e){}
         }
-        logLine('[submit] sending ' + JSON.stringify({hasPid:!!pid, hasName: !!body.name, len: text.length}));
+
         var resp = await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
         var j = null; try{ j = await resp.clone().json(); }catch(_e){}
         logLine('submit_answer ' + String(resp.status) + ' ' + JSON.stringify(j||{}));
@@ -431,6 +371,8 @@ var k='ms_temp_'+__seed; var temp=localStorage.getItem(k); if(!temp){ try{ temp=
     }, true);
   })();
 
+
+  }
   function startRoomPolling(){ stopRoomPolling(); state.roomPollHandle=setInterval(pollRoomStateOnce,3000); pollRoomStateOnce(); startGameRealtime(); }
 
   // Apply game to host UI
