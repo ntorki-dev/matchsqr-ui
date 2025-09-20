@@ -1,9 +1,27 @@
  (function(){
 
+  // v42: robust UUID helpers for guest temp ids
+  function __msIsUuid(x){
+    return typeof x === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(x);
+  }
+  function __msUuidv4(){
+    try{ if (crypto && crypto.randomUUID) return crypto.randomUUID(); }catch(_){}
+    try{
+      const arr = new Uint8Array(16); (crypto&&crypto.getRandomValues)? crypto.getRandomValues(arr) : (function(a){ for(let i=0;i<a.length;i++) a[i] = Math.floor(Math.random()*256); })(arr);
+      arr[6] = (arr[6] & 0x0f) | 0x40; // version 4
+      arr[8] = (arr[8] & 0x3f) | 0x80; // variant 10
+      const hex = [...arr].map(b => b.toString(16).padStart(2,'0')).join('');
+      return hex.slice(0,8)+'-'+hex.slice(8,12)+'-'+hex.slice(12,16)+'-'+hex.slice(16,20)+'-'+hex.slice(20);
+    }catch(_){
+      // last-resort fallback
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){ const r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8); return v.toString(16); });
+    }
+  }
+
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v41';
+      window.__MS_UI_VERSION = 'v42';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -45,7 +63,7 @@
   }catch(e){}
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v41';
+  const MS_UI_VERSION = 'v42';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
