@@ -3,7 +3,7 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v27';
+      window.__MS_UI_VERSION = 'v28';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
       var _j = document.getElementById('joinLog');
@@ -299,6 +299,76 @@
     }catch(e){}
 
   }
+  // === v28: delegated submit handler (surgical) ===
+  (function(){
+    if (window.__msDelegatedSubmit) return; window.__msDelegatedSubmit = true;
+    function logLine(msg){
+      try{ var lg = (document.getElementById('hostLog')||document.getElementById('joinLog')); if (lg){ lg.textContent += '\n'+msg; } }catch(_e){}
+    }
+    async function submitFromCard(card){
+      try{
+        if (!card || card.__submitting) return;
+        var box = card.querySelector('[data-ms="box"]');
+        var submit = card.querySelector('[data-ms="submit"]');
+        if (!box || !submit) return;
+        var text = (box.value||'').trim();
+        if (!text){ logLine('[submit] blocked: empty text'); return; }
+        card.__submitting = true; try{ submit.disabled = true; }catch(_){}
+
+        var code = (window.state && (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
+        if (!code){ logLine('[submit] missing code'); card.__submitting=false; try{ submit.disabled=false; }catch(_e){}; return; }
+        // Get fresh state to resolve gid/qid/turn
+        var rs = await fetch(state.functionsBase + '/get_state?code='+encodeURIComponent(code));
+        var out = await rs.json().catch(function(){ return {}; });
+        var gid = out && (out.id || out.game_id || state.gameId);
+        var qid = out && out.question && out.question.id;
+        if (!gid || !qid){ logLine('[submit] missing ids'); card.__submitting=false; try{ submit.disabled=false; }catch(_e){}; return; }
+
+        // Resolve participant_id
+        var pid = null;
+        if (out && out.current_turn && out.current_turn.role === 'host'){
+          pid = out.current_turn.participant_id || null;
+          if (!pid && out.participants && out.participants.length){
+            for (var i=0;i<out.participants.length;i++){ if (out.participants[i].role==='host'){ pid = out.participants[i].id; break; } }
+          }
+        } else {
+          pid = localStorage.getItem('ms_pid_'+code);
+        }
+        var k='ms_temp_'+code; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
+        var body = { game_id: gid, question_id: qid, text: text, temp_player_id: temp };
+        if (pid) body.participant_id = pid;
+        if (!pid){ // anonymous guest: include name
+          try{
+            var nm = (els.guestName && (els.guestName.value||'').trim()) || '';
+            if (!nm && out && out.current_turn && out.current_turn.role==='guest') nm = out.current_turn.name || '';
+            if (nm) body.name = nm;
+          }catch(_e){}
+        }
+        logLine('[submit] sending ' + JSON.stringify({hasPid:!!pid, hasName: !!body.name, len: text.length}));
+        var resp = await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
+        var j = null; try{ j = await resp.clone().json(); }catch(_e){}
+        logLine('submit_answer ' + String(resp.status) + ' ' + JSON.stringify(j||{}));
+
+        if (resp.ok){
+          try{ box.value=''; }catch(_){}
+          try{ if (typeof pollRoomStateOnce === 'function') { await pollRoomStateOnce(); } }catch(_){}
+        }
+        card.__submitting=false; try{ submit.disabled=false; }catch(_){}
+      } catch(e){
+        logLine('[submit] error ' + String(e));
+        try{ card.__submitting=false; var submit = card.querySelector('[data-ms=\"submit\"]'); if(submit) submit.disabled=false; }catch(_){}
+      }
+    }
+    document.addEventListener('click', function(ev){
+      try{
+        var t = ev.target;
+        if (!t) return;
+        if (t.matches && t.matches('[data-ms=\"submit\"]')){ submitFromCard(t.closest('.card')); return; }
+        if (t.closest){ var btn = t.closest('[data-ms=\"submit\"]'); if (btn){ submitFromCard(btn.closest('.card')); return; } }
+      }catch(_e){}
+    }, true);
+  })();
+
   function startRoomPolling(){ stopRoomPolling(); state.roomPollHandle=setInterval(pollRoomStateOnce,3000); pollRoomStateOnce(); startGameRealtime(); }
 
   // Apply game to host UI
