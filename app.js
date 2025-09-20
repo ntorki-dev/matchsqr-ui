@@ -3,9 +3,36 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v29';
+      window.__MS_UI_VERSION = 'v31';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
+
+  // v31: non-invasive fetch tracker to persist code/id (no response mutation)
+  (function(){
+    try{
+      if (window.__msTrackFetch) return; window.__msTrackFetch = true;
+      var __origFetch = window.fetch;
+      window.fetch = async function(resource, init){
+        var res = await __origFetch(resource, init);
+        try{
+          var url = (typeof resource === 'string') ? resource : (resource && resource.url) || '';
+          if (url.indexOf('/get_state') !== -1 || url.indexOf('/next_question') !== -1 || url.indexOf('/create') !== -1 || url.indexOf('/join') !== -1){
+            var ct = res.headers && res.headers.get('content-type') || '';
+            if (ct.indexOf('application/json') !== -1){
+              var data = await res.clone().json().catch(function(){ return null; });
+              if (data && typeof data === 'object'){
+                var code = data.code || (data.game && data.game.code) || null;
+                var gid  = data.id   || (data.game && data.game.id)   || null;
+                if (code){ try{ localStorage.setItem('ms_code_current', String(code)); }catch(_){} }
+                if (code && gid){ try{ localStorage.setItem('ms_gid_'+String(code), String(gid)); }catch(_){} }
+              }
+            }
+          }
+        }catch(_e){}
+        return res;
+      };
+    }catch(_e){}
+  })();
       var _j = document.getElementById('joinLog');
       if (_j) _j.textContent = (_j.textContent? _j.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
     }
