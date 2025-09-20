@@ -1,7 +1,51 @@
  (function(){
 
+  // === Non-conflicting UI version ===
+  try{
+    if (!window.__MS_UI_VERSION) {
+      window.__MS_UI_VERSION = 'v36';
+      var _h = document.getElementById('hostLog');
+      if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
+
+  // v36: stamp gid/qid on every /get_state response (no code dependency)
+  (function(){
+    try{
+      if (window.__msStampFetch) return; window.__msStampFetch = true;
+      var OF = window.fetch;
+      window.fetch = async function(resource, init){
+        var res = await OF(resource, init);
+        try{
+          var url = (typeof resource === 'string') ? resource : (resource && resource.url) || '';
+          if (url.indexOf('/get_state') !== -1){
+            var ct = res.headers && res.headers.get('content-type') || '';
+            if (ct.indexOf('application/json') !== -1){
+              var data = await res.clone().json().catch(function(){ return null; });
+              if (data && typeof data === 'object'){
+                try{ window.__ms_ctx = { gid: data.id || null, qid: (data.question && data.question.id) || null, turn: data.current_turn || null, participants: Array.isArray(data.participants)? data.participants : [] }; }catch(_){}
+                var gid = data.id || null; var qid = (data.question && data.question.id) || null;
+                var stamp = function(el){
+                  if (!el) return;
+                  try{ if (gid) el.setAttribute('data-gid', String(gid)); }catch(_){}
+                  try{ if (qid) el.setAttribute('data-qid', String(qid)); }catch(_){}
+                };
+                try{ stamp(document.getElementById('msAnsHost')); }catch(_){}
+                try{ stamp(document.getElementById('msAnsGuest')); }catch(_){}
+                try{ if (typeof els !== 'undefined'){ stamp(els.questionText); stamp(els.gQuestionText); } }catch(_){}
+              }
+            }
+          }
+        }catch(_e){}
+        return res;
+      };
+    }catch(_e){}
+  })();
+      var _j = document.getElementById('joinLog');
+      if (_j) _j.textContent = (_j.textContent? _j.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
+    }
+  }catch(e){}
+
   // === UI build version ===
-  const MS_UI_VERSION = 'v35';
+  const MS_UI_VERSION = 'v17';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -102,13 +146,14 @@
       done && done.addEventListener('click', function(){ try{ recog&&recog.stop(); }catch(err){}; on=false; try{ mic.textContent='🎤 Start'; if((box.value||'').trim()){ box.style.display='block'; submit.style.display='inline-block'; } }catch(err){} });
       submit && submit.addEventListener('click', async function(){
         try{
-          
-          // v34: code-free submit: use cached ctx from polling
-          var ctx = (window.__ms_ctx || {});
-          var gid = ctx.gid || (window.state && (state.gameId||state.game_id)) || null;
-          var qid = ctx.qid || null;
-          if (!gid || !qid) { try{ var lg=(document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg){ lg.textContent += '\n[submit] missing ids (gid/qid)'; } }catch(_e){}; return; }
-    
+          var isHost = MS_isHostView();
+          var code = (window.state&& (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
+          if (!code) return;
+          var rs = await fetch(state.functionsBase + '/get_state?code='+encodeURIComponent(code));
+          var out = await rs.json().catch(function(){ return {}; });
+          var gid = out && (out.id || out.game_id || state.gameId);
+          var qid = out && out.question && out.question.id;
+          if (!gid || !qid) return;
           var pid = null;
           if (isHost && out.current_turn && out.current_turn.role === 'host') {
             pid = out.current_turn.participant_id;
@@ -125,16 +170,17 @@
               if (row) pid = row.id;
             }
           }
-          var k='ms_temp_'+String(gid); var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
-          var body = { game_id: gid, question_id: qid, text: (box.value||'').trim(), temp_player_id: temp }; try{ var lg2=(document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg2){ lg2.textContent += '\n[submit] payload ' + JSON.stringify({gid:gid,qid:qid,hasPid:!!pid}); } }catch(_e){}
+          var k='ms_temp_'+code; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
+          var body = { game_id: gid, question_id: qid, text: (box.value||'').trim(), temp_player_id: temp };
           if (pid) body.participant_id = pid;
           try {
             if (!pid) {
               var nm = (els.guestName && (els.guestName.value||'').trim()) || '';
-              if (!nm && (window.__ms_ctx && window.__ms_ctx.turn) && window.__ms_ctx.turn.role==='guest') { nm = window.__ms_ctx.turn.name || ''; }
+              if (!nm && out && out.current_turn && out.current_turn.role==='guest') { nm = out.current_turn.name || ''; }
               if (nm) body.name = nm;
             }
           } catch(e) {}
+    
           await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
           box.value='';
         }catch(err){}
@@ -286,6 +332,76 @@
     }catch(e){}
 
   }
+  // === v28: delegated submit handler (surgical) ===
+  (function(){
+    if (window.__msDelegatedSubmit) return; window.__msDelegatedSubmit = true;
+    function logLine(msg){
+      try{ var lg = (document.getElementById('hostLog')||document.getElementById('joinLog')); if (lg){ lg.textContent += '\n'+msg; } }catch(_e){}
+    }
+    async function submitFromCard(card){
+      try{
+        if (!card || card.__submitting) return;
+        var box = card.querySelector('[data-ms="box"]');
+        var submit = card.querySelector('[data-ms="submit"]');
+        if (!box || !submit) return;
+        var text = (box.value||'').trim();
+        if (!text){ logLine('[submit] blocked: empty text'); return; }
+        card.__submitting = true; try{ submit.disabled = true; }catch(_){}
+
+        var code = (window.state && (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
+        if (!code){ logLine('[submit] missing code'); card.__submitting=false; try{ submit.disabled=false; }catch(_e){}; return; }
+        // Get fresh state to resolve gid/qid/turn
+        var rs = await fetch(state.functionsBase + '/get_state?code='+encodeURIComponent(code));
+        var out = await rs.json().catch(function(){ return {}; });
+        var gid = out && (out.id || out.game_id || state.gameId);
+        var qid = out && out.question && out.question.id;
+        if (!gid || !qid){ logLine('[submit] missing ids'); card.__submitting=false; try{ submit.disabled=false; }catch(_e){}; return; }
+
+        // Resolve participant_id
+        var pid = null;
+        if (out && out.current_turn && out.current_turn.role === 'host'){
+          pid = out.current_turn.participant_id || null;
+          if (!pid && out.participants && out.participants.length){
+            for (var i=0;i<out.participants.length;i++){ if (out.participants[i].role==='host'){ pid = out.participants[i].id; break; } }
+          }
+        } else {
+          pid = localStorage.getItem('ms_pid_'+code);
+        }
+        var k='ms_temp_'+code; var temp=localStorage.getItem(k); if(!temp){ try{ temp=crypto.randomUUID(); }catch(_e){ temp=String(Date.now()); } localStorage.setItem(k,temp); }
+        var body = { game_id: gid, question_id: qid, text: text, temp_player_id: temp };
+        if (pid) body.participant_id = pid;
+        if (!pid){ // anonymous guest: include name
+          try{
+            var nm = (els.guestName && (els.guestName.value||'').trim()) || '';
+            if (!nm && out && out.current_turn && out.current_turn.role==='guest') nm = out.current_turn.name || '';
+            if (nm) body.name = nm;
+          }catch(_e){}
+        }
+        logLine('[submit] sending ' + JSON.stringify({hasPid:!!pid, hasName: !!body.name, len: text.length}));
+        var resp = await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
+        var j = null; try{ j = await resp.clone().json(); }catch(_e){}
+        logLine('submit_answer ' + String(resp.status) + ' ' + JSON.stringify(j||{}));
+
+        if (resp.ok){
+          try{ box.value=''; }catch(_){}
+          try{ if (typeof pollRoomStateOnce === 'function') { await pollRoomStateOnce(); } }catch(_){}
+        }
+        card.__submitting=false; try{ submit.disabled=false; }catch(_){}
+      } catch(e){
+        logLine('[submit] error ' + String(e));
+        try{ card.__submitting=false; var submit = card.querySelector('[data-ms=\"submit\"]'); if(submit) submit.disabled=false; }catch(_){}
+      }
+    }
+    document.addEventListener('click', function(ev){
+      try{
+        var t = ev.target;
+        if (!t) return;
+        if (t.matches && t.matches('[data-ms=\"submit\"]')){ submitFromCard(t.closest('.card')); return; }
+        if (t.closest){ var btn = t.closest('[data-ms=\"submit\"]'); if (btn){ submitFromCard(btn.closest('.card')); return; } }
+      }catch(_e){}
+    }, true);
+  })();
+
   function startRoomPolling(){ stopRoomPolling(); state.roomPollHandle=setInterval(pollRoomStateOnce,3000); pollRoomStateOnce(); startGameRealtime(); }
 
   // Apply game to host UI
