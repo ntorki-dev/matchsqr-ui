@@ -3,7 +3,7 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v46.6';
+      window.__MS_UI_VERSION = 'v47.0';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -45,7 +45,7 @@
   }catch(e){}
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v46.6';
+  const MS_UI_VERSION = 'v47.0';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -200,8 +200,12 @@ submit && submit.addEventListener('click', async function(){
           var resp = await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
           try{ var lg2=(document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg2){ lg2.textContent += '\nsubmit_answer '+String(resp.status);
         if (resp && resp.ok) {
-          try { card.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); } catch(_e){}
-          try { if (typeof pollRoomStateOnce==='function') setTimeout(pollRoomStateOnce, 60); } catch(_e){}
+          try {
+            card.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); });
+          } catch(_e){}
+          try { if (typeof pollRoomStateOnce==='function') setTimeout(pollRoomStateOnce, 50); } catch(_e){}
+        } else {
+          try { console.warn('submit failed', resp && (await resp.text && await resp.text())); } catch(_e){}
         }
  } }catch(_){}
           if (resp.ok){ try{ box.value=''; }catch(_e){}; try{ if (typeof pollRoomStateOnce==='function') await pollRoomStateOnce(); }catch(_e){} }
@@ -307,12 +311,23 @@ submit && submit.addEventListener('click', async function(){
       // Gate Next only after a question exists and progress indicates pending answers
       if (els.nextCardBtn && hasQ && out && out.answers_progress){
       try{
-        var apDbg = out && out.answers_progress;
-        var cid = (out && out.counted_ids) ? out.counted_ids.map(function(x){ return String(x).slice(0,8); }) : [];
-        var mid = (out && out.missing_ids) ? out.missing_ids.map(function(x){ return String(x).slice(0,8); }) : [];
-        var dbg = '[poll] ta='+(apDbg?apDbg.total_active:'-')+' ac='+(apDbg?apDbg.answered_count:'-')+' rc='+(out && out.round_complete)+' cr='+(out && out.can_reveal)+' counted='+cid.join(',')+' missing='+mid.join(',');
-        if (typeof logLine==='function') logLine(dbg);
-      }catch(_e){}
+        var ap = out && out.answers_progress;
+        var me = out && out.me;
+        var meRole = me ? me.role : null;
+        var isHost = (meRole === 'host');
+        var doneRound = !!(ap && ap.total_active>0 && ap.answered_count>=ap.total_active);
+        console.log('[apply] ta=%s ac=%s doneRound=%s', ap&&ap.total_active, ap&&ap.answered_count, doneRound);
+        if (doneRound){
+          if (els.nextCardBtn) els.nextCardBtn.disabled = !(isHost && state.status==='running' && state.question);
+          var hostBox=document.getElementById('msAnsHost'); if(hostBox){ hostBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
+          var guestBox=document.getElementById('msAnsGuest'); if(guestBox){ guestBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
+          try{
+            var list = document.getElementById('participantsList');
+            if (list) { list.querySelectorAll('[data-pid]').forEach(function(li){ li.style.fontWeight = 'normal'; }); }
+          }catch(_e){}
+          try{ if (window.__ms_ctx) window.__ms_ctx.turn = null; }catch(_e){}
+        }
+      }catch(_e){ console.warn('enforce doneRound failed', _e); }
 
         var ap = out.answers_progress;
         if (ap && (ap.total_active>0) && (ap.answered_count<ap.total_active)){
