@@ -1,13 +1,9 @@
-
-        if (resp.ok) {
-          try { card.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); } catch(_e){}
-        }
  (function(){
 
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v48';
+      window.__MS_UI_VERSION = 'v46.2';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -49,7 +45,7 @@
   }catch(e){}
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v48';
+  const MS_UI_VERSION = 'v17';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -202,7 +198,9 @@ submit && submit.addEventListener('click', async function(){
           } catch(e) {}
 
           var resp = await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
-          try{ var lg2=(document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg2){ lg2.textContent += '\nsubmit_answer '+String(resp.status); } }catch(_){}
+          try{ var lg2=(document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg2){ lg2.textContent += '\nsubmit_answer '+String(resp.status);
+        if (resp && resp.ok) { try{ card.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }catch(_e){} }
+ } }catch(_){}
           if (resp.ok){ try{ box.value=''; }catch(_e){}; try{ if (typeof pollRoomStateOnce==='function') await pollRoomStateOnce(); }catch(_e){} }
           card.__submitting=false; try{ submit.disabled=false; }catch(_){}
         }catch(err){ try{ card.__submitting=false; submit.disabled=false; }catch(_){}
@@ -310,6 +308,20 @@ submit && submit.addEventListener('click', async function(){
           els.nextCardBtn.disabled = true;
         }
       }
+      // Explicitly enable Reveal when round is complete and lock inputs
+      try{
+        var ap2 = out && out.answers_progress;
+        if (ap2 && (ap2.total_active>0) && (ap2.answered_count>=ap2.total_active)) {
+          if (els.nextCardBtn) els.nextCardBtn.disabled = false;
+          // Disable both host and guest input areas on round completion
+          var h = document.getElementById('msAnsHost'); if (h) { h.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
+          var g = document.getElementById('msAnsGuest'); if (g) { g.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
+          // Clear any bolding; next bold will occur after host reveals next card
+          var list = document.getElementById('participantsList');
+          if (list) { list.querySelectorAll('[data-pid]').forEach(function(li){ li.style.fontWeight = 'normal'; }); }
+        }
+      }catch(_e){}
+
 
       if (hasQ){
         // Mount under the question cards
