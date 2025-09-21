@@ -3,7 +3,7 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v46.4';
+      window.__MS_UI_VERSION = 'v46.5';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -45,7 +45,7 @@
   }catch(e){}
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v46.4';
+  const MS_UI_VERSION = 'v46.5';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -200,12 +200,8 @@ submit && submit.addEventListener('click', async function(){
           var resp = await fetch(state.functionsBase + '/submit_answer', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
           try{ var lg2=(document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg2){ lg2.textContent += '\nsubmit_answer '+String(resp.status);
         if (resp && resp.ok) {
-          try { 
-            card.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); });
-          } catch(_e){}
-          try {
-            if (typeof pollRoomStateOnce === 'function') { setTimeout(function(){ pollRoomStateOnce(); }, 50); }
-          } catch(_e){}
+          try { card.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); } catch(_e){}
+          try { if (typeof pollRoomStateOnce === 'function') { setTimeout(function(){ pollRoomStateOnce(); }, 60); } } catch(_e){}
         }
  } }catch(_){}
           if (resp.ok){ try{ box.value=''; }catch(_e){}; try{ if (typeof pollRoomStateOnce==='function') await pollRoomStateOnce(); }catch(_e){} }
@@ -310,17 +306,6 @@ submit && submit.addEventListener('click', async function(){
 
       // Gate Next only after a question exists and progress indicates pending answers
       if (els.nextCardBtn && hasQ && out && out.answers_progress){
-      try{
-        var ap = out && out.answers_progress;
-        if (ap && ap.total_active > 0 && ap.answered_count >= ap.total_active) {
-          if (els.nextCardBtn) els.nextCardBtn.disabled = false;
-          var hostBox=document.getElementById('msAnsHost'); if(hostBox){ hostBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
-          var guestBox=document.getElementById('msAnsGuest'); if(guestBox){ guestBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
-          var list = document.getElementById('participantsList');
-          if (list) { list.querySelectorAll('[data-pid]').forEach(function(li){ li.style.fontWeight = 'normal'; }); }
-        }
-      }catch(_e){}
-
         var ap = out.answers_progress;
         if (ap && (ap.total_active>0) && (ap.answered_count<ap.total_active)){
           els.nextCardBtn.disabled = true;
