@@ -3,7 +3,7 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v46.5';
+      window.__MS_UI_VERSION = 'v46.6';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -45,7 +45,7 @@
   }catch(e){}
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v46.5';
+  const MS_UI_VERSION = 'v46.6';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -201,7 +201,7 @@ submit && submit.addEventListener('click', async function(){
           try{ var lg2=(document.getElementById('hostLog')||document.getElementById('joinLog')); if(lg2){ lg2.textContent += '\nsubmit_answer '+String(resp.status);
         if (resp && resp.ok) {
           try { card.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); } catch(_e){}
-          try { if (typeof pollRoomStateOnce === 'function') { setTimeout(function(){ pollRoomStateOnce(); }, 60); } } catch(_e){}
+          try { if (typeof pollRoomStateOnce==='function') setTimeout(pollRoomStateOnce, 60); } catch(_e){}
         }
  } }catch(_){}
           if (resp.ok){ try{ box.value=''; }catch(_e){}; try{ if (typeof pollRoomStateOnce==='function') await pollRoomStateOnce(); }catch(_e){} }
@@ -306,6 +306,14 @@ submit && submit.addEventListener('click', async function(){
 
       // Gate Next only after a question exists and progress indicates pending answers
       if (els.nextCardBtn && hasQ && out && out.answers_progress){
+      try{
+        var apDbg = out && out.answers_progress;
+        var cid = (out && out.counted_ids) ? out.counted_ids.map(function(x){ return String(x).slice(0,8); }) : [];
+        var mid = (out && out.missing_ids) ? out.missing_ids.map(function(x){ return String(x).slice(0,8); }) : [];
+        var dbg = '[poll] ta='+(apDbg?apDbg.total_active:'-')+' ac='+(apDbg?apDbg.answered_count:'-')+' rc='+(out && out.round_complete)+' cr='+(out && out.can_reveal)+' counted='+cid.join(',')+' missing='+mid.join(',');
+        if (typeof logLine==='function') logLine(dbg);
+      }catch(_e){}
+
         var ap = out.answers_progress;
         if (ap && (ap.total_active>0) && (ap.answered_count<ap.total_active)){
           els.nextCardBtn.disabled = true;
