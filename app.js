@@ -3,7 +3,7 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v50.0';
+      window.__MS_UI_VERSION = 'v51.0';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -45,7 +45,7 @@
   }catch(e){}
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v47.0';
+  const MS_UI_VERSION = 'v51.0';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -312,13 +312,11 @@ submit && submit.addEventListener('click', async function(){
       if (els.nextCardBtn && hasQ && out && out.answers_progress){
       try{
         var ap = out && out.answers_progress;
-        var me = out && out.me;
-        var meRole = me ? me.role : null;
-        var isHost = (meRole === 'host');
+        var isHost = MS_isHostView();
         var doneRound = !!(ap && ap.total_active>0 && ap.answered_count>=ap.total_active);
         console.log('[apply] ta=%s ac=%s doneRound=%s', ap&&ap.total_active, ap&&ap.answered_count, doneRound);
         if (doneRound){
-          if (els.nextCardBtn) els.nextCardBtn.disabled = !(isHost && out && out.status==='running' && (out.can_reveal===true || doneRound));
+          if (els.nextCardBtn) els.nextCardBtn.disabled = !(isHost && out && out.status==='running' && (out.can_reveal===true || true));
           var hostBox=document.getElementById('msAnsHost'); if(hostBox){ hostBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
           var guestBox=document.getElementById('msAnsGuest'); if(guestBox){ guestBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
           try{
@@ -330,8 +328,13 @@ submit && submit.addEventListener('click', async function(){
       }catch(_e){ console.warn('enforce doneRound failed', _e); }
 
         var ap = out.answers_progress;
-        if (ap && (ap.total_active>0) && (ap.answered_count<ap.total_active)){
-          els.nextCardBtn.disabled = true;
+        if (ap && (ap.total_active>0)){
+          if (ap.answered_count<ap.total_active){
+            els.nextCardBtn.disabled = true;
+          } else {
+            var __host = MS_isHostView();
+            if (els.nextCardBtn) els.nextCardBtn.disabled = !(__host && out && out.status==='running' && (out.can_reveal===true || true));
+          }
         }
       }
 
@@ -370,8 +373,7 @@ submit && submit.addEventListener('click', async function(){
           allowHost = (out.current_turn.role==='host' && isHost);
           allowGuest = !!( (pid && out.current_turn.participant_id===pid) || (!pid && els.guestName && out.current_turn.name===(els.guestName.value||'').trim()) );
         } else {
-          var ap = out && out.answers_progress; var endRound = !!(out && (out.round_complete===true || out.can_reveal===true || (ap && ap.total_active>0 && ap.answered_count>=ap.total_active)));
-          allowHost = isHost && !endRound; // prevent re-enable during round-complete window
+          allowHost = isHost; // If backend hasn't sent turn yet, allow host
         }
         MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
         MS_setEnabled(document.getElementById('msAnsGuest'), !!allowGuest);
