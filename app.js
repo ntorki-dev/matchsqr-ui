@@ -3,7 +3,7 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v52.5';
+      window.__MS_UI_VERSION = 'v52.6';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -45,7 +45,7 @@
   }catch(e){}
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v52.5';
+  const MS_UI_VERSION = 'v52.6';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -288,15 +288,6 @@ submit && submit.addEventListener('click', async function(){
     if(!state.functionsBase || !state.gameCode) return;
     const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
     const out = await r.json().catch(()=>({}));
-    // -- MS v52.5: default gating for Reveal (host-only, backend-driven, works even between rounds)
-    try {
-      if (els && els.nextCardBtn) {
-        var __isHost = MS_isHostView && MS_isHostView();
-        var __can = (__isHost && out && out.status === 'running' && out.can_reveal === true);
-        els.nextCardBtn.disabled = !__can;
-      }
-    } catch (_e) {}
-
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     // Card
     const q = out?.question; setText(els.questionText, q?.text || '—'); setText(els.questionClar, q?.clarification || '');
@@ -313,84 +304,27 @@ submit && submit.addEventListener('click', async function(){
     const count = Array.isArray(ppl) ? ppl.length : 0;
     if (els.hostPeopleCount) els.hostPeopleCount.textContent = String(count);
     if (els.guestPeopleCount) els.guestPeopleCount.textContent = String(count);
-    // ===== MS v17: turn/answer UI (minimal, non-invasive) =====
+    // ===== MS v17: turn/answer UI (v52.6 minimal)
     try{
       var hasQ = !!(out && out.question && out.question.id);
 
-      // Gate Next only after a question exists and progress indicates pending answers
-      if (els.nextCardBtn && hasQ && out && out.answers_progress){
-      try{
-        var ap = out && out.answers_progress;
-        var isHost = MS_isHostView();
-        var doneRound = !!(ap && ap.total_active>0 && ap.answered_count>=ap.total_active);
-        console.log('[apply] ta=%s ac=%s doneRound=%s', ap&&ap.total_active, ap&&ap.answered_count, doneRound);
-        if (doneRound){
-          if (els.nextCardBtn) els.nextCardBtn.disabled = !(isHost && out && out.status==='running' && (out.can_reveal===true));
-          var hostBox=document.getElementById('msAnsHost'); if(hostBox){ hostBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
-          var guestBox=document.getElementById('msAnsGuest'); if(guestBox){ guestBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
-          try{
-            var list = document.getElementById('participantsList');
-            if (list) { list.querySelectorAll('[data-pid]').forEach(function(li){ li.style.fontWeight = 'normal'; }); }
-          }catch(_e){}
-          try{ if (window.__ms_ctx) window.__ms_ctx.turn = null; }catch(_e){}
-        }
-      }catch(_e){ console.warn('enforce doneRound failed', _e); }
-
-        var ap = out.answers_progress;
-        if (ap && (ap.total_active>0)){
-          if (ap.answered_count<ap.total_active){
-            els.nextCardBtn.disabled = true;
-          } else {
-            var __host = MS_isHostView();
-            if (els.nextCardBtn) els.nextCardBtn.disabled = !(__host && out && out.status==='running' && (out.can_reveal===true));
-          }
-        }
-      }
-
+      // Mount/unmount answer cards under the question cards
       if (hasQ){
-        // Mount under the question cards
         var hc = MS_qHostCard(); var gc = MS_qGuestCard();
         var hostCard = MS_mountAnsCard(hc, 'msAnsHost');
         var guestCard = MS_mountAnsCard(gc, 'msAnsGuest');
         MS_wireAnsCard(hostCard); MS_wireAnsCard(guestCard);
-
-        // Bold current player by name
-        if (out.current_turn && (els.hostPeople || els.guestPeople)){
-          var cur = out.current_turn.name;
-          function boldList(ul){
-            try{
-              if(!ul) return;
-              var lis = Array.prototype.slice.call(ul.querySelectorAll('li'));
-              lis.forEach(function(li){ li.style.fontWeight='400'; });
-              for (var i=0;i<lis.length;i++){
-                var li = lis[i];
-                var meta = li.querySelector('.meta'); var mtxt = meta? meta.textContent : '';
-                var base = mtxt? li.textContent.replace(mtxt,'').trim() : li.textContent.trim();
-                if (base === cur || base.indexOf(cur+' ')==0){ li.style.fontWeight='700'; break; }
-              }
-            }catch(err){}
-          }
-          boldList(els.hostPeople); boldList(els.guestPeople);
-        }
-
-        // Enable controls only for current turn
-        var isHost = MS_isHostView();
-        var code = (window.state && (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
-        var pid = code ? localStorage.getItem('ms_pid_'+code) : null;
-        var allowHost=false, allowGuest=false;
-        if (out.current_turn){
-          allowHost = (out.current_turn.role==='host' && isHost);
-          allowGuest = !!( (pid && out.current_turn.participant_id===pid) || (!pid && els.guestName && out.current_turn.name===(els.guestName.value||'').trim()) );
-        } else {
-          allowHost = false; // wait for backend to assign turn
-        }
-        MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
-        MS_setEnabled(document.getElementById('msAnsGuest'), !!allowGuest);
       } else {
         MS_unmount('msAnsHost'); MS_unmount('msAnsGuest');
       }
+
+      // Delegate all enable/disable + bolding to backend-driven applyState
+      if (typeof applyState === 'function') {
+        await applyState(out);
+      }
     }catch(e){}
 
+  
   }
   // === v28: delegated submit handler (surgical) ===
   (function(){
@@ -508,15 +442,6 @@ submit && submit.addEventListener('click', async function(){
       method:'POST', headers, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{}; return pid? { code, participant_id: pid } : { code }; })())
     });
     const out = await r.json().catch(()=>({}));
-    // -- MS v52.5: default gating for Reveal (host-only, backend-driven, works even between rounds)
-    try {
-      if (els && els.nextCardBtn) {
-        var __isHost = MS_isHostView && MS_isHostView();
-        var __can = (__isHost && out && out.status === 'running' && out.can_reveal === true);
-        els.nextCardBtn.disabled = !__can;
-      }
-    } catch (_e) {}
-
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
@@ -537,15 +462,6 @@ submit && submit.addEventListener('click', async function(){
     if(!state.session?.access_token){ log('Please login first'); return; }
     const r = await fetch(state.functionsBase + '/create_game', { method:'POST', headers:{ 'authorization':'Bearer '+state.session.access_token }});
     const out = await r.json().catch(()=>({}));
-    // -- MS v52.5: default gating for Reveal (host-only, backend-driven, works even between rounds)
-    try {
-      if (els && els.nextCardBtn) {
-        var __isHost = MS_isHostView && MS_isHostView();
-        var __can = (__isHost && out && out.status === 'running' && out.can_reveal === true);
-        els.nextCardBtn.disabled = !__can;
-      }
-    } catch (_e) {}
-
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){
       if (out?.error === 'host_has_active_game'){
@@ -568,15 +484,6 @@ submit && submit.addEventListener('click', async function(){
       body: JSON.stringify({ gameId: state.gameId })
     });
     const out = await r.json().catch(()=>({}));
-    // -- MS v52.5: default gating for Reveal (host-only, backend-driven, works even between rounds)
-    try {
-      if (els && els.nextCardBtn) {
-        var __isHost = MS_isHostView && MS_isHostView();
-        var __can = (__isHost && out && out.status === 'running' && out.can_reveal === true);
-        els.nextCardBtn.disabled = !__can;
-      }
-    } catch (_e) {}
-
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ log('Start failed'); log(out); return; }
     log('Start ok'); applyHostGame(out.game||out);
@@ -584,14 +491,6 @@ submit && submit.addEventListener('click', async function(){
 
   // Reveal next
   if (els.nextCardBtn) els.nextCardBtn.addEventListener('click', async ()=>{
-    try {
-      if (els && els.nextCardBtn) els.nextCardBtn.disabled = true;
-      try {
-        var hostCard = document.getElementById('msAnsHost');
-        if (hostCard) hostCard.querySelectorAll('button,textarea').forEach(function(el){ el.disabled = true; el.classList.add('opacity-60'); });
-      } catch (_e) {}
-    } catch (_e) {}
-
     if(!state.session?.access_token){ log('Please login first'); return; }
     if(!state.gameId){ log('No game active'); return; }
     const r = await fetch(state.functionsBase + '/next_question', {
@@ -600,15 +499,6 @@ submit && submit.addEventListener('click', async function(){
       body: JSON.stringify({ gameId: state.gameId })
     });
     const out = await r.json().catch(()=>({}));
-    // -- MS v52.5: default gating for Reveal (host-only, backend-driven, works even between rounds)
-    try {
-      if (els && els.nextCardBtn) {
-        var __isHost = MS_isHostView && MS_isHostView();
-        var __can = (__isHost && out && out.status === 'running' && out.can_reveal === true);
-        els.nextCardBtn.disabled = !__can;
-      }
-    } catch (_e) {}
-
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ log('Next card failed'); log(out); return; }
     const q = out.question || {};
@@ -625,15 +515,6 @@ submit && submit.addEventListener('click', async function(){
       body: JSON.stringify({ gameId: state.gameId, code: state.gameCode })
     });
     const out = await r.json().catch(()=>({}));
-    // -- MS v52.5: default gating for Reveal (host-only, backend-driven, works even between rounds)
-    try {
-      if (els && els.nextCardBtn) {
-        var __isHost = MS_isHostView && MS_isHostView();
-        var __can = (__isHost && out && out.status === 'running' && out.can_reveal === true);
-        els.nextCardBtn.disabled = !__can;
-      }
-    } catch (_e) {}
-
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ log('End failed'); log(out); return; }
     log('End ok'); log(out);
@@ -655,15 +536,6 @@ submit && submit.addEventListener('click', async function(){
       method:'POST', headers, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{}; return pid? { code, name, participant_id: pid } : { code, name }; })())
     });
     const out = await r.json().catch(()=>({}));
-    // -- MS v52.5: default gating for Reveal (host-only, backend-driven, works even between rounds)
-    try {
-      if (els && els.nextCardBtn) {
-        var __isHost = MS_isHostView && MS_isHostView();
-        var __can = (__isHost && out && out.status === 'running' && out.can_reveal === true);
-        els.nextCardBtn.disabled = !__can;
-      }
-    } catch (_e) {}
-
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
@@ -690,15 +562,6 @@ submit && submit.addEventListener('click', async function(){
     try{
       const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
       const out = await r.json().catch(()=>({}));
-    // -- MS v52.5: default gating for Reveal (host-only, backend-driven, works even between rounds)
-    try {
-      if (els && els.nextCardBtn) {
-        var __isHost = MS_isHostView && MS_isHostView();
-        var __can = (__isHost && out && out.status === 'running' && out.can_reveal === true);
-        els.nextCardBtn.disabled = !__can;
-      }
-    } catch (_e) {}
-
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
       if (out && out.game_id) state.gameId = out.game_id;
     }catch{}
@@ -746,3 +609,114 @@ submit && submit.addEventListener('click', async function(){
   })();
 
 })();
+
+  // === v52.6: backend-driven UI state apply (host/guest; reveal/turns strictly from /get_state) ===
+  async function applyState(out) {
+    // Basic guards
+    if (!out || !els) return;
+
+    const isHost = typeof MS_isHostView === "function" ? MS_isHostView() : false;
+    const status = out.status || "idle";
+    const ap = out.answers_progress || { total_active: 0, answered_count: 0 };
+    const roundComplete = !!out.round_complete;
+    const canReveal = !!out.can_reveal;
+
+    // Resolve host participant id from backend response
+    let hostId = null;
+    if (Array.isArray(out.participants)) {
+      const h = out.participants.find(p => p && p.role === "host");
+      hostId = h ? h.id : null;
+    }
+
+    // 1) Default lock state, safe against pre-start and between-rounds
+    if (els.nextCardBtn) {
+      els.nextCardBtn.disabled = true; // Disabled by default unless explicitly allowed below
+    }
+    if (els.hostAnswerBox) {
+      els.hostAnswerBox.disabled = true; // Disabled by default until backend promotes host turn explicitly
+    }
+
+    // 2) Before game start, keep everything locked
+    if (status !== "running") {
+      MS_setTurnBolding(null, out.participants);  // clear bolding if you support it
+      return;
+    }
+
+    // 3) Game is running. Decide UI from backend truth.
+    // 3.a) If the round is complete, host can reveal next card,
+    // but host cannot type yet until the next card is actually revealed
+    if (roundComplete) {
+      // Enable Reveal Next Card only for host, only if backend allows it
+      if (isHost && canReveal && els.nextCardBtn) {
+        els.nextCardBtn.disabled = false;
+      }
+      // Keep host input disabled in round-complete window
+      if (els.hostAnswerBox) {
+        els.hostAnswerBox.disabled = true;
+      }
+      // Bolding should reflect "no active speaker" now
+      MS_setTurnBolding(null, out.participants);
+      return; // nothing else to do in round-complete window
+    }
+
+    // 3.b) Round is NOT complete. Respect backend current_turn
+    const curTurn = out.current_turn || null;
+
+    // Bold the correct name from participants list
+    MS_setTurnBolding(curTurn, out.participants);
+
+    // If it's the host's turn, allow host to answer. Reveal must stay locked.
+    if (isHost && hostId && curTurn === hostId) {
+      if (els.hostAnswerBox) {
+        els.hostAnswerBox.disabled = false;
+      }
+      if (els.nextCardBtn) {
+        els.nextCardBtn.disabled = true; // prevent reveal during an active round
+      }
+      return;
+    }
+
+    // If it's not the host's turn, ensure host cannot reveal or type
+    if (!isHost) {
+      // guest view, nothing to change here beyond bolding
+    } else {
+      if (els.hostAnswerBox) els.hostAnswerBox.disabled = true;
+      if (els.nextCardBtn) els.nextCardBtn.disabled = true;
+    }
+
+    // 4) Extra guard: if answered_count reached total but backend hasn't flipped flags yet,
+    // keep everything locked until we explicitly see round_complete/can_reveal from backend.
+    if (ap.total_active > 0 && ap.answered_count >= ap.total_active) {
+      if (els.nextCardBtn) els.nextCardBtn.disabled = true;
+      if (els.hostAnswerBox) els.hostAnswerBox.disabled = true;
+    }
+  }
+
+  // Helper: bold by current turn (id or name). If your existing MS_setTurnBolding already handles this,
+  // you can keep it as-is. This is a compatibility shim that passes through the value unchanged.
+  function MS_setTurnBolding(currentTurn, participants) {
+    try{
+      // pass-through if you already implemented this elsewhere
+      if (typeof window.MS_setTurnBolding_impl === 'function') {
+        window.MS_setTurnBolding_impl(currentTurn, participants);
+        return;
+      }
+      // Fallback: bold by name if out.current_turn is an object with name
+      var cur = (currentTurn && currentTurn.name) ? currentTurn.name : (typeof currentTurn === 'string' ? null : null);
+      function boldList(ul){
+        try{
+          if(!ul) return;
+          var lis = Array.prototype.slice.call(ul.querySelectorAll('li'));
+          lis.forEach(function(li){ li.style.fontWeight='400'; });
+          if (!cur) return;
+          for (var i=0;i<lis.length;i++){
+            var li = lis[i];
+            var meta = li.querySelector('.meta'); var mtxt = meta? meta.textContent : '';
+            var base = mtxt? li.textContent.replace(mtxt,'').trim() : li.textContent.trim();
+            if (base === cur || base.indexOf(cur+' ')==0){ li.style.fontWeight='700'; break; }
+          }
+        }catch(err){}
+      }
+      boldList(els.hostPeople); boldList(els.guestPeople);
+    }catch(e){}
+  }
