@@ -3,7 +3,7 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v51.0';
+      window.__MS_UI_VERSION = 'v52.0';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -45,7 +45,7 @@
   }catch(e){}
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v51.0';
+  const MS_UI_VERSION = 'v52.0';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -308,6 +308,9 @@ submit && submit.addEventListener('click', async function(){
     try{
       var hasQ = !!(out && out.question && out.question.id);
 
+      // Default: lock reveal until explicitly allowed by backend
+      if (els.nextCardBtn) { try{ els.nextCardBtn.disabled = true; }catch(_e){} }
+
       // Gate Next only after a question exists and progress indicates pending answers
       if (els.nextCardBtn && hasQ && out && out.answers_progress){
       try{
@@ -316,7 +319,7 @@ submit && submit.addEventListener('click', async function(){
         var doneRound = !!(ap && ap.total_active>0 && ap.answered_count>=ap.total_active);
         console.log('[apply] ta=%s ac=%s doneRound=%s', ap&&ap.total_active, ap&&ap.answered_count, doneRound);
         if (doneRound){
-          if (els.nextCardBtn) els.nextCardBtn.disabled = !(isHost && out && out.status==='running' && (out.can_reveal===true || true));
+          if (els.nextCardBtn) els.nextCardBtn.disabled = !(isHost && out && out.status==='running' && (out.can_reveal===true));
           var hostBox=document.getElementById('msAnsHost'); if(hostBox){ hostBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
           var guestBox=document.getElementById('msAnsGuest'); if(guestBox){ guestBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
           try{
@@ -333,7 +336,7 @@ submit && submit.addEventListener('click', async function(){
             els.nextCardBtn.disabled = true;
           } else {
             var __host = MS_isHostView();
-            if (els.nextCardBtn) els.nextCardBtn.disabled = !(__host && out && out.status==='running' && (out.can_reveal===true || true));
+            if (els.nextCardBtn) els.nextCardBtn.disabled = !(__host && out && out.status==='running' && (out.can_reveal===true));
           }
         }
       }
@@ -373,7 +376,7 @@ submit && submit.addEventListener('click', async function(){
           allowHost = (out.current_turn.role==='host' && isHost);
           allowGuest = !!( (pid && out.current_turn.participant_id===pid) || (!pid && els.guestName && out.current_turn.name===(els.guestName.value||'').trim()) );
         } else {
-          allowHost = isHost; // If backend hasn't sent turn yet, allow host
+          allowHost = isHost && !( (out && out.round_complete) || (ap && ap.total_active>0 && ap.answered_count>=ap.total_active) || (out && out.can_reveal===true) ); // Host blocked during round-complete window
         }
         MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
         MS_setEnabled(document.getElementById('msAnsGuest'), !!allowGuest);
@@ -548,6 +551,9 @@ submit && submit.addEventListener('click', async function(){
 
   // Reveal next
   if (els.nextCardBtn) els.nextCardBtn.addEventListener('click', async ()=>{
+    try{ if(els.nextCardBtn) els.nextCardBtn.disabled = true; }catch(_e){}
+    try{ MS_setEnabled(document.getElementById('msAnsHost'), false); }catch(_e){}
+
     if(!state.session?.access_token){ log('Please login first'); return; }
     if(!state.gameId){ log('No game active'); return; }
     const r = await fetch(state.functionsBase + '/next_question', {
