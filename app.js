@@ -3,7 +3,7 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v52.0';
+      window.__MS_UI_VERSION = 'v52.1';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -45,7 +45,7 @@
   }catch(e){}
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v52.0';
+  const MS_UI_VERSION = 'v52.1';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -288,6 +288,18 @@ submit && submit.addEventListener('click', async function(){
     if(!state.functionsBase || !state.gameCode) return;
     const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
     const out = await r.json().catch(()=>({}));
+    // Default control states based on backend, host-only logic
+    try {
+      if (els.nextCardBtn) els.nextCardBtn.disabled = true; // locked by default
+      // Enable reveal at start-of-round when backend allows it
+      try {
+        var __isHost = MS_isHostView && MS_isHostView();
+        if (__isHost && out && out.status === 'running' && out.can_reveal === true) {
+          els.nextCardBtn && (els.nextCardBtn.disabled = false);
+        }
+      } catch(_e){}
+    } catch(_e){}
+
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     // Card
     const q = out?.question; setText(els.questionText, q?.text || '—'); setText(els.questionClar, q?.clarification || '');
@@ -308,9 +320,6 @@ submit && submit.addEventListener('click', async function(){
     try{
       var hasQ = !!(out && out.question && out.question.id);
 
-      // Default: lock reveal until explicitly allowed by backend
-      if (els.nextCardBtn) { try{ els.nextCardBtn.disabled = true; }catch(_e){} }
-
       // Gate Next only after a question exists and progress indicates pending answers
       if (els.nextCardBtn && hasQ && out && out.answers_progress){
       try{
@@ -319,6 +328,7 @@ submit && submit.addEventListener('click', async function(){
         var doneRound = !!(ap && ap.total_active>0 && ap.answered_count>=ap.total_active);
         console.log('[apply] ta=%s ac=%s doneRound=%s', ap&&ap.total_active, ap&&ap.answered_count, doneRound);
         if (doneRound){
+          // Round complete window: keep inputs disabled, allow reveal only from backend flags
           if (els.nextCardBtn) els.nextCardBtn.disabled = !(isHost && out && out.status==='running' && (out.can_reveal===true));
           var hostBox=document.getElementById('msAnsHost'); if(hostBox){ hostBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
           var guestBox=document.getElementById('msAnsGuest'); if(guestBox){ guestBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
@@ -348,21 +358,49 @@ submit && submit.addEventListener('click', async function(){
         var guestCard = MS_mountAnsCard(gc, 'msAnsGuest');
         MS_wireAnsCard(hostCard); MS_wireAnsCard(guestCard);
 
-        // Bold current player by name
-        if (out.current_turn && (els.hostPeople || els.guestPeople)){
-          var cur = out.current_turn.name;
-          function boldList(ul){
-            try{
-              if(!ul) return;
-              var lis = Array.prototype.slice.call(ul.querySelectorAll('li'));
-              lis.forEach(function(li){ li.style.fontWeight='400'; });
-              for (var i=0;i<lis.length;i++){
-                var li = lis[i];
-                var meta = li.querySelector('.meta'); var mtxt = meta? meta.textContent : '';
-                var base = mtxt? li.textContent.replace(mtxt,'').trim() : li.textContent.trim();
-                if (base === cur || base.indexOf(cur+' ')==0){ li.style.fontWeight='700'; break; }
-              }
-            }catch(err){}
+        
+        // Bold current player by id or name, depending on backend shape
+        (function(){
+          try{
+            var curId = null, curName = null, curRole = null;
+            if (out.current_turn){
+              if (typeof out.current_turn === 'string'){ curId = out.current_turn; }
+              else if (typeof out.current_turn === 'object'){ curId = out.current_turn.participant_id || out.current_turn.id || null; curName = out.current_turn.name || null; curRole = out.current_turn.role || null; }
+            }
+            function boldBy(ul){
+              try{
+                if(!ul) return;
+                var lis = Array.prototype.slice.call(ul.querySelectorAll('li'));
+                lis.forEach(function(li){ li.style.fontWeight='400'; li.removeAttribute('data-pid'); });
+                // try match by id first
+                if (Array.isArray(ppl)){
+                  for (var i=0;i<ppl.length;i++){
+                    var p = ppl[i]; if (!p) continue;
+                    var match = false;
+                    if (curId && p.id === curId) match = true;
+                    else if (!curId && curName && p.name === curName) match = true;
+                    if (match){
+                      // find li containing this name
+                      for (var k=0;k<lis.length;k++){
+                        var li = lis[k];
+                        var meta = li.querySelector('.meta'); var mtxt = meta? meta.textContent : '';
+                        var base = mtxt? li.textContent.replace(mtxt,'').trim() : li.textContent.trim();
+                        if (base === p.name || base.indexOf(p.name+' ')==0){
+                          li.style.fontWeight='700';
+                          li.setAttribute('data-pid', p.id || '');
+                          break;
+                        }
+                      }
+                      break;
+                    }
+                  }
+                }
+              }catch(_e){}
+            }
+            boldBy(els.hostPeople); boldBy(els.guestPeople);
+          }catch(_e){}
+        })();
+}catch(err){}
           }
           boldList(els.hostPeople); boldList(els.guestPeople);
         }
@@ -376,7 +414,7 @@ submit && submit.addEventListener('click', async function(){
           allowHost = (out.current_turn.role==='host' && isHost);
           allowGuest = !!( (pid && out.current_turn.participant_id===pid) || (!pid && els.guestName && out.current_turn.name===(els.guestName.value||'').trim()) );
         } else {
-          allowHost = isHost && !( (out && out.round_complete) || (ap && ap.total_active>0 && ap.answered_count>=ap.total_active) || (out && out.can_reveal===true) ); // Host blocked during round-complete window
+          allowHost = false; // wait for backend to assign turn
         }
         MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
         MS_setEnabled(document.getElementById('msAnsGuest'), !!allowGuest);
@@ -502,6 +540,18 @@ submit && submit.addEventListener('click', async function(){
       method:'POST', headers, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{}; return pid? { code, participant_id: pid } : { code }; })())
     });
     const out = await r.json().catch(()=>({}));
+    // Default control states based on backend, host-only logic
+    try {
+      if (els.nextCardBtn) els.nextCardBtn.disabled = true; // locked by default
+      // Enable reveal at start-of-round when backend allows it
+      try {
+        var __isHost = MS_isHostView && MS_isHostView();
+        if (__isHost && out && out.status === 'running' && out.can_reveal === true) {
+          els.nextCardBtn && (els.nextCardBtn.disabled = false);
+        }
+      } catch(_e){}
+    } catch(_e){}
+
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
@@ -522,6 +572,18 @@ submit && submit.addEventListener('click', async function(){
     if(!state.session?.access_token){ log('Please login first'); return; }
     const r = await fetch(state.functionsBase + '/create_game', { method:'POST', headers:{ 'authorization':'Bearer '+state.session.access_token }});
     const out = await r.json().catch(()=>({}));
+    // Default control states based on backend, host-only logic
+    try {
+      if (els.nextCardBtn) els.nextCardBtn.disabled = true; // locked by default
+      // Enable reveal at start-of-round when backend allows it
+      try {
+        var __isHost = MS_isHostView && MS_isHostView();
+        if (__isHost && out && out.status === 'running' && out.can_reveal === true) {
+          els.nextCardBtn && (els.nextCardBtn.disabled = false);
+        }
+      } catch(_e){}
+    } catch(_e){}
+
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){
       if (out?.error === 'host_has_active_game'){
@@ -544,6 +606,18 @@ submit && submit.addEventListener('click', async function(){
       body: JSON.stringify({ gameId: state.gameId })
     });
     const out = await r.json().catch(()=>({}));
+    // Default control states based on backend, host-only logic
+    try {
+      if (els.nextCardBtn) els.nextCardBtn.disabled = true; // locked by default
+      // Enable reveal at start-of-round when backend allows it
+      try {
+        var __isHost = MS_isHostView && MS_isHostView();
+        if (__isHost && out && out.status === 'running' && out.can_reveal === true) {
+          els.nextCardBtn && (els.nextCardBtn.disabled = false);
+        }
+      } catch(_e){}
+    } catch(_e){}
+
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ log('Start failed'); log(out); return; }
     log('Start ok'); applyHostGame(out.game||out);
@@ -551,8 +625,13 @@ submit && submit.addEventListener('click', async function(){
 
   // Reveal next
   if (els.nextCardBtn) els.nextCardBtn.addEventListener('click', async ()=>{
-    try{ if(els.nextCardBtn) els.nextCardBtn.disabled = true; }catch(_e){}
-    try{ MS_setEnabled(document.getElementById('msAnsHost'), false); }catch(_e){}
+    try{
+      if (els.nextCardBtn) els.nextCardBtn.disabled = true;
+      try {
+        var hostCard = document.getElementById('msAnsHost');
+        if (hostCard){ hostCard.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
+      } catch(_e){}
+    }catch(_e){};
 
     if(!state.session?.access_token){ log('Please login first'); return; }
     if(!state.gameId){ log('No game active'); return; }
@@ -562,6 +641,18 @@ submit && submit.addEventListener('click', async function(){
       body: JSON.stringify({ gameId: state.gameId })
     });
     const out = await r.json().catch(()=>({}));
+    // Default control states based on backend, host-only logic
+    try {
+      if (els.nextCardBtn) els.nextCardBtn.disabled = true; // locked by default
+      // Enable reveal at start-of-round when backend allows it
+      try {
+        var __isHost = MS_isHostView && MS_isHostView();
+        if (__isHost && out && out.status === 'running' && out.can_reveal === true) {
+          els.nextCardBtn && (els.nextCardBtn.disabled = false);
+        }
+      } catch(_e){}
+    } catch(_e){}
+
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ log('Next card failed'); log(out); return; }
     const q = out.question || {};
@@ -578,6 +669,18 @@ submit && submit.addEventListener('click', async function(){
       body: JSON.stringify({ gameId: state.gameId, code: state.gameCode })
     });
     const out = await r.json().catch(()=>({}));
+    // Default control states based on backend, host-only logic
+    try {
+      if (els.nextCardBtn) els.nextCardBtn.disabled = true; // locked by default
+      // Enable reveal at start-of-round when backend allows it
+      try {
+        var __isHost = MS_isHostView && MS_isHostView();
+        if (__isHost && out && out.status === 'running' && out.can_reveal === true) {
+          els.nextCardBtn && (els.nextCardBtn.disabled = false);
+        }
+      } catch(_e){}
+    } catch(_e){}
+
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ log('End failed'); log(out); return; }
     log('End ok'); log(out);
@@ -599,6 +702,18 @@ submit && submit.addEventListener('click', async function(){
       method:'POST', headers, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{}; return pid? { code, name, participant_id: pid } : { code, name }; })())
     });
     const out = await r.json().catch(()=>({}));
+    // Default control states based on backend, host-only logic
+    try {
+      if (els.nextCardBtn) els.nextCardBtn.disabled = true; // locked by default
+      // Enable reveal at start-of-round when backend allows it
+      try {
+        var __isHost = MS_isHostView && MS_isHostView();
+        if (__isHost && out && out.status === 'running' && out.can_reveal === true) {
+          els.nextCardBtn && (els.nextCardBtn.disabled = false);
+        }
+      } catch(_e){}
+    } catch(_e){}
+
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
@@ -625,6 +740,18 @@ submit && submit.addEventListener('click', async function(){
     try{
       const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(state.gameCode));
       const out = await r.json().catch(()=>({}));
+    // Default control states based on backend, host-only logic
+    try {
+      if (els.nextCardBtn) els.nextCardBtn.disabled = true; // locked by default
+      // Enable reveal at start-of-round when backend allows it
+      try {
+        var __isHost = MS_isHostView && MS_isHostView();
+        if (__isHost && out && out.status === 'running' && out.can_reveal === true) {
+          els.nextCardBtn && (els.nextCardBtn.disabled = false);
+        }
+      } catch(_e){}
+    } catch(_e){}
+
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
       if (out && out.game_id) state.gameId = out.game_id;
     }catch{}
