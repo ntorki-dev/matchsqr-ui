@@ -3,9 +3,11 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v52.1';
+      window.__MS_UI_VERSION = 'v52.2';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
+    }
+  }catch(e){}
 
   // v36: stamp gid/qid on every /get_state response (no code dependency)
   (function(){
@@ -40,12 +42,10 @@
     }catch(_e){}
   })();
       var _j = document.getElementById('joinLog');
-      if (_j) _j.textContent = (_j.textContent? _j.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
-    }
-  }catch(e){}
-
-  // === UI build version ===
-  const MS_UI_VERSION = 'v52.1';
+      if (_j) _j.textContent = (_j.textContent? _j.textContent+'
+':'') + 'UI version: ' + window.__MS_UI_VERSION;
+// === UI build version ===
+  const MS_UI_VERSION = 'v52.2';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
