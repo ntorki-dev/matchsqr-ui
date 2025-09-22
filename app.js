@@ -318,7 +318,8 @@ submit && submit.addEventListener('click', async function(){
         var doneRound = !!(ap && ap.total_active>0 && ap.answered_count>=ap.total_active);
         console.log('[apply] ta=%s ac=%s doneRound=%s', ap&&ap.total_active, ap&&ap.answered_count, doneRound);
         if (doneRound){
-          if (els.nextCardBtn) els.nextCardBtn.disabled = !(isHost && state.status==='running' && state.question);
+          var __ms_lockedAfterRound = true;
+          if (els.nextCardBtn) els.nextCardBtn.disabled = !(isHost && state.status==='running' && hasQ);
           var hostBox=document.getElementById('msAnsHost'); if(hostBox){ hostBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
           var guestBox=document.getElementById('msAnsGuest'); if(guestBox){ guestBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
           try{
@@ -363,6 +364,7 @@ submit && submit.addEventListener('click', async function(){
 
         // Enable controls only for current turn
         var isHost = MS_isHostView();
+        var __ms_lockedAfterRound = (typeof __ms_lockedAfterRound!=='undefined' && __ms_lockedAfterRound) || false;
         var code = (window.state && (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
         var pid = code ? localStorage.getItem('ms_pid_'+code) : null;
         var allowHost=false, allowGuest=false;
@@ -372,6 +374,7 @@ submit && submit.addEventListener('click', async function(){
         } else {
           allowHost = isHost; // If backend hasn't sent turn yet, allow host
         }
+        if (__ms_lockedAfterRound){ allowHost=false; allowGuest=false; }
         MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
         MS_setEnabled(document.getElementById('msAnsGuest'), !!allowGuest);
       } else {
