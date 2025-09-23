@@ -3,7 +3,7 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v48.5';
+      window.__MS_UI_VERSION = 'v48.6';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -45,7 +45,7 @@
   }catch(e){}
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v48.5';
+  const MS_UI_VERSION = 'v48.6';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -314,7 +314,8 @@ submit && submit.addEventListener('click', async function(){
     els.hostPeople.innerHTML  = ppl.map(p=>{
       var nm = p.name || '';
       if (p.role === 'host' && state.hostDisplayName) nm = state.hostDisplayName;
-      return `<li>${nm} <span class="meta">(${p.role})</span></li>`;
+      var pidAttr = p.id ? ` data-pid="${p.id}"` : '';
+      return `<li${pidAttr}>${nm} <span class="meta">(${p.role})</span></li>`;
     }).join('') || '<li class="meta">No one yet</li>';
     els.guestPeople.innerHTML = els.hostPeople.innerHTML;
     const count = Array.isArray(ppl) ? ppl.length : 0;
@@ -386,7 +387,8 @@ submit && submit.addEventListener('click', async function(){
 
         // Bold current player by name
         if (out.current_turn && (els.hostPeople || els.guestPeople)){
-          var cur = out.current_turn.name;
+          var curPid = out.current_turn.participant_id || null;
+          var curName = out.current_turn.name;
           function boldList(ul){
             try{
               if(!ul) return;
@@ -394,9 +396,13 @@ submit && submit.addEventListener('click', async function(){
               lis.forEach(function(li){ li.style.fontWeight='400'; });
               for (var i=0;i<lis.length;i++){
                 var li = lis[i];
-                var meta = li.querySelector('.meta'); var mtxt = meta? meta.textContent : '';
-                var base = mtxt? li.textContent.replace(mtxt,'').trim() : li.textContent.trim();
-                if (base === cur || base.indexOf(cur+' ')==0){ li.style.fontWeight='700'; break; }
+                var pid = li.getAttribute('data-pid');
+                if (curPid && pid && pid===String(curPid)){ li.style.fontWeight='700'; break; }
+                if (!curPid){
+                  var meta = li.querySelector('.meta'); var mtxt = meta? meta.textContent : '';
+                  var base = mtxt? li.textContent.replace(mtxt,'').trim() : li.textContent.trim();
+                  if (base === curName || base.indexOf(curName+' ')==0){ li.style.fontWeight='700'; break; }
+                }
               }
             }catch(err){}
           }
