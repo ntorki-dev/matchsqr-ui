@@ -3,7 +3,7 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v48.3';
+      window.__MS_UI_VERSION = 'v48.4';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -45,7 +45,7 @@
   }catch(e){}
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v48.3';
+  const MS_UI_VERSION = 'v48.4';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -245,6 +245,18 @@ submit && submit.addEventListener('click', async function(){
     roomPollHandle: null,
     isHostInJoin: false
   };
+  // Resolve and cache host display name from Supabase Auth profile
+  async function refreshHostDisplayName(){
+    try{
+      if (!state.supa) return;
+      const { data } = await state.supa.auth.getUser();
+      const user = data && data.user;
+      const meta = (user && user.user_metadata) || {};
+      const email = user && user.email || '';
+      state.hostDisplayName = meta.full_name || meta.name || meta.display_name || (email ? email.split('@')[0] : null) || 'Host';
+    }catch(e){ /* ignore */ }
+  }
+
 
   // Config/Supabase
   async function loadConfig(){
@@ -299,11 +311,36 @@ submit && submit.addEventListener('click', async function(){
     if (out?.status==='running' && endsIso) { startHostCountdown(endsIso); startGuestCountdown(endsIso); } else { try { clearHostCountdown(); } catch(e) {} }
     // Participants + counts
     const ppl = out?.participants || [];
-    els.hostPeople.innerHTML  = ppl.map(p=>`<li>${p.name} <span class="meta">(${p.role})</span></li>`).join('') || '<li class="meta">No one yet</li>';
+    els.hostPeople.innerHTML  = ppl.map(p=>{
+      var nm = p.name || '';
+      if (p.role === 'host' && state.hostDisplayName) nm = state.hostDisplayName;
+      return `<li>${nm} <span class="meta">(${p.role})</span></li>`;
+    }).join('') || '<li class="meta">No one yet</li>';
     els.guestPeople.innerHTML = els.hostPeople.innerHTML;
     const count = Array.isArray(ppl) ? ppl.length : 0;
     if (els.hostPeopleCount) els.hostPeopleCount.textContent = String(count);
     if (els.guestPeopleCount) els.guestPeopleCount.textContent = String(count);
+    // Min players gate for Start
+    try{
+      if (els.startGameBtn){
+        if (out && out.status !== 'running'){
+          els.startGameBtn.disabled = count < 2;
+          els.startGameBtn.title = count < 2 ? 'At least 2 players required to start' : '';
+        }
+      }
+    }catch(_){}
+    // Max players gate on Join
+    try{
+      if (els.joinRoomBtn){
+        if (count >= 8 && !state.isHostInJoin){
+          els.joinRoomBtn.disabled = true;
+          if (els.joinLog) els.joinLog.textContent = 'Room is full, maximum 8 players.';
+        }else{
+          els.joinRoomBtn.disabled = false;
+        }
+      }
+    }catch(_){}
+
     // ===== MS v17: turn/answer UI (minimal, non-invasive) =====
     try{
       var hasQ = !!(out && out.question && out.question.id);
@@ -370,7 +407,7 @@ submit && submit.addEventListener('click', async function(){
         var isHost = MS_isHostView();
         var code = (window.state && (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
         var pid = code ? localStorage.getItem('ms_pid_'+code) : null;
-        // Recompute round completion to avoid re-enabling inputs between rounds
+        // Inter-round lock to avoid re-enabling inputs between rounds
         var ap2 = out && out.answers_progress;
         var doneRound2 = !!(ap2 && ap2.total_active>0 && ap2.answered_count>=ap2.total_active);
         var allowHost=false, allowGuest=false;
@@ -489,7 +526,7 @@ submit && submit.addEventListener('click', async function(){
     const email=(els.hostEmail.value||'').trim(), password=els.hostPassword.value||'';
     const { data, error } = await state.supa.auth.signInWithPassword({ email, password });
     if (error){ log('Login failed: '+error.message); return; }
-    state.session = data.session; log('Login ok');
+    state.session = data.session; log('Login ok'); try{ refreshHostDisplayName(); }catch(_){}
   });
 
   // Auto-join as host helper
@@ -502,7 +539,11 @@ submit && submit.addEventListener('click', async function(){
     if (state.session?.access_token) headers['authorization'] = 'Bearer ' + state.session.access_token;
 
     const r = await fetch(state.functionsBase + '/join_game_guest', {
-      method:'POST', headers, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{}; return pid? { code, participant_id: pid } : { code }; })())
+      method:'POST', headers, body: JSON.stringify((()=>{
+        if (state.session?.access_token) return { code };
+        let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{};
+        return pid? { code, participant_id: pid } : { code };
+      })())
     });
     const out = await r.json().catch(()=>({}));
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
@@ -511,7 +552,7 @@ submit && submit.addEventListener('click', async function(){
     const isHost = !!out?.is_host;
     if (!isHost){ if(els.joinLog) els.joinLog.textContent='This code belongs to an existing room, but you are not the host.'; return; }
 
-    state.isHostInJoin = true;
+    state.isHostInJoin = true; try{ refreshHostDisplayName(); }catch(_){}
     state.gameId  = out.game_id || state.gameId;
     state.gameCode = code;
     setText(els.gameIdOut, state.gameId || '—'); setText(els.gameCodeOut, code);
@@ -603,7 +644,7 @@ submit && submit.addEventListener('click', async function(){
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
     const isHost = !!out?.is_host;
-    state.isHostInJoin = isHost;
+    state.isHostInJoin = isHost; if (isHost) { try{ refreshHostDisplayName(); }catch(_){}}
     state.gameCode = code;
 
     if (isHost){
