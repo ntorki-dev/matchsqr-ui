@@ -3,7 +3,7 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v48.9';
+      window.__MS_UI_VERSION = 'v48.3.1';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -45,7 +45,7 @@
   }catch(e){}
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v48.9';
+  const MS_UI_VERSION = 'v48.3.1';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -245,18 +245,6 @@ submit && submit.addEventListener('click', async function(){
     roomPollHandle: null,
     isHostInJoin: false
   };
-  // Resolve and cache host display name from Supabase Auth profile
-  async function refreshHostDisplayName(){
-    try{
-      if (!state.supa) return;
-      const { data } = await state.supa.auth.getUser();
-      const user = data && data.user;
-      const meta = (user && user.user_metadata) || {};
-      const email = user && user.email || '';
-      state.hostDisplayName = meta.full_name || meta.name || meta.display_name || (email ? email.split('@')[0] : null) || 'Host';
-    }catch(e){ /* ignore */ }
-  }
-
 
   // Config/Supabase
   async function loadConfig(){
@@ -312,17 +300,16 @@ submit && submit.addEventListener('click', async function(){
     // Participants + counts
     const ppl = out?.participants || [];
     var __listHTML = (ppl && ppl.length) ? ppl.map(p=>{
-      var nm = p.name || '';
-      if (p.role === 'host' && state.hostDisplayName) nm = state.hostDisplayName;
-      var pidAttr = (p && p.id) ? ` data-pid="${p.id}"` : '';
-      return `<li${pidAttr}>${nm} <span class="meta">(${p.role})</span></li>`;
-    }).join('') : '<li class="meta">No one yet</li>';
-    els.hostPeople.innerHTML  = __listHTML;
+    var pidAttr = (p && p.id) ? ` data-pid="${p.id}"` : '';
+    var nm = p && p.name ? p.name : '';
+    return `<li${pidAttr}>${nm} <span class="meta">(${p.role})</span></li>`;
+  }).join('') : '<li class="meta">No one yet</li>';
+  els.hostPeople.innerHTML  = __listHTML;
     els.guestPeople.innerHTML = __listHTML;
     const count = Array.isArray(ppl) ? ppl.length : 0;
     if (els.hostPeopleCount) els.hostPeopleCount.textContent = String(count);
     if (els.guestPeopleCount) els.guestPeopleCount.textContent = String(count);
-    // Min players gate for Start
+    // UI gate: at least 2 players to start when not running
     try{
       if (els.startGameBtn){
         if (out && out.status !== 'running'){
@@ -330,19 +317,7 @@ submit && submit.addEventListener('click', async function(){
           els.startGameBtn.title = count < 2 ? 'At least 2 players required to start' : '';
         }
       }
-    }catch(_){}
-    // Max players gate on Join
-    try{
-      if (els.joinRoomBtn){
-        if (count >= 8 && !state.isHostInJoin){
-          els.joinRoomBtn.disabled = true;
-          if (els.joinLog) els.joinLog.textContent = 'Room is full, maximum 8 players.';
-        }else{
-          els.joinRoomBtn.disabled = false;
-        }
-      }
-    }catch(_){}
-
+    }catch(_e){}
     // ===== MS v17: turn/answer UI (minimal, non-invasive) =====
     try{
       var hasQ = !!(out && out.question && out.question.id);
@@ -363,8 +338,8 @@ submit && submit.addEventListener('click', async function(){
         console.log('[apply] ta=%s ac=%s doneRound=%s', ap&&ap.total_active, ap&&ap.answered_count, doneRound);
         if (doneRound){
           if (els.nextCardBtn) els.nextCardBtn.disabled = !(isHost && state.status==='running');
-                    var hostBox=document.getElementById('msAnsHost'); if(hostBox){ hostBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
-                    var guestBox=document.getElementById('msAnsGuest'); if(guestBox){ guestBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
+          var hostBox=document.getElementById('msAnsHost'); if(hostBox){ hostBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
+          var guestBox=document.getElementById('msAnsGuest'); if(guestBox){ guestBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
           try{
             var list = document.getElementById('participantsList');
             if (list) { list.querySelectorAll('[data-pid]').forEach(function(li){ li.style.fontWeight = 'normal'; }); }
@@ -387,27 +362,27 @@ submit && submit.addEventListener('click', async function(){
         MS_wireAnsCard(hostCard); MS_wireAnsCard(guestCard);
 
         // Bold current player by participant_id
-        if (out.current_turn){
+        if (out.current_turn && (els.hostPeople || els.guestPeople)){
           var curPid = out.current_turn.participant_id || null;
           try{
             function boldByPid(ul, pid){
-              if (!ul || !pid) return;
-              var items = ul.querySelectorAll('li[data-pid]');
-              items.forEach(li => { li.style.fontWeight = '400'; });
-              var el = ul.querySelector('li[data-pid="'+pid+'"]');
-              if (el) el.style.fontWeight = '700';
+              if (!ul) return;
+              var lis = Array.prototype.slice.call(ul.querySelectorAll('li'));
+              lis.forEach(function(li){ li.style.fontWeight='400'; });
+              if (!pid) return;
+              var target = ul.querySelector('li[data-pid="'+pid+'"]');
+              if (target) target.style.fontWeight='700';
             }
             boldByPid(els.hostPeople, curPid);
             boldByPid(els.guestPeople, curPid);
-          }catch(_e){}
-        }
+          }catch(err){}
         }
 
         // Enable controls only for current turn
         var isHost = MS_isHostView();
         var code = (window.state && (state.gameCode || (els.joinCode&&els.joinCode.value||'').trim())) || '';
         var pid = code ? localStorage.getItem('ms_pid_'+code) : null;
-        // Inter-round lock to avoid re-enabling inputs between rounds
+        // Recompute round completion to avoid re-enabling inputs between rounds
         var ap2 = out && out.answers_progress;
         var doneRound2 = !!(ap2 && ap2.total_active>0 && ap2.answered_count>=ap2.total_active);
         var allowHost=false, allowGuest=false;
@@ -526,7 +501,7 @@ submit && submit.addEventListener('click', async function(){
     const email=(els.hostEmail.value||'').trim(), password=els.hostPassword.value||'';
     const { data, error } = await state.supa.auth.signInWithPassword({ email, password });
     if (error){ log('Login failed: '+error.message); return; }
-    state.session = data.session; log('Login ok'); try{ refreshHostDisplayName(); }catch(_){}
+    state.session = data.session; log('Login ok');
   });
 
   // Auto-join as host helper
@@ -539,12 +514,7 @@ submit && submit.addEventListener('click', async function(){
     if (state.session?.access_token) headers['authorization'] = 'Bearer ' + state.session.access_token;
 
     const r = await fetch(state.functionsBase + '/join_game_guest', {
-      method:'POST', headers, body: JSON.stringify((()=>{
-        let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{};
-        const payload = pid ? { code, participant_id: pid } : { code };
-        if (state.hostDisplayName) payload.name = state.hostDisplayName;
-        return payload;
-      })())
+      method:'POST', headers, body: JSON.stringify((()=>{ let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{}; return pid? { code, participant_id: pid } : { code }; })())
     });
     const out = await r.json().catch(()=>({}));
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
@@ -553,7 +523,7 @@ submit && submit.addEventListener('click', async function(){
     const isHost = !!out?.is_host;
     if (!isHost){ if(els.joinLog) els.joinLog.textContent='This code belongs to an existing room, but you are not the host.'; return; }
 
-    state.isHostInJoin = true; try{ refreshHostDisplayName(); }catch(_){}
+    state.isHostInJoin = true;
     state.gameId  = out.game_id || state.gameId;
     state.gameCode = code;
     setText(els.gameIdOut, state.gameId || '—'); setText(els.gameCodeOut, code);
@@ -565,24 +535,18 @@ submit && submit.addEventListener('click', async function(){
   // Create
   if (els.createGameBtn) els.createGameBtn.addEventListener('click', async ()=>{
     if(!state.session?.access_token){ log('Please login first'); return; }
-    try{
-    const { data, error } = await state.supa.functions.invoke('create_game', {
-      body: { name: state.hostDisplayName || null }
-    });
-    if (error){
-      if (error.message === 'host_has_active_game' && data && data.code){
-        log('Active game exists; auto-joining as host with code ' + data.code);
-        await autoJoinAsHost(data.code);
+    const r = await fetch(state.functionsBase + '/create_game', { method:'POST', headers:{ 'authorization':'Bearer '+state.session.access_token }});
+    const out = await r.json().catch(()=>({}));
+    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
+    if (!r.ok){
+      if (out?.error === 'host_has_active_game'){
+        log('Active game exists; auto-joining as host with code '+out.code);
+        await autoJoinAsHost(out.code);
         return;
       }
-      log('Create failed'); log(error); return;
+      log('Create failed'); log(out); return;
     }
-    const out = data || {};
-    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     log('Create ok'); applyHostGame(out); startHeartbeat();
-  }catch(e){
-    log('Create failed'); log(String(e));
-  }
   });
 
   // Start
@@ -651,7 +615,7 @@ submit && submit.addEventListener('click', async function(){
     if (!r.ok){ if(els.joinLog) els.joinLog.textContent='Join failed: '+JSON.stringify(out); return; }
 
     const isHost = !!out?.is_host;
-    state.isHostInJoin = isHost; if (isHost) { try{ refreshHostDisplayName(); }catch(_){}}
+    state.isHostInJoin = isHost;
     state.gameCode = code;
 
     if (isHost){
