@@ -3,7 +3,7 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v48.0';
+      window.__MS_UI_VERSION = 'v48.1';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -290,7 +290,7 @@ submit && submit.addEventListener('click', async function(){
     const out = await r.json().catch(()=>({}));
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     // Card
-    const q = out?.question; state.question = q || null; setText(els.questionText, q?.text || '—'); setText(els.questionClar, q?.clarification || '');
+    const q = out?.question; setText(els.questionText, q?.text || '—'); setText(els.questionClar, q?.clarification || '');
     setText(els.gQuestionText, q?.text || '—'); setText(els.gQuestionClar, q?.clarification || '');
     // Timer/status
     const endsIso = out?.ends_at || null;
@@ -307,11 +307,6 @@ submit && submit.addEventListener('click', async function(){
     // ===== MS v17: turn/answer UI (minimal, non-invasive) =====
     try{
       var hasQ = !!(out && out.question && out.question.id);
-      // MS v48: baseline gating for Next button
-      if (els.nextCardBtn && (!out || out.status!=='running')) { try{ els.nextCardBtn.disabled = true; }catch(e){} }
-      // Allow first reveal only after game starts and only for host
-      try{ if (els.nextCardBtn && out && out.status==='running' && !hasQ) { var _isHost = (out && out.me && out.me.role==='host') || MS_isHostView(); els.nextCardBtn.disabled = !_isHost; } }catch(_e){}
-
 
       // Gate Next only after a question exists and progress indicates pending answers
       if (els.nextCardBtn && hasQ && out && out.answers_progress){
@@ -319,11 +314,11 @@ submit && submit.addEventListener('click', async function(){
         var ap = out && out.answers_progress;
         var me = out && out.me;
         var meRole = me ? me.role : null;
-        var isHost = (meRole === 'host'); isHost = isHost || MS_isHostView();
+        var isHost = (meRole === 'host');
         var doneRound = !!(ap && ap.total_active>0 && ap.answered_count>=ap.total_active);
         console.log('[apply] ta=%s ac=%s doneRound=%s', ap&&ap.total_active, ap&&ap.answered_count, doneRound);
         if (doneRound){
-          if (els.nextCardBtn) els.nextCardBtn.disabled = !(isHost && state.status==='running');
+          if (els.nextCardBtn) els.nextCardBtn.disabled = !(isHost && state.status==='running' && state.question);
           var hostBox=document.getElementById('msAnsHost'); if(hostBox){ hostBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
           var guestBox=document.getElementById('msAnsGuest'); if(guestBox){ guestBox.querySelectorAll('button,textarea').forEach(function(el){ el.disabled=true; el.classList.add('opacity-60'); }); }
           try{
@@ -377,7 +372,14 @@ submit && submit.addEventListener('click', async function(){
         } else {
           allowHost = isHost; // If backend hasn't sent turn yet, allow host
         }
-        MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
+        
+        // After a round completes, keep all answer areas disabled until the host reveals the next card
+        try{
+          var ap2 = out && out.answers_progress;
+          var roundDone = !!(ap2 && ap2.total_active > 0 && ap2.answered_count >= ap2.total_active);
+          if (roundDone) { allowHost = false; allowGuest = false; }
+        }catch(_e){}
+MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
         MS_setEnabled(document.getElementById('msAnsGuest'), !!allowGuest);
       } else {
         MS_unmount('msAnsHost'); MS_unmount('msAnsGuest');
