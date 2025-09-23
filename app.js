@@ -3,7 +3,7 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v48.4';
+      window.__MS_UI_VERSION = 'v48.5';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -45,7 +45,7 @@
   }catch(e){}
 
   // === UI build version ===
-  const MS_UI_VERSION = 'v48.4';
+  const MS_UI_VERSION = 'v48.5';
   try {
     const h = document.getElementById('hostLog'); if (h) h.textContent = (h.textContent? h.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
     const j = document.getElementById('joinLog'); if (j) j.textContent = (j.textContent? j.textContent+'\n':'') + 'UI version: ' + MS_UI_VERSION;
@@ -540,9 +540,10 @@ submit && submit.addEventListener('click', async function(){
 
     const r = await fetch(state.functionsBase + '/join_game_guest', {
       method:'POST', headers, body: JSON.stringify((()=>{
-        if (state.session?.access_token) return { code };
         let pid=null; try{ pid=localStorage.getItem('ms_pid_'+code)||null;}catch{};
-        return pid? { code, participant_id: pid } : { code };
+        const payload = pid ? { code, participant_id: pid } : { code };
+        if (state.hostDisplayName) payload.name = state.hostDisplayName;
+        return payload;
       })())
     });
     const out = await r.json().catch(()=>({}));
@@ -564,7 +565,11 @@ submit && submit.addEventListener('click', async function(){
   // Create
   if (els.createGameBtn) els.createGameBtn.addEventListener('click', async ()=>{
     if(!state.session?.access_token){ log('Please login first'); return; }
-    const r = await fetch(state.functionsBase + '/create_game', { method:'POST', headers:{ 'authorization':'Bearer '+state.session.access_token }});
+    const r = await fetch(state.functionsBase + '/create_game', { 
+      method:'POST', 
+      headers:{ 'authorization':'Bearer '+state.session.access_token, 'content-type':'application/json' },
+      body: JSON.stringify({ name: state.hostDisplayName || null })
+    });
     const out = await r.json().catch(()=>({}));
     try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     if (!r.ok){
