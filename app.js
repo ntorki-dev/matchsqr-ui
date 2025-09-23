@@ -3,7 +3,7 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v48.1';
+      window.__MS_UI_VERSION = 'v48.2';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -370,16 +370,10 @@ submit && submit.addEventListener('click', async function(){
           allowHost = (out.current_turn.role==='host' && isHost);
           allowGuest = !!( (pid && out.current_turn.participant_id===pid) || (!pid && els.guestName && out.current_turn.name===(els.guestName.value||'').trim()) );
         } else {
-          allowHost = isHost; // If backend hasn't sent turn yet, allow host
+          // Keep inputs disabled when turn is not assigned yet, prevents re-enable between rounds
+          allowHost = false; allowGuest = false
         }
-        
-        // After a round completes, keep all answer areas disabled until the host reveals the next card
-        try{
-          var ap2 = out && out.answers_progress;
-          var roundDone = !!(ap2 && ap2.total_active > 0 && ap2.answered_count >= ap2.total_active);
-          if (roundDone) { allowHost = false; allowGuest = false; }
-        }catch(_e){}
-MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
+        MS_setEnabled(document.getElementById('msAnsHost'), !!allowHost);
         MS_setEnabled(document.getElementById('msAnsGuest'), !!allowGuest);
       } else {
         MS_unmount('msAnsHost'); MS_unmount('msAnsGuest');
