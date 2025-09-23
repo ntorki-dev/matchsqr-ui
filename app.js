@@ -311,13 +311,14 @@ submit && submit.addEventListener('click', async function(){
     if (out?.status==='running' && endsIso) { startHostCountdown(endsIso); startGuestCountdown(endsIso); } else { try { clearHostCountdown(); } catch(e) {} }
     // Participants + counts
     const ppl = out?.participants || [];
-    els.hostPeople.innerHTML  = ppl.map(p=>{
+    var __listHTML = (ppl && ppl.length) ? ppl.map(p=>{
       var nm = p.name || '';
       if (p.role === 'host' && state.hostDisplayName) nm = state.hostDisplayName;
-      var pidAttr = p.id ? ` data-pid="${p.id}"` : '';
+      var pidAttr = (p && p.id) ? ` data-pid="${p.id}"` : '';
       return `<li${pidAttr}>${nm} <span class="meta">(${p.role})</span></li>`;
-    }).join('') || '<li class="meta">No one yet</li>';
-    els.guestPeople.innerHTML = els.hostPeople.innerHTML;
+    }).join('') : '<li class="meta">No one yet</li>';
+    els.hostPeople.innerHTML  = __listHTML;
+    els.guestPeople.innerHTML = __listHTML;
     const count = Array.isArray(ppl) ? ppl.length : 0;
     if (els.hostPeopleCount) els.hostPeopleCount.textContent = String(count);
     if (els.guestPeopleCount) els.guestPeopleCount.textContent = String(count);
@@ -385,28 +386,21 @@ submit && submit.addEventListener('click', async function(){
         var guestCard = MS_mountAnsCard(gc, 'msAnsGuest');
         MS_wireAnsCard(hostCard); MS_wireAnsCard(guestCard);
 
-        // Bold current player by name
-        if (out.current_turn && (els.hostPeople || els.guestPeople)){
+        // Bold current player by participant_id
+        if (out.current_turn){
           var curPid = out.current_turn.participant_id || null;
-          var curName = out.current_turn.name;
-          function boldList(ul){
-            try{
-              if(!ul) return;
-              var lis = Array.prototype.slice.call(ul.querySelectorAll('li'));
-              lis.forEach(function(li){ li.style.fontWeight='400'; });
-              for (var i=0;i<lis.length;i++){
-                var li = lis[i];
-                var pid = li.getAttribute('data-pid');
-                if (curPid && pid && pid===String(curPid)){ li.style.fontWeight='700'; break; }
-                if (!curPid){
-                  var meta = li.querySelector('.meta'); var mtxt = meta? meta.textContent : '';
-                  var base = mtxt? li.textContent.replace(mtxt,'').trim() : li.textContent.trim();
-                  if (base === curName || base.indexOf(curName+' ')==0){ li.style.fontWeight='700'; break; }
-                }
-              }
-            }catch(err){}
-          }
-          boldList(els.hostPeople); boldList(els.guestPeople);
+          try{
+            function boldByPid(ul, pid){
+              if (!ul || !pid) return;
+              var items = ul.querySelectorAll('li[data-pid]');
+              items.forEach(li => { li.style.fontWeight = '400'; });
+              var el = ul.querySelector('li[data-pid="'+pid+'"]');
+              if (el) el.style.fontWeight = '700';
+            }
+            boldByPid(els.hostPeople, curPid);
+            boldByPid(els.guestPeople, curPid);
+          }catch(_e){}
+        }
         }
 
         // Enable controls only for current turn
@@ -571,22 +565,24 @@ submit && submit.addEventListener('click', async function(){
   // Create
   if (els.createGameBtn) els.createGameBtn.addEventListener('click', async ()=>{
     if(!state.session?.access_token){ log('Please login first'); return; }
-    const r = await fetch(state.functionsBase + '/create_game', { 
-      method:'POST', 
-      headers:{ 'authorization':'Bearer '+state.session.access_token, 'content-type':'application/json' },
-      body: JSON.stringify({ name: state.hostDisplayName || null })
+    try{
+    const { data, error } = await state.supa.functions.invoke('create_game', {
+      body: { name: state.hostDisplayName || null }
     });
-    const out = await r.json().catch(()=>({}));
-    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
-    if (!r.ok){
-      if (out?.error === 'host_has_active_game'){
-        log('Active game exists; auto-joining as host with code '+out.code);
-        await autoJoinAsHost(out.code);
+    if (error){
+      if (error.message === 'host_has_active_game' && data && data.code){
+        log('Active game exists; auto-joining as host with code ' + data.code);
+        await autoJoinAsHost(data.code);
         return;
       }
-      log('Create failed'); log(out); return;
+      log('Create failed'); log(error); return;
     }
+    const out = data || {};
+    try{ if(out?.participant_id && typeof code!=='undefined'){ localStorage.setItem('ms_pid_'+code, out.participant_id); } }catch{}
     log('Create ok'); applyHostGame(out); startHeartbeat();
+  }catch(e){
+    log('Create failed'); log(String(e));
+  }
   });
 
   // Start
