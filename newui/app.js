@@ -1,22 +1,15 @@
 import { Router } from './router.js';
-import { pageHome, pageHostLobby, pageGame } from './pages.js';
+import { pageHome, pageHostLobby, pageGame, pageLogin, pageRegister } from './pages.js';
 
 Router.on('/', () => pageHome());
-Router.on('/host/lobby/:sessionId', (params) => pageHostLobby(params));
-Router.on('/game/:sessionId', (params) => pageGame(params));
-Router.on('/login', () => alert('Login page placeholder'));
-Router.on('/register', () => alert('Register page placeholder'));
-Router.on('/forgot-password', () => alert('Forgot password page placeholder'));
-Router.on('/reset-password', () => alert('Reset password page placeholder'));
-Router.on('/account', () => alert('Account page placeholder'));
-Router.on('/billing/extend', () => alert('Billing Extend (simulate)'));
-Router.on('/billing/pass', () => alert('Billing Extra Weekly Game (simulate)'));
-Router.on('/billing/upgrade', () => alert('Billing Upgrade (simulate)'));
-Router.on('/help', () => alert('Help placeholder (opens new window)'));
-Router.on('/learn-more', () => alert('Learn more placeholder (opens new window)'));
+Router.on('/login', () => pageLogin());
+Router.on('/register', () => pageRegister());
+Router.on('/host/lobby/:sessionId', (p) => pageHostLobby(p));
+Router.on('/game/:sessionId', (p) => pageGame(p));
+
+Router.on('/help', () => window.open('#/help-placeholder','_blank'));
+Router.on('/learn-more', () => window.open('#/learn-placeholder','_blank'));
 Router.on('/terms', () => alert('Terms placeholder'));
 Router.on('/privacy', () => alert('Privacy placeholder'));
-
 Router.setNotFound(() => location.hash = '#/');
-
 Router.resolve();
