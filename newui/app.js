@@ -1,4 +1,9 @@
-/* === SURGICAL PATCH for /newui/app.js === */
+
+/* === SURGICAL PATCH v2 for /newui/app.js ===
+   - Fixes Game ID not showing in Host Lobby
+   - Makes Start button robust even if code was only in URL
+   - Keeps all previous mappings/logic intact
+*/
 (function(){
   const tpl = (id)=>document.getElementById(id)?.content?.cloneNode(true);
 
@@ -8,7 +13,12 @@
     return name.split(/\s+/).map(s=>s[0]||"").join("").slice(0,2).toUpperCase();
   }
   function byId(id, root=document){ return root.getElementById(id); }
-
+  function parseLobbyCodeFromHash(){
+    // supports "#/host/lobby/ABC123" plus trailing query/hash
+    const h = location.hash || "";
+    const m = h.match(/#\/host\/lobby\/([^?#]+)/i);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
   function setAuthNav(){
     const login = document.getElementById("navLogin");
     const acc = document.getElementById("navAccount");
@@ -24,8 +34,16 @@
       acc.title = "";
     }
   }
+  function setGameCodeInDom(root, code){
+    const sels = ['#lobbyId','#gameId','#code','.game-code','.js-game-code','[data-game-code]'];
+    const nodes = sels.flatMap(sel => Array.from(root.querySelectorAll(sel)));
+    nodes.forEach(n => {
+      if (n.tagName === 'INPUT' || n.tagName === 'TEXTAREA') n.value = code;
+      else n.textContent = code;
+    });
+  }
 
-  // Home (Host -> create game)
+  // Home
   msRouter.add("#/", async (root)=>{
     root.innerHTML = "";
     root.appendChild(tpl("tpl-home"));
@@ -36,7 +54,6 @@
       try{
         if (!msApi.getUserEmail()){ location.hash = "#/login?return=host"; return; }
         const out = await msApi.createGame();
-        // IMPORTANT: store host's participant_id on this device for turn-gating & host-only controls
         if (out && out.participant_id) msApi.setDevicePid(out.code, out.participant_id);
         location.hash = "#/host/lobby/" + out.code;
       }catch(e){
@@ -46,20 +63,33 @@
     });
   });
 
-  // Host lobby (keep normal header visible here)
-  async function renderHostLobby(root, code){
+  // Host lobby (keep normal header)
+  async function renderHostLobby(root, codeFromRouter){
     document.body.classList.remove("is-immersive");
     try { await msApi.ensureConfig(); } catch(e){ console.warn("Config error:", e); }
     setAuthNav();
     root.innerHTML = "";
     root.appendChild(tpl("tpl-host-lobby"));
-    byId("lobbyId",root).textContent = code;
-    root.querySelector("#copyId")?.addEventListener("click", async ()=>{
-      try{ await navigator.clipboard.writeText(code); alert("Copied Game ID"); }catch{}
-    });
+
+    // Robust code detection & binding
+    const code = codeFromRouter || parseLobbyCodeFromHash();
+    if (!code) console.warn("No lobby code detected in router; parsed:", code);
+    setGameCodeInDom(root, code);
+
+    // Copy button
+    const copyBtn = root.querySelector("#copyId, [data-copy='code']");
+    if (copyBtn){
+      copyBtn.addEventListener("click", async ()=>{
+        try{ await navigator.clipboard.writeText(code); alert("Copied Game ID"); }catch{}
+      });
+    }
+
+    // Start button
     root.querySelector("#startBtn")?.addEventListener("click", async ()=>{
       try{
+        if (!code){ alert("Missing Game ID. Please go back and create a new game."); return; }
         const st = await msApi.getState({ code });
+        if (!st || !st.id){ alert("Game not found or expired. Create a new game from the homepage."); return; }
         await msApi.startGame(st.id);
         location.hash = "#/game/" + code;
       }catch(e){ alert("Start failed: " + (e.message || e)); }
@@ -158,7 +188,7 @@
     }
   });
 
-  // === GAME ===
+  // === GAME (unchanged from prior patch) ===
   const Game = {
     code: null,
     gameId: null,
@@ -182,7 +212,7 @@
     const N = Math.max(1, list.length);
     const center = { x: container.clientWidth/2, y: container.clientHeight/2 };
     const R = Math.min(center.x, center.y) * 0.75;
-    const startAngle = -Math.PI/2; // start at top
+    const startAngle = -Math.PI/2;
     list.forEach((p, idx)=>{
       const angle = startAngle + (idx * (2*Math.PI/N));
       const x = center.x + R * Math.cos(angle);
@@ -191,7 +221,7 @@
       seat.className = "seat" + (String(p.id)===String(hostId)?" host":"") + (String(p.id)===String(activeId)?" active":"");
       seat.style.transform = `translate(${Math.round(x-32)}px, ${Math.round(y-32)}px)`;
       const badge = document.createElement("div");
-      badge.className = "badge"; badge.textContent = (p.initials || initialsOf(p.name));
+      badge.className = "badge"; badge.textContent = (p.initials || (p.name? p.name.split(/\s+/).map(s=>s[0]).join("").toUpperCase().slice(0,2):""));
       const name = document.createElement("div"); name.className = "name"; name.textContent = p.name || "";
       seat.appendChild(badge);
       if (String(p.id)===String(hostId)){ const crown = document.createElement("div"); crown.className="crown"; crown.textContent="👑"; seat.appendChild(crown); }
@@ -203,12 +233,12 @@
   function setTimerUI(root){
     const timeEl = byId("timeLeft", root);
     const ext = byId("extendBtn", root);
-    if (!timeEl || !Game.endsAt) { timeEl.textContent="--:--"; if (ext) ext.disabled = true; return; }
+    if (!timeEl || !Game.endsAt) { if (timeEl) timeEl.textContent="--:--"; if (ext) ext.disabled = true; return; }
     const leftMs = new Date(Game.endsAt).getTime() - Date.now();
     const m = Math.max(0, Math.floor(leftMs/60000));
     const s = Math.max(0, Math.floor((leftMs%60000)/1000));
-    timeEl.textContent = `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}m`;
-    if (ext) ext.disabled = m > 10; // enabled only at T-10 or below
+    if (timeEl) timeEl.textContent = `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}m`;
+    if (ext) ext.disabled = m > 10;
   }
 
   function mapStateToUI(root, st){
@@ -216,36 +246,26 @@
     Game.endsAt = st.ends_at || Game.endsAt;
     Game.participants = st.participants || Game.participants;
     Game.canReveal = !!(st.can_reveal);
-
-    // active id field (use whatever your backend returns)
     Game.activeId = st.active_participant_id
       || (st.current_turn && (st.current_turn.participant_id || st.current_turn.id))
       || Game.activeId;
-
-    // host id (prefer explicit id, fall back to role flag)
     Game.hostId = st.host_participant_id
       || (Array.isArray(Game.participants) ? (Game.participants.find(p=>p.role==="host" || p.is_host)?.id) : null)
       || Game.hostId;
-
-    // question (text + level)
     Game.question = st.question || st.card || Game.question;
 
-    // Seats
     const seatsWrap = root.querySelector(".seats");
     if (seatsWrap) placeSeats(seatsWrap, Game.participants, Game.activeId, Game.hostId);
 
-    // Question text
     const qEl = root.querySelector(".card__text");
     if (qEl && Game.question) qEl.innerHTML = (Game.question.text || "").replace(/\n/g,"<br/>");
 
-    // Level radios (read-only reflect level)
     const level = (Game.question && Game.question.level) || "icebreaker";
     root.querySelectorAll('.levels input[name="lvl"]').forEach((inp, idx)=>{
       const map = {0:"icebreaker",1:"get_to_know_you",2:"real_you"};
       inp.checked = (map[idx]===level || (idx===0 && level==="simple") || (idx===1 && level==="medium") || (idx===2 && level==="deep"));
     });
 
-    // Reveal button (runtime injected) — host only and only when allowed
     let rev = root.querySelector("#revealBtnDyn");
     const myPid = msApi.getDevicePid(Game.code);
     const iAmHost = String(Game.hostId) === String(myPid);
@@ -265,7 +285,6 @@
       rev.disabled = true;
     }
 
-    // Input gating: allow only active participant
     const myTurn = String(myPid) === String(Game.activeId);
     const kbTile = root.querySelector("#kbBtn");
     const micTile = root.querySelector("#micBtn");
@@ -282,7 +301,6 @@
     }catch(e){ console.warn("poll error", e); }
   }
 
-  // Microphone controls — animate bars ONLY while recording
   function setupMic(root){
     const micBtn = root.querySelector("#micBtn");
     const voiceBar = root.querySelector("#voiceBar");
@@ -324,9 +342,8 @@
     return ()=>stop();
   }
 
-  // Game render (immersive)
   async function renderGame(root, code){
-    document.body.classList.add("is-immersive"); // hide white header only on game
+    document.body.classList.add("is-immersive");
     clearTimers();
     try { await msApi.ensureConfig(); } catch(e){ console.warn("Config error:", e); }
     setAuthNav();
@@ -334,12 +351,10 @@
     root.appendChild(tpl("tpl-game"));
     Game.code = code;
 
-    // Dynamic seats container
     const seatsWrap = document.createElement("div");
     seatsWrap.className = "seats";
     root.querySelector(".arena").appendChild(seatsWrap);
 
-    // Keyboard tile: show textbox; Submit → submit_answer
     const kbBtn = root.querySelector("#kbBtn");
     const textBox = root.querySelector("#textBox");
     const sendBtn = root.querySelector("#sendBtn");
@@ -355,15 +370,12 @@
       }catch(e){ alert("Send failed: "+(e.message||e)); }
     });
 
-    // Mic setup (animate only while recording)
     const cleanupMic = setupMic(root);
 
-    // End game & analyze
     byId("endBtn",root).addEventListener("click", async ()=>{
       try{
         const st = await msApi.getState({ code: Game.code });
         await msApi.endGameAndAnalyze(st.id);
-        // Render summary template inline
         const frag = tpl("tpl-summary");
         root.innerHTML = ""; document.body.classList.remove("is-immersive");
         root.appendChild(frag);
@@ -373,25 +385,19 @@
       }catch(e){ alert("End failed: "+(e.message||e)); }
     });
 
-    // Extend (simulated), gated by timer UI (T-10)
     byId("extendBtn",root).addEventListener("click", ()=>{
       if (byId("extendBtn",root).disabled) return;
       alert("Extend flow simulated (Stripe later).");
     });
 
-    // Initial state + timers
     try{
       const st = await msApi.getState({ code: Game.code });
       mapStateToUI(root, st);
       setTimerUI(root);
-      // 1s timer tick bound to ends_at
       Game.tickHandle = setInterval(()=>setTimerUI(root), 1000);
     }catch(e){ console.warn(e); }
 
-    // Polling every 2s — all mapping comes from your existing get_state
     Game.pollHandle = setInterval(()=>pollAndUpdate(root), 2000);
-
-    // Cleanup on route change
     window.addEventListener("hashchange", ()=>{ clearTimers(); cleanupMic(); }, { once:true });
   }
 
