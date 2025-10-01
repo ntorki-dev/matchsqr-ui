@@ -1,4 +1,4 @@
-/* === SURGICAL PATCH v3 for /newui/app.js ===
+ /* === SURGICAL PATCH v3 for /newui/app.js ===
    Maps your existing behavior into the new UI.
 
    Fixes:
