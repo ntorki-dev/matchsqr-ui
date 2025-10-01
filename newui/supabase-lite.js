@@ -1,12 +1,12 @@
-// supabase-lite.js
 (function(){
   const C = window.CONFIG||{};
-  const url = C.FALLBACK_SUPABASE_URL;
-  const anon = C.FALLBACK_SUPABASE_ANON_KEY;
-  if (!url || !anon){
-    console.warn("Supabase URL or anon key not set. Set them in config.js");
+  function initClient(){
+    const url = C.FALLBACK_SUPABASE_URL;
+    const anon = C.FALLBACK_SUPABASE_ANON_KEY;
+    if (!url || !anon){ return null; }
+    return window.supabase.createClient(url, anon);
   }
-  window.sb = window.supabase ? window.supabase.createClient(url, anon) : null;
+  window.sb = initClient();
 
   async function getAccessToken(){
     if (!window.sb) return null;
@@ -17,6 +17,7 @@
   function base(){ return (C.FUNCTIONS_BASE||'').replace(/\/$/,''); }
   async function call(path, opts){
     const token = await getAccessToken();
+    if (!base()){ throw new Error("FUNCTIONS_BASE not configured"); }
     const url = base() + path;
     const headers = Object.assign({ 'content-type':'application/json' }, (opts && opts.headers)||{});
     if (token) headers['authorization'] = 'Bearer ' + token;
@@ -29,13 +30,15 @@
 
   window.msAuth = {
     async login(email, password){
-      if (!window.sb) throw new Error("Supabase not initialized");
+      if (!window.sb) { window.sb = initClient(); }
+      if (!window.sb) throw new Error("Supabase not configured");
       const { data, error } = await window.sb.auth.signInWithPassword({ email, password });
       if (error) throw error;
       return data;
     },
     async register(email, password){
-      if (!window.sb) throw new Error("Supabase not initialized");
+      if (!window.sb) { window.sb = initClient(); }
+      if (!window.sb) throw new Error("Supabase not configured");
       const { data, error } = await window.sb.auth.signUp({ email, password });
       if (error) throw error;
       return data;
