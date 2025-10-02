@@ -2,25 +2,26 @@ import * as api from "./api-adapter.js";
 
 export async function updateHeader(){
   const header = document.getElementById("header-actions");
-  header.innerHTML = "";
+  // Strong dedupe: replace the entire node
+  const fresh = document.createElement("nav");
+  fresh.className = "ms-header__right";
   let loggedIn = false;
-  try{
-    loggedIn = await api.isLoggedIn();
-  }catch(e){
-    console.warn("[header] auth check failed:", e?.message || e);
-    loggedIn = false;
-  }
+  try{ loggedIn = await api.isLoggedIn(); }catch{ loggedIn = false; }
+
   if(!loggedIn){
     const a = document.createElement("a");
     a.className = "ms-btn";
     a.href = "#/login";
     a.textContent = "Login";
-    header.appendChild(a);
+    fresh.appendChild(a);
   }else{
     const a = document.createElement("a");
     a.className = "ms-btn";
     a.href = "#/account";
     a.textContent = "Account";
-    header.appendChild(a);
+    fresh.appendChild(a);
   }
+
+  header.replaceWith(fresh);
+  fresh.id = "header-actions";
 }

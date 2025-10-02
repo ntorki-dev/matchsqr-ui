@@ -1,6 +1,11 @@
+// api-adapter.js — mapped to your backend, with state helpers
 let supa = null;
 let session = null;
 let functionsBase = null;
+
+function setLS(k,v){ try{ localStorage.setItem(k, v) }catch{} }
+function getLS(k){ try{ return localStorage.getItem(k) }catch{ return null } }
+function delLS(k){ try{ localStorage.removeItem(k) }catch{} }
 
 async function ensureBoot(){
   if (functionsBase) return;
@@ -36,6 +41,19 @@ export async function isLoggedIn(){
   const { data } = await supa.auth.getSession();
   session = data?.session || null;
   return !!session;
+}
+
+// ===== Public helper: state =====
+export function getCurrentContext(){
+  return {
+    code: getLS("ms_current_code"),
+    gameId: getLS("ms_current_game_id"),
+    pid: getLS("ms_pid_"+(getLS("ms_current_code")||"") )
+  };
+}
+export function setCurrentContext({ code=null, gameId=null }){
+  if (code) setLS("ms_current_code", String(code));
+  if (gameId) setLS("ms_current_game_id", String(gameId));
 }
 
 // ===== Auth =====
@@ -82,6 +100,7 @@ export async function authSignOut(){
   await ensureBoot();
   await supa.auth.signOut();
   session = null;
+  delLS("ms_current_code"); delLS("ms_current_game_id");
   return { ok: true };
 }
 
@@ -118,10 +137,11 @@ async function ensureSession(){
   }
 }
 
-async function getStateByCode(code){
+export async function getState(code){
+  await ensureBoot();
   const r = await fetch(functionsBase + "/get_state?code=" + encodeURIComponent(code));
   const out = await r.json().catch(()=>({}));
-  if (!r.ok) {
+  if (!r.ok){
     const e = new Error(out?.error || r.statusText || "get_state failed");
     e.status = r.status; e.code = out?.error || out?.code || null; e.details = out;
     throw e;
@@ -143,8 +163,11 @@ export async function gameCreateRoom(){
   try{
     const code = out?.game_code || out?.code;
     const pid = out?.participant_id;
-    if (code && pid) localStorage.setItem("ms_pid_"+code, String(pid));
-    if (code) localStorage.setItem("ms_last_host_code", String(code));
+    const gid = out?.game_id || out?.id || null;
+    if (code && pid) setLS("ms_pid_"+code, String(pid));
+    if (code) setLS("ms_last_host_code", String(code));
+    if (code) setCurrentContext({ code });
+    if (gid) setCurrentContext({ gameId: gid });
   }catch{}
   return { id: out?.game_id || out?.id || null, code: out?.game_code || out?.code || null, raw: out };
 }
@@ -152,7 +175,7 @@ export async function gameCreateRoom(){
 export async function gameJoinRoom({ code, name }){
   await ensureBoot();
   const headers = authHeader();
-  const pid = localStorage.getItem("ms_pid_"+code);
+  const pid = getLS("ms_pid_"+code);
   const body = pid ? { code, participant_id: pid } : { code, name: (name||null) };
   const r = await fetch(functionsBase + "/join_game_guest", { method: "POST", headers, body: JSON.stringify(body) });
   const out = await r.json().catch(()=>({}));
@@ -161,7 +184,13 @@ export async function gameJoinRoom({ code, name }){
     e.status = r.status; e.code = out?.error || out?.code || null; e.details = out;
     throw e;
   }
-  try{ const newPid = out?.participant_id; if (newPid) localStorage.setItem("ms_pid_"+code, String(newPid)); }catch{}
+  try{
+    const newPid = out?.participant_id;
+    if (newPid) setLS("ms_pid_"+code, String(newPid));
+    setCurrentContext({ code });
+    // Try to fetch gameId immediately for later host/guest actions
+    try{ const st = await getState(code); if(st?.game_id) setCurrentContext({ gameId: st.game_id }); }catch{}
+  }catch{}
   return out;
 }
 
@@ -193,21 +222,13 @@ export async function gameExtend(codeOrId){
 
 export async function gameEndAndAnalyze(codeOrId){
   await ensureSession();
-  // Try resolve by id, then by code; if code-only, attempt fallback body { code } for backends that support it.
   const { code, gameId } = await resolveGameId(codeOrId, true);
-  let body = {};
-  if (gameId) body = { gameId };
-  else if (code) {
-    try {
-      const st = await getStateByCode(code);
-      if (st?.game_id) body = { gameId: st.game_id };
-      else body = { code }; // fallback
-    } catch {
-      body = { code };
-    }
-  } else {
-    throw new Error("Missing game identifier");
+  let gid = gameId;
+  if (!gid && code){
+    try{ const st = await getState(code); gid = st?.game_id || null; }catch{}
   }
+  const body = gid ? { gameId: gid } : (code ? { code } : null);
+  if(!body) throw new Error("Missing game identifier");
   const r = await fetch(functionsBase + "/end_game_and_analyze", { method: "POST", headers: authHeader(), body: JSON.stringify(body) });
   const out = await r.json().catch(()=>({}));
   if (!r.ok){ const e=new Error(out?.error||"end_game_and_analyze failed"); e.status=r.status; e.code=out?.error||out?.code||null; throw e; }
@@ -222,7 +243,7 @@ export async function gameSubmitAnswer({ sessionId, text }){
   try{
     const code = payload.code;
     if (code){
-      const pid = localStorage.getItem("ms_pid_"+code);
+      const pid = getLS("ms_pid_"+code);
       if (pid) payload.participant_id = pid;
     }
   }catch{}
@@ -234,15 +255,27 @@ export async function gameSubmitAnswer({ sessionId, text }){
 }
 
 async function resolveGameId(codeOrId, allowCodeOnly=false){
-  if (codeOrId && String(codeOrId).includes("-")) return { gameId: String(codeOrId) };
-  const code = String(codeOrId||"").trim();
-  if (code && !allowCodeOnly){
-    const r = await fetch(functionsBase + "/get_state?code=" + encodeURIComponent(code));
-    const out = await r.json().catch(()=>({}));
-    const gid = out?.game_id || out?.game?.id;
-    if (gid) return { code, gameId: gid };
+  // Prefer stored context
+  const ctx = getCurrentContext();
+  if (!codeOrId){
+    return { code: ctx.code || null, gameId: ctx.gameId || null };
   }
-  return { code: code || null, gameId: null };
+
+  if (codeOrId && String(codeOrId).includes("-")) return { gameId: String(codeOrId) };
+
+  const code = String(codeOrId||"").trim();
+  // If we have it stored, use it
+  if (ctx.code === code && ctx.gameId) return { code, gameId: ctx.gameId };
+
+  if (code && !allowCodeOnly){
+    const st = await getState(code);
+    const gid = st?.game_id || st?.game?.id;
+    if (gid){
+      setCurrentContext({ code, gameId: gid });
+      return { code, gameId: gid };
+    }
+  }
+  return { code: code || ctx.code || null, gameId: ctx.gameId || null };
 }
 
 // Export names used by pages
@@ -260,4 +293,3 @@ export const revealNextCard = gameRevealNextCard;
 export const submitAnswer = gameSubmitAnswer;
 export const extendGame = gameExtend;
 export const endAndAnalyze = gameEndAndAnalyze;
-export const sendFullReport = async ({ sessionId })=>({ ok: true });
