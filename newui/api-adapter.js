@@ -1,7 +1,3 @@
-// Concrete mapping to your existing backend (no config adapter).
-// Reads window.CONFIG.FUNCTIONS_BASE and uses Supabase v2 for auth.
-// Edge functions used: /config, /create_game, /join_game_guest, /start_game, /next_question, /end_game_and_analyze, /submit_answer, /get_state
-
 let supa = null;
 let session = null;
 let functionsBase = null;
@@ -17,7 +13,6 @@ async function ensureBoot(){
     throw new Error("Supabase SDK missing on page");
   }
 
-  // Pull public supabase settings via your edge function (as in your working code)
   const res = await fetch(functionsBase + "/config");
   const txt = await res.text();
   let pub = {};
@@ -123,6 +118,17 @@ async function ensureSession(){
   }
 }
 
+async function getStateByCode(code){
+  const r = await fetch(functionsBase + "/get_state?code=" + encodeURIComponent(code));
+  const out = await r.json().catch(()=>({}));
+  if (!r.ok) {
+    const e = new Error(out?.error || r.statusText || "get_state failed");
+    e.status = r.status; e.code = out?.error || out?.code || null; e.details = out;
+    throw e;
+  }
+  return out;
+}
+
 export async function gameCreateRoom(){
   await ensureSession();
   if(!session?.access_token) throw new Error("Please login first");
@@ -187,8 +193,22 @@ export async function gameExtend(codeOrId){
 
 export async function gameEndAndAnalyze(codeOrId){
   await ensureSession();
-  const { gameId } = await resolveGameId(codeOrId);
-  const r = await fetch(functionsBase + "/end_game_and_analyze", { method: "POST", headers: authHeader(), body: JSON.stringify({ gameId }) });
+  // Try resolve by id, then by code; if code-only, attempt fallback body { code } for backends that support it.
+  const { code, gameId } = await resolveGameId(codeOrId, true);
+  let body = {};
+  if (gameId) body = { gameId };
+  else if (code) {
+    try {
+      const st = await getStateByCode(code);
+      if (st?.game_id) body = { gameId: st.game_id };
+      else body = { code }; // fallback
+    } catch {
+      body = { code };
+    }
+  } else {
+    throw new Error("Missing game identifier");
+  }
+  const r = await fetch(functionsBase + "/end_game_and_analyze", { method: "POST", headers: authHeader(), body: JSON.stringify(body) });
   const out = await r.json().catch(()=>({}));
   if (!r.ok){ const e=new Error(out?.error||"end_game_and_analyze failed"); e.status=r.status; e.code=out?.error||out?.code||null; throw e; }
   return out;
@@ -225,7 +245,7 @@ async function resolveGameId(codeOrId, allowCodeOnly=false){
   return { code: code || null, gameId: null };
 }
 
-// Exports used by pages
+// Export names used by pages
 export const login = authLogin;
 export const register = authRegister;
 export const sendReset = authSendReset;

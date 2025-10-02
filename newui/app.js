@@ -1,5 +1,4 @@
 import { navigate } from "./router.js";
-import { updateHeader } from "./shell.js";
 
 window.__MS_UI_VERSION = "Revamp-UI-CleanMapped";
 
@@ -14,7 +13,7 @@ async function boot(){
   assertConfig();
   const v = document.getElementById("ui-version");
   if(v) v.textContent = window.__MS_UI_VERSION || "v0";
-  await updateHeader();
+  // Do NOT call updateHeader here; router.js does it after rendering, to avoid duplicates.
   const url = new URL(window.location.href);
   const code = url.searchParams.get("code");
   if(code && (!location.hash || location.hash === "#/")) navigate("/join");

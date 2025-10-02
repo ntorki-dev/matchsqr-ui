@@ -26,7 +26,9 @@ const paramify = (pattern) => {
 const routeMatchers = Object.keys(routes).map(k => ({ key:k, re:paramify(k) }));
 
 export function parseHash(){
-  const hash = location.hash.replace(/^#/, "") || "/";
+  let hash = (location.hash || "").replace(/^#/, "") || "/";
+  // sanitize accidental trailing slashes that would break param capture (e.g. /game/)
+  if (hash.endsWith("/") && hash !== "/") hash = hash.replace(/\/+$/, "");
   for(const r of routeMatchers){
     const m = hash.match(r.re);
     if(m){
@@ -43,12 +45,20 @@ export function parseHash(){
 }
 
 export async function navigate(hash){
+  if (!hash.startsWith("/")) hash = "/" + hash.replace(/^\/+/, "");
   if(location.hash !== "#" + hash) location.hash = hash;
   await render();
 }
 
 async function render(){
   const { route, params } = parseHash();
+
+  // Guard: if route requires a param and it's missing, send home
+  if ((route.name === "game" || route.name === "summary") && !params.id) {
+    if (location.hash !== "#/") location.hash = "#/";
+    return;
+  }
+
   const mod = await route.loader();
   const el = document.getElementById("app");
   el.innerHTML = "";
