@@ -2,225 +2,168 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>MatchSqr</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./styles.css"/>
-  <script>window.__MS_UI_VERSION="newui-v3";</script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="../config.js"></script>
 </head>
-<body class="theme-green">
+<body>
+  <!-- Normal header shown everywhere except the Game screen -->
   <header class="topbar">
     <div class="topbar__left">
-      <img src="./assets/logo.svg" alt="MatchSqr" class="logo"/>
-      <span class="brand">MatchSqr</span>
+      <img class="logo" src="./logo.png" alt="MatchSqr" onerror="this.style.display='none'"/>
+      <div class="brand">MatchSqr</div>
     </div>
-    <div class="topbar__right">
-      <a class="help" href="#/help" aria-label="Help">?</a>
-      <a class="btn btn--green ghost" id="navLogin" href="#/login">Login</a>
-      <a class="avatar hidden" id="navAccount" href="#/account" aria-label="Account"></a>
-    </div>
+    <nav class="topbar__right">
+      <a class="btn" href="#/join">Join</a>
+      <a id="navAccount" class="btn hidden" href="#/account">Account</a>
+      <a id="navLogin" class="btn btn--green" href="#/login">Login</a>
+      <a class="help" href="#/help">?</a>
+    </nav>
   </header>
 
-  <main id="app" class="container" aria-live="polite"></main>
+  <main id="app" class="container"></main>
 
-  <!-- HOMEPAGE -->
+  <!-- =================== TEMPLATES =================== -->
+
+  <!-- Home -->
   <template id="tpl-home">
     <section class="home">
-      <img src="./assets/globe.svg" class="home__globe" alt="globe"/>
+      <img class="home__globe" src="./globe.svg" alt="" onerror="this.style.display='none'"/>
       <h1 class="home__title">Safe space to build<br/>meaningful connections.</h1>
-      <p class="home__subtitle">
-        Play with other people interactive games designed to uncover
-        shared values, emotional style, interests, and personality.
-      </p>
+      <p class="home__subtitle">Play with other people interactive games designed to uncover shared values,
+        emotional style, interests, and personality.</p>
       <div class="home__cta">
-        <a class="btn btn--green" id="homeHostBtn">👑&nbsp; Host the Game</a>
-        <a class="btn btn--green ghost" href="#/join">▶&nbsp; Join the Game</a>
+        <a id="homeHostBtn" class="btn btn--green"><span class="crown-emoji">👑</span> Host the Game</a>
+        <a class="btn" href="#/join">▶ Join the Game</a>
       </div>
-      <div class="home__footer">
-        <a class="learn" href="#/learn-more">Learn more</a> about MatchSqr
-      </div>
+      <div class="home__footer"><a class="learn" href="#/learn">Learn more</a> about MatchSqr</div>
     </section>
   </template>
 
-  <!-- HOST LOBBY -->
+  <!-- Host lobby -->
   <template id="tpl-host-lobby">
     <section class="lobby">
       <h1 class="title-xl">Get ready.<br/>You might be surprised!</h1>
       <div class="lobby__actions">
-        <button class="btn btn--green" id="startBtn">👑&nbsp; Start the Game</button>
+        <button id="startBtn" class="btn btn--green">👑 Start the Game</button>
       </div>
-      <div class="lobby__id">
-        <span class="muted">Game ID:</span>
-        <span id="lobbyId" class="code">—</span>
-        <button id="copyId" class="icon" title="Copy">📋</button>
+      <div class="muted">Game ID: <span id="lobbyId" class="code">—</span>
+        <button id="copyId" class="icon" title="Copy ID">📋</button>
       </div>
-      <div class="muted small">Please share this Game ID with other players</div>
+      <p class="muted small">Please share this Game ID with other players</p>
     </section>
   </template>
 
-  <!-- JOIN -->
+  <!-- Join -->
   <template id="tpl-join">
     <section class="join">
       <h1 class="title-xl">Hey, happy to see you!</h1>
       <div class="join__grid">
         <div class="join__col">
           <div class="legend">How we should call you?</div>
-          <input class="input" id="joinName" placeholder="Name"/>
+          <input id="joinName" class="input" placeholder="Name"/>
         </div>
         <div class="join__col">
-          <a class="legend link" href="#/login">I have an account</a>
-          <input class="input" id="joinCode" placeholder="Enter Game ID"/>
+          <div class="legend">I have an account</div>
+          <input id="joinCode" class="input" placeholder="Enter Game ID"/>
         </div>
       </div>
-      <button id="joinBtn" class="btn btn--green">▶&nbsp; Join the Game</button>
-      <div class="muted small mt8">
-        You can join as a guest or you can <a class="link" href="#/register">create an account</a>
-      </div>
+      <div><button id="joinBtn" class="btn btn--green">▶ Join the Game</button></div>
+      <p class="muted small">You can join as a guest or you can <a class="link" href="#/register">create an account</a></p>
     </section>
   </template>
 
-  <!-- REGISTER -->
+  <!-- Register -->
   <template id="tpl-register">
     <section class="join">
       <h1 class="title-xl">Hey, happy to see you!</h1>
       <div class="join__grid">
         <div class="join__col">
-          <div class="legend">Create a new account</div>
-          <input class="input" id="regName" placeholder="Name"/>
-          <div class="radio">
-            <label><input type="radio" name="sex" value="man"/> Man</label>
-            <label><input type="radio" name="sex" value="woman"/> Woman</label>
-          </div>
-          <input class="input" id="regEmail" placeholder="Email" type="email"/>
+          <div class="legend">Email</div>
+          <input id="regEmail" class="input" placeholder="Email"/>
         </div>
         <div class="join__col">
-          <a class="legend link" href="#/login">I have an account</a>
-          <input class="input" id="regDob" placeholder="Date of birth"/>
-          <input class="input" id="regPassword" placeholder="Password" type="password"/>
+          <div class="legend">Password</div>
+          <input id="regPassword" type="password" class="input" placeholder="Password"/>
         </div>
       </div>
-      <button id="regBtn" class="btn btn--green">Submit</button>
-      <div id="regMsg" class="muted small mt8"></div>
+      <div><button id="regBtn" class="btn btn--green">Submit</button></div>
+      <p id="regMsg" class="muted small"></p>
     </section>
   </template>
 
-  <!-- LOGIN -->
+  <!-- Login -->
   <template id="tpl-login">
     <section class="join">
-      <h1 class="title-xl">Login</h1>
+      <h1 class="title-xl">Welcome back</h1>
       <div class="join__grid">
         <div class="join__col">
-          <input class="input" id="loginEmail" placeholder="Email" type="email"/>
+          <div class="legend">Email</div>
+          <input id="loginEmail" class="input" placeholder="email@domain.com"/>
         </div>
         <div class="join__col">
-          <input class="input" id="loginPassword" placeholder="Password" type="password"/>
+          <div class="legend">Password</div>
+          <input id="loginPassword" type="password" class="input" placeholder="Password"/>
         </div>
       </div>
-      <label class="check"><input type="checkbox" id="rememberMe"/> Remember me</label>
-      <div class="row">
-        <button id="loginBtn" class="btn btn--green">Login</button>
-        <a class="link" href="#/forgot-password">Forgot password</a>
-      </div>
-      <div class="muted small mt8">No account? <a class="link" href="#/register">Create one</a></div>
-      <div id="loginMsg" class="muted small mt8"></div>
+      <label class="check"><input id="rememberMe" type="checkbox"/> Keep me logged in</label>
+      <div><button id="loginBtn" class="btn btn--green">Login</button></div>
+      <p id="loginMsg" class="muted small"></p>
     </section>
   </template>
 
-  <!-- GAME SCREEN -->
+  <!-- Game (immersive) -->
   <template id="tpl-game">
     <section class="game-wrap">
       <div class="game-top">
-        <div class="spacer"></div>
-        <div class="timer"><span id="timeLeft">0:59m</span></div>
         <div class="actions">
-          <button id="extendBtn" class="btn grey">Extend</button>
-          <button id="endBtn" class="btn btn--green">End game & analyze</button>
-          <a id="miniAvatar" class="avatar small" href="#/account" title="Account"></a>
+          <button id="extendBtn" class="btn grey" disabled>Extend</button>
+          <button id="endBtn" class="btn btn--green">End game &amp; analyze</button>
+          <span class="avatar small"></span>
         </div>
+        <div class="timer" id="timeLeft">--:--</div>
+        <div></div>
       </div>
 
       <div class="levels">
-        <label><input type="radio" name="lvl" disabled checked/> Icebreaker</label>
+        <label><input type="radio" name="lvl" disabled/> Icebreaker</label>
         <label><input type="radio" name="lvl" disabled/> Get to know you</label>
         <label><input type="radio" name="lvl" disabled/> The real you</label>
       </div>
 
       <div class="arena">
-        <div class="seat host active"><div class="badge">NA</div><div class="crown">👑</div><div class="name">Nader</div></div>
-        <div class="seat"><div class="badge">EK</div><div class="name">Ekaterina</div></div>
-        <div class="seat"><div class="badge">JE</div><div class="name">Jerar</div></div>
-        <div class="seat"><div class="badge">SO</div><div class="name">Sofia</div></div>
-
         <div class="card">
           <div class="card__logo">M</div>
-          <div id="questionText" class="card__text">If you would have a<br/>superpower, what would<br/>you choose and why?</div>
+          <div class="card__text">…</div>
           <div class="card__brand">@matchsqr</div>
         </div>
-
         <div class="io">
-          <button id="micBtn" class="icon big" title="Voice">🎤</button>
-          <button id="kbBtn" class="icon big" title="Keyboard">⌨️</button>
+          <button id="micBtn" class="tile" title="Record answer">🎙</button>
+          <button id="kbBtn" class="tile" title="Type answer">⌨</button>
         </div>
       </div>
 
       <div class="voice" id="voiceBar" hidden>
-        <div class="bars">
-          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-        </div>
+        <div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i></div>
         <button id="stopRec" class="btn grey">Stop</button>
       </div>
 
-      <div class="textbox" id="textBox" hidden>
+      <div id="textBox" class="textbox" hidden>
         <textarea id="answerInput" class="input input--area" placeholder="Type here…"></textarea>
         <button id="sendBtn" class="btn grey">Submit</button>
       </div>
-
-      <div class="game-bottom"></div>
     </section>
   </template>
 
-  <!-- SUMMARY -->
+  <!-- Summary -->
   <template id="tpl-summary">
-    <section class="game-wrap">
-      <div class="game-top">
-        <div class="spacer"></div>
-        <div class="timer"><span>0:59m</span></div>
-        <div class="actions">
-          <button class="btn grey">Extend</button>
-          <button class="btn btn--green">End game & analyze</button>
-          <a class="avatar small" href="#/account" title="Account"></a>
-        </div>
-      </div>
-
-      <div class="arena">
-        <div class="seat host"><div class="badge">NA</div><div class="crown">👑</div><div class="name">Nader</div></div>
-        <div class="seat"><div class="badge">EK</div><div class="name">Ekaterina</div></div>
-        <div class="seat"><div class="badge">JE</div><div class="name">Jerar</div></div>
-        <div class="seat"><div class="badge">SO</div><div class="name">Sofia</div></div>
-
-        <div class="panel">
-          <div class="panel__title">Game Summary</div>
-          <div class="panel__text"><b>Nader</b> has secure emotional ground, high empathy, curiosity, motivated by meaning, enjoys joy more than power or control.</div>
-          <div class="panel__hint">Click below if you wish to receive a full private analysis report by email.</div>
-          <button id="getReport" class="btn btn--green">Get Full Report</button>
-        </div>
-      </div>
+    <section class="join">
+      <h1 class="title-xl">Game Summary</h1>
+      <p class="muted">We’ve emailed you the highlights. Want a full private report?</p>
+      <button id="getReport" class="btn btn--green">Get Full Report</button>
     </section>
   </template>
 
-  <template id="tpl-help">
-    <section class="pad">
-      <h1>Help</h1>
-      <p class="muted">FAQ coming soon.</p>
-    </section>
-  </template>
-
-  <script src="./api.js"></script>
-  <script src="./router.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>
