@@ -1,139 +1,39 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>MatchSqr</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Match Square</title>
+  <!-- Your existing project config.js, required -->
+  <script src="../config.js"></script>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <!-- Header -->
-  <header class="ms-header">
-    <div class="left">
-      <div class="logo" aria-hidden="true">
-        <svg viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="MatchSqr">
-          <rect x="2" y="2" width="28" height="28" rx="6" fill="#2faa44"></rect>
-          <path d="M9 21l4-6 4 6 6-10" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
-      <div class="brand">MatchSqr</div>
-      <div><button id="btnHome" class="ghost">Home</button></div>
+  <header id="app-header" class="ms-header" data-test="header">
+    <div class="ms-header__left">
+      <img id="logo-img" src="./assets/logo.svg" alt="Logo" width="40" height="40" />
+      <a href="#/" class="ms-brand">Match&nbsp;Square</a>
     </div>
-    <nav class="right">
-      <a class="help" href="#" aria-label="Help">?</a>
-      <a class="login" href="#" aria-disabled="true">Login</a>
-    </nav>
+    <nav class="ms-header__right" id="header-actions"></nav>
   </header>
 
-  <main class="ms-main">
-    <!-- HOME -->
-    <section id="homeSection" class="home">
-      <div class="globe" aria-hidden="true">
-        <svg viewBox="0 0 200 200">
-          <circle cx="100" cy="100" r="86" fill="#f2f2f2" stroke="#ddd"/>
-          <circle cx="100" cy="100" r="80" fill="none" stroke="#d0d0d0" stroke-dasharray="4 6"/>
-        </svg>
-      </div>
-      <h1 class="hero-title">Safe space to build<br/>meaningful connections.</h1>
-      <p class="hero-sub">Play with other people interactive games designed to uncover shared values, emotional style, interests, and personality.</p>
-      <div class="cta-row">
-        <button id="hostBtn" class="cta">
-          <span class="ico crown">👑</span>
-          <span>Host the Game</span>
-        </button>
-        <button id="joinBtn" class="cta">
-          <span class="ico play">▶</span>
-          <span>Join the Game</span>
-        </button>
-      </div>
-      <div class="learn"><a href="#">Learn more</a> about MatchSqr</div>
-    </section>
+  <!-- Main router outlet -->
+  <main id="app" class="ms-main" data-test="router-outlet" aria-live="polite"></main>
 
-    <!-- HOST -->
-    <section id="hostSection" class="host hidden">
-      <h2 class="page-title">Host</h2>
+  <!-- Footer -->
+  <footer class="ms-footer">
+    <div class="ms-footer__links">
+      <a href="#/help">Help</a>
+      <a href="#/learn">Learn more</a>
+      <a href="#/terms">Terms</a>
+      <a href="#/privacy">Privacy</a>
+    </div>
+    <div class="ms-footer__version">UI <span id="ui-version">v0.1</span></div>
+  </footer>
 
-      <form id="hostLoginForm" class="host-login">
-        <input id="hostEmail" type="email" placeholder="Email" autocomplete="email" required/>
-        <input id="hostPassword" type="password" placeholder="Password" autocomplete="current-password" required/>
-        <button id="createGameBtn" type="button" class="cta small">Create Game</button>
-      </form>
-
-      <div class="host-grid">
-        <div class="box">
-          <div class="kvs">
-            <div class="kv"><div class="k">Code</div><div class="v mono" id="gameCodeOut">—</div></div>
-            <div class="kv"><div class="k">Game ID</div><div class="v mono" id="gameIdOut">—</div></div>
-            <div class="kv"><div class="k">Status</div><div class="v" id="statusOut">—</div></div>
-            <div class="kv"><div class="k">Ends at</div><div class="v mono" id="endsAtOut">—</div></div>
-            <div class="kv"><div class="k">Time left</div><div class="v mono" id="timeLeft">—</div></div>
-          </div>
-          <div class="row">
-            <button id="startGameBtn" class="soft ok">Start</button>
-            <button id="nextCardBtn" class="soft" disabled>Reveal next card</button>
-            <button id="endAnalyzeBtn" class="soft warn">End & analyze</button>
-          </div>
-        </div>
-
-        <div class="box">
-          <div class="box-title">Participants <span class="muted">(<span id="hostPeopleCount">0</span>)</span></div>
-          <ul id="hostPeople" class="people"></ul>
-        </div>
-      </div>
-
-      <div class="host-grid">
-        <div class="box">
-          <div class="box-title">Current card</div>
-          <div id="questionText" class="question">—</div>
-          <div id="questionClar" class="clar"></div>
-        </div>
-
-        <div class="box">
-          <div class="box-title">Log</div>
-          <pre id="hostLog" class="log mono">Ready.</pre>
-        </div>
-      </div>
-    </section>
-
-    <!-- JOIN -->
-    <section id="joinSection" class="join hidden">
-      <h2 class="page-title">Join a game</h2>
-
-      <div class="stats-row">
-        <div class="stat"><div class="k">Status</div><div id="gStatus" class="v">—</div></div>
-        <div class="stat"><div class="k">Ends at</div><div id="gEndsAt" class="v mono">—</div></div>
-        <div class="stat"><div class="k">Time left</div><div id="gTimeLeft" class="v mono">—</div></div>
-      </div>
-
-      <div class="join-grid">
-        <div class="box">
-          <div class="box-title">Players <span class="muted">(<span id="guestPeopleCount">0</span>)</span></div>
-          <ul id="guestPeople" class="people"></ul>
-        </div>
-
-        <div class="box">
-          <div class="box-title">Current card</div>
-          <div id="gQuestionText" class="question">—</div>
-          <div id="gQuestionClar" class="clar"></div>
-        </div>
-      </div>
-
-      <pre id="joinLog" class="log mono"></pre>
-
-      <div class="join-cta">
-        <div class="row">
-          <input id="guestName" placeholder="Your name"/>
-          <input id="joinCode" placeholder="Game code"/>
-        </div>
-        <button id="joinRoomBtn" class="cta small">Join</button>
-      </div>
-    </section>
-  </main>
-
-  <script src="./config.js"></script>
-  <script src="./app.js"></script>
+  <!-- App scripts -->
+  <script type="module" src="./router.js"></script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>
