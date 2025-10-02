@@ -23,7 +23,6 @@ const paramify = (pattern) => {
   const regexParts = parts.map(p => p.startsWith(":") ? "([^/]+)" : p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   return new RegExp("^/" + regexParts.join("/") + "$");
 };
-
 const routeMatchers = Object.keys(routes).map(k => ({ key:k, re:paramify(k) }));
 
 export function parseHash(){

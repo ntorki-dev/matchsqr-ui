@@ -4,16 +4,19 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Match Square</title>
-  <!-- Your existing project config, required -->
+
+  <!-- Your existing project config, required (defines window.CONFIG.FUNCTIONS_BASE) -->
   <script src="../config.js"></script>
-  <!-- Supabase JS v2 (required for auth.* in api-adapter.js) -->
+
+  <!-- Supabase JS v2 (required for auth) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <header id="app-header" class="ms-header">
     <div class="ms-header__left">
-      <img id="logo-img" src="./assets/logo.svg" alt="Logo" width="40" height="40" />
+      <img id="logo-img" class="ms-img" src="./assets/logo.png" alt="Logo" width="40" height="40" />
       <a href="#/" class="ms-brand">Match&nbsp;Square</a>
     </div>
     <nav class="ms-header__right" id="header-actions"></nav>
@@ -28,10 +31,10 @@
       <a href="#/terms">Terms</a>
       <a href="#/privacy">Privacy</a>
     </div>
-    <div class="ms-footer__version">UI <span id="ui-version">Revamp-UI-CleanConfig</span></div>
+    <div class="ms-footer__version">UI <span id="ui-version">v0</span></div>
   </footer>
 
-  <!-- App scripts -->
+  <!-- App scripts (modules) -->
   <script type="module" src="./router.js"></script>
   <script type="module" src="./app.js"></script>
 </body>

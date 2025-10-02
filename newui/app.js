@@ -1,8 +1,7 @@
 import { navigate } from "./router.js";
 import { updateHeader } from "./shell.js";
 
-// Read CONFIG directly from ../config.js. No config-adapter.js needed.
-window.__MS_UI_VERSION = "Revamp-UI-CleanConfig";
+window.__MS_UI_VERSION = "Revamp-UI-CleanMapped";
 
 function assertConfig(){
   const cfg = (window.CONFIG || {});

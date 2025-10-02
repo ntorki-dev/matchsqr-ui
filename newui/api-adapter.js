@@ -1,5 +1,6 @@
-// api-adapter.js — concrete mapping to your existing code (clean, no guessing)
-// Uses Supabase JS v2 (loaded via CDN in index.html) and your Edge Functions.
+// Concrete mapping to your existing backend (no config adapter).
+// Reads window.CONFIG.FUNCTIONS_BASE and uses Supabase v2 for auth.
+// Edge functions used: /config, /create_game, /join_game_guest, /start_game, /next_question, /end_game_and_analyze, /submit_answer, /get_state
 
 let supa = null;
 let session = null;
@@ -16,7 +17,7 @@ async function ensureBoot(){
     throw new Error("Supabase SDK missing on page");
   }
 
-  // Fetch public config from your edge function (same as legacy app)
+  // Pull public supabase settings via your edge function (as in your working code)
   const res = await fetch(functionsBase + "/config");
   const txt = await res.text();
   let pub = {};
@@ -43,7 +44,7 @@ export async function isLoggedIn(){
 }
 
 // ===== Auth =====
-export async function authLogin(email, password, remember){
+export async function authLogin(email, password){
   await ensureBoot();
   const r = await supa.auth.signInWithPassword({ email, password });
   if (r.error) throw new Error(r.error.message);
@@ -113,7 +114,7 @@ export async function profileUpdate({ name=null, birthdate=null, gender=null }){
   return { ok: true };
 }
 
-// ===== Game/Room (Edge Functions) =====
+// ===== Game/Room =====
 async function ensureSession(){
   await ensureBoot();
   if (!session){
@@ -126,12 +127,18 @@ export async function gameCreateRoom(){
   await ensureSession();
   if(!session?.access_token) throw new Error("Please login first");
   const r = await fetch(functionsBase + "/create_game", { method: "POST", headers: authHeader() });
-  const out = await r.json().catch(()=>({}));
-  if (!r.ok) throw new Error(out?.error || "create_game failed");
+  let out = {};
+  try { out = await r.json(); } catch {}
+  if (!r.ok){
+    const e = new Error(out?.error || r.statusText || "create_game failed");
+    e.status = r.status; e.code = out?.error || out?.code || null; e.details = out;
+    throw e;
+  }
   try{
     const code = out?.game_code || out?.code;
     const pid = out?.participant_id;
     if (code && pid) localStorage.setItem("ms_pid_"+code, String(pid));
+    if (code) localStorage.setItem("ms_last_host_code", String(code));
   }catch{}
   return { id: out?.game_id || out?.id || null, code: out?.game_code || out?.code || null, raw: out };
 }
@@ -143,7 +150,11 @@ export async function gameJoinRoom({ code, name }){
   const body = pid ? { code, participant_id: pid } : { code, name: (name||null) };
   const r = await fetch(functionsBase + "/join_game_guest", { method: "POST", headers, body: JSON.stringify(body) });
   const out = await r.json().catch(()=>({}));
-  if (!r.ok) throw new Error(out?.error || "join_game_guest failed");
+  if (!r.ok){
+    const e = new Error(out?.error || r.statusText || "join_game_guest failed");
+    e.status = r.status; e.code = out?.error || out?.code || null; e.details = out;
+    throw e;
+  }
   try{ const newPid = out?.participant_id; if (newPid) localStorage.setItem("ms_pid_"+code, String(newPid)); }catch{}
   return out;
 }
@@ -153,7 +164,7 @@ export async function gameStart(codeOrId){
   const { gameId } = await resolveGameId(codeOrId);
   const r = await fetch(functionsBase + "/start_game", { method: "POST", headers: authHeader(), body: JSON.stringify({ gameId }) });
   const out = await r.json().catch(()=>({}));
-  if (!r.ok) throw new Error(out?.error || "start_game failed");
+  if (!r.ok){ const e=new Error(out?.error||"start_game failed"); e.status=r.status; e.code=out?.error||out?.code||null; throw e; }
   return out;
 }
 
@@ -166,7 +177,7 @@ export async function gameRevealNextCard(codeOrId){
     body: JSON.stringify(gameId ? { gameId } : { code })
   });
   const out = await r.json().catch(()=>({}));
-  if (!r.ok) throw new Error(out?.error || "next_question failed");
+  if (!r.ok){ const e=new Error(out?.error||"next_question failed"); e.status=r.status; e.code=out?.error||out?.code||null; throw e; }
   return { text: out?.question?.text || out?.question_text || out?.text || "Next" };
 }
 
@@ -179,7 +190,7 @@ export async function gameEndAndAnalyze(codeOrId){
   const { gameId } = await resolveGameId(codeOrId);
   const r = await fetch(functionsBase + "/end_game_and_analyze", { method: "POST", headers: authHeader(), body: JSON.stringify({ gameId }) });
   const out = await r.json().catch(()=>({}));
-  if (!r.ok) throw new Error(out?.error || "end_game_and_analyze failed");
+  if (!r.ok){ const e=new Error(out?.error||"end_game_and_analyze failed"); e.status=r.status; e.code=out?.error||out?.code||null; throw e; }
   return out;
 }
 
@@ -198,7 +209,7 @@ export async function gameSubmitAnswer({ sessionId, text }){
   payload.text = String(text||"");
   const r = await fetch(functionsBase + "/submit_answer", { method: "POST", headers: { "content-type":"application/json" }, body: JSON.stringify(payload) });
   const out = await r.json().catch(()=>({}));
-  if (!r.ok) throw new Error(out?.error || "submit_answer failed");
+  if (!r.ok){ const e=new Error(out?.error||"submit_answer failed"); e.status=r.status; e.code=out?.error||out?.code||null; throw e; }
   return out;
 }
 

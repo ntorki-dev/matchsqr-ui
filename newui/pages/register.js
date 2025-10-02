@@ -39,7 +39,7 @@ export async function render(){
     </label>
     <div class="ms-actions">
       <button id="create" class="ms-btn primary">Create account</button>
-      <a class="ms-btn ghost" href="#/login">I already have an account</a>
+      <a class="ms-btn" href="#/login">I already have an account</a>
     </div>
   `;
   card.querySelector("#create").addEventListener("click", async () => {
