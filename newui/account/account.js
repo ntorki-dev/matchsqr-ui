@@ -1,4 +1,4 @@
-/*! account/account.js — v49.s5 (single-file, surgical & robust) */
+/*! account/account.js — v49.s8 (single-file, surgical, honors return-to) */
 (function (global) {
   'use strict';
   const App = global.MatchSquareApp || (global.MatchSquareApp = {});
@@ -11,44 +11,39 @@
     if (!el){
       el = document.createElement('div');
       el.id = 'spa-root';
-      el.setAttribute('hidden','');
       document.body.appendChild(el);
     }
     return el;
   }
-  function hideById(id){ const n=$(id); if (n){ n.classList.add('hidden'); n.style.display='none'; } }
-  function showById(id){ const n=$(id); if (n){ n.classList.remove('hidden'); n.style.display=''; } }
+  function hideById(id){ const n=$(id); if (n) n.style.display='none'; }
+  function showById(id){ const n=$(id); if (n) n.style.display=''; }
 
-  // ---------- Supabase access (never create a second client) ----------
-  function getSupaSync(){ return (global.state && global.state.supa) || null; }
-  function onceStateReady(cb){
-    // Poll very lightly for up to 10s for state.supa; then run cb
-    let tries = 0;
-    const t = setInterval(function(){
-      tries++;
-      if (getSupaSync() || tries > 200){ clearInterval(t); try{ cb(getSupaSync()); }catch(_e){} }
-    }, 50);
+  // Use the existing client only
+  function getSupa(){ return (global.state && global.state.supa) || null; }
+
+  // Quietly wait for state.supa (no error text)
+  function whenSupaReady(cb){
+    const tryWire = ()=>{
+      const s = getSupa();
+      if (s) { try { cb(s); } catch(_){} }
+      else    { setTimeout(tryWire, 150); }
+    };
+    tryWire();
   }
 
-  // ---------- Header button helpers (style stays in app.js; we only navigate) ----------
-  function setHeaderForLogin(){
-    const btn = $('btnAuth'); if (!btn) return;
-    btn.onclick = function(){ location.hash = '/account/login'; };
-  }
-  function setHeaderForProfile(){
-    const btn = $('btnAuth'); if (!btn) return;
-    btn.onclick = function(){ location.hash = '/account/profile'; };
-  }
-
-  // ---------- Page mode helpers ----------
+  // ---------- Page mode helpers (header-only) ----------
   function enterAccountPageMode(){
     ensureRoot();
-    hideById('homeSection'); hideById('hostSection'); hideById('joinSection');
+    hideById('homeSection');
+    hideById('hostSection');
+    hideById('joinSection');
     const root = $('spa-root'); if (root) root.removeAttribute('hidden');
     window.scrollTo(0,0);
   }
   function leaveAccountPageMode(){
-    showById('homeSection'); hideById('hostSection'); hideById('joinSection');
+    showById('homeSection');
+    hideById('hostSection');
+    hideById('joinSection');
     const root = $('spa-root'); if (root) root.setAttribute('hidden','');
   }
   window.addEventListener('hashchange', function(){
@@ -59,9 +54,8 @@
   App.screens.account = {
     async renderLogin(el){
       enterAccountPageMode();
-      setHeaderForLogin();
 
-      // Render first, then wire when supa is ready
+      // Render immediately; wire when supa appears
       el.innerHTML = [
         '<section class="p-4 max-w-md mx-auto">',
         '  <h2 class="text-lg">Login</h2>',
@@ -79,68 +73,75 @@
       const pass  = el.querySelector('#accPassword');
       const msg   = el.querySelector('#accLoginMsg');
 
-      function wireWhenReady(supa){
-        if (!supa){ msg.textContent = 'Please refresh — auth is not ready yet.'; return; }
-        // Keep button states correct
-        try{
+      const wire = (supa)=>{
+        // Keep session in global.state so your header logic works as-is
+        try {
           supa.auth.getSession().then(r=>{
-            const s = r?.data?.session || null;
-            if (global.state) global.state.session = s;
+            if (global.state) global.state.session = r?.data?.session || null;
           });
-          supa.auth.onAuthStateChange((_evt, s)=>{
-            if (global.state) global.state.session = s || null;
+          supa.auth.onAuthStateChange((_evt, newSession)=>{
+            if (global.state) global.state.session = newSession || null;
           });
-        }catch(_e){}
+        } catch(_) {}
 
         form.addEventListener('submit', async function(ev){
           ev.preventDefault();
           msg.textContent = 'Signing in...';
           try{
-            const { error } = await supa.auth.signInWithPassword({ email: email.value.trim(), password: pass.value });
-            if (error){ msg.textContent = 'Login failed, ' + error.message; return; }
-            location.hash = '/account/profile';
+            const { error } = await supa.auth.signInWithPassword({
+              email: email.value.trim(),
+              password: pass.value
+            });
+            if (error){ msg.textContent = 'Login failed: ' + error.message; return; }
+            // Honor return-to if set by host guard; else go profile
+            try {
+              const ret = sessionStorage.getItem('ms_return_to');
+              if (ret) {
+                sessionStorage.removeItem('ms_return_to');
+                location.hash = ret;
+              } else {
+                location.hash = '/account/profile';
+              }
+            } catch(_e) {
+              location.hash = '/account/profile';
+            }
           }catch(e){
             msg.textContent = 'Unexpected error, please try again';
           }
-        }, { once: true }); // avoid duplicate wiring
-        msg.textContent = '';
-      }
+        }, { once:true }); // prevent duplicate handlers
+      };
 
-      const supaNow = getSupaSync();
-      if (supaNow) wireWhenReady(supaNow);
-      else onceStateReady(wireWhenReady);
+      const supaNow = getSupa();
+      if (supaNow) wire(supaNow); else whenSupaReady(wire);
     },
 
     async renderProfile(el){
       enterAccountPageMode();
-      setHeaderForProfile();
 
-      function render(supa){
+      const render = async (supa)=>{
         if (!supa){
-          el.innerHTML = '<section class="p-4 max-w-md mx-auto"><h2 class="text-lg">Account</h2><p class="text-sm">Please refresh — auth is not ready yet.</p></section>';
+          el.innerHTML = '<section class="p-4 max-w-md mx-auto"><h2 class="text-lg">Account</h2><p class="text-sm">Loading…</p></section>';
           return;
         }
-        supa.auth.getUser().then(({ data: { user } })=>{
-          const email = (user && user.email) || '';
-          el.innerHTML = [
-            '<section class="p-4 max-w-md mx-auto">',
-            '  <h2 class="text-lg">Account</h2>',
-            `  <p class="text-sm" style="opacity:.8">Signed in as ${email ? email.replace(/</g,'&lt;') : '(unknown)'}</p>`,
-            '  <div style="height:8px"></div>',
-            '  <button id="accLogoutBtn" class="btn">Logout</button>',
-            '</section>'
-          ].join('');
-          el.querySelector('#accLogoutBtn').addEventListener('click', async function(){
-            try{ await supa.auth.signOut(); }catch(_e){}
-            if (global.state) global.state.session = null;
-            location.hash = '/account/login';
-          });
+        const { data: { user } } = await supa.auth.getUser();
+        const email = (user && user.email) || '';
+        el.innerHTML = [
+          '<section class="p-4 max-w-md mx-auto">',
+          '  <h2 class="text-lg">Account</h2>',
+          `  <p class="text-sm" style="opacity:.8">Signed in as ${email ? email.replace(/</g,'&lt;') : '(unknown)'}</p>`,
+          '  <div style="height:8px"></div>',
+          '  <button id="accLogoutBtn" class="btn">Logout</button>',
+          '</section>'
+        ].join('');
+        el.querySelector('#accLogoutBtn').addEventListener('click', async function(){
+          try{ await supa.auth.signOut(); }catch(_e){}
+          if (global.state) global.state.session = null;
+          location.hash = '/account/login';
         });
-      }
+      };
 
-      const supaNow = getSupaSync();
-      if (supaNow) render(supaNow);
-      else onceStateReady(render);
+      const supaNow = getSupa();
+      if (supaNow) render(supaNow); else whenSupaReady(render);
     },
 
     async renderRegister(el){
