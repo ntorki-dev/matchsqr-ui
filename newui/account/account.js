@@ -1,19 +1,23 @@
-
-/*! account/account.js — v49.stable (uses window.msAuth, honors return-to) */
+/*! account/account.js — v49.s9 (single-file, honors return-to safely) */
 (function (global) {
   'use strict';
   const App = global.MatchSquareApp || (global.MatchSquareApp = {});
   App.screens = App.screens || {};
 
-  // DOM helpers
   function $(id){ return document.getElementById(id); }
   function ensureRoot(){
     var el = $('spa-root');
-    if (!el){ el = document.createElement('div'); el.id='spa-root'; document.body.appendChild(el); }
+    if (!el){ el = document.createElement('div'); el.id = 'spa-root'; document.body.appendChild(el); }
     return el;
   }
   function hideById(id){ const n=$(id); if (n) n.style.display='none'; }
   function showById(id){ const n=$(id); if (n) n.style.display=''; }
+
+  function getSupa(){ return (global.state && global.state.supa) || null; }
+  function whenSupaReady(cb){
+    const tryWire = ()=>{ const s=getSupa(); if (s){ try{ cb(s); }catch{} } else setTimeout(tryWire,150); };
+    tryWire();
+  }
 
   function enterAccountPageMode(){
     ensureRoot();
@@ -25,9 +29,7 @@
     showById('homeSection'); hideById('hostSection'); hideById('joinSection');
     const root = $('spa-root'); if (root) root.setAttribute('hidden','');
   }
-  window.addEventListener('hashchange', function(){
-    if (!/^#\/account\//.test(location.hash || '')) leaveAccountPageMode();
-  });
+  window.addEventListener('hashchange', function(){ if (!/^#\/account\//.test(location.hash||'')) leaveAccountPageMode(); });
 
   App.screens.account = {
     async renderLogin(el){
@@ -49,58 +51,64 @@
       const pass  = el.querySelector('#accPassword');
       const msg   = el.querySelector('#accLoginMsg');
 
-      form.addEventListener('submit', async function(ev){
-        ev.preventDefault();
-        msg.textContent = 'Signing in...';
-        try{
-          if (!window.msAuth) throw new Error('Auth not ready');
-          await window.msAuth.signIn(email.value.trim(), pass.value);
-          // redirect: honor return-to only if not an account route
-          try {
-            const ret = sessionStorage.getItem('ms_return_to');
-            if (ret && !/^#?\/account\//.test(ret)) {
-              sessionStorage.removeItem('ms_return_to');
-              location.hash = ret.charAt(0)==='#' ? ret : '#'+ret;
-            } else {
+      const wire = (supa)=>{
+        try {
+          supa.auth.getSession().then(r=>{ if (global.state) global.state.session = r?.data?.session || null; });
+          supa.auth.onAuthStateChange((_evt, newSession)=>{ if (global.state) global.state.session = newSession || null; });
+        } catch(_) {}
+
+        form.addEventListener('submit', async function(ev){
+          ev.preventDefault();
+          msg.textContent = 'Signing in...';
+          try{
+            const { error } = await supa.auth.signInWithPassword({ email: email.value.trim(), password: pass.value });
+            if (error){ msg.textContent = 'Login failed: ' + error.message; return; }
+            try {
+              const ret = sessionStorage.getItem('ms_return_to');
+              if (ret && !/^#?\/account\//.test(ret)) {
+                sessionStorage.removeItem('ms_return_to');
+                location.hash = ret.charAt(0)==='#' ? ret : '#'+ret;
+              } else {
+                location.hash = '/account/profile';
+              }
+            } catch(_e) {
               location.hash = '/account/profile';
             }
-          } catch(_e) {
-            location.hash = '/account/profile';
+          }catch(e){
+            msg.textContent = 'Unexpected error, please try again';
           }
-        }catch(e){
-          msg.textContent = 'Login failed: ' + (e && e.message or 'error');
-        }
-      });
+        }, { once:true });
+      };
+
+      const supaNow = getSupa();
+      if (supaNow) wire(supaNow); else whenSupaReady(wire);
     },
 
     async renderProfile(el){
       enterAccountPageMode();
-      let userEmail = '';
-      try{
-        if (window.msAuth){
-          const sess = await window.msAuth.getSession();
-          if (sess && sess.user) userEmail = sess.user.email || '';
-          else {
-            // fetch user explicitly
-            try {
-              const s = await window.msAuth.getSession();
-              userEmail = (s && s.user && s.user.email) || '';
-            } catch(_){}
-          }
+      const render = async (supa)=>{
+        if (!supa){
+          el.innerHTML = '<section class="p-4 max-w-md mx-auto"><h2 class="text-lg">Account</h2><p class="text-sm">Loading…</p></section>';
+          return;
         }
-      }catch(_){}
-      el.innerHTML = [
-        '<section class="p-4 max-w-md mx-auto">',
-        '  <h2 class="text-lg">Account</h2>',
-        `  <p class="text-sm" style="opacity:.8">Signed in as ${userEmail ? userEmail.replace(/</g,'&lt;') : '(unknown)'}</p>`,
-        '  <div style="height:8px"></div>',
-        '  <button id="accLogoutBtn" class="btn">Logout</button>',
-        '</section>'
-      ].join('');
-      el.querySelector('#accLogoutBtn').addEventListener('click', async function(){
-        try{ if (window.msAuth) await window.msAuth.signOut(); }catch(_){}
-        location.hash = '/account/login';
-      });
+        const { data: { user } } = await supa.auth.getUser();
+        const email = (user && user.email) || '';
+        el.innerHTML = [
+          '<section class="p-4 max-w-md mx-auto">',
+          '  <h2 class="text-lg">Account</h2>',
+          `  <p class="text-sm" style="opacity:.8">Signed in as ${email ? email.replace(/</g,'&lt;') : '(unknown)'}</p>`,
+          '  <div style="height:8px"></div>',
+          '  <button id="accLogoutBtn" class="btn">Logout</button>',
+          '</section>'
+        ].join('');
+        el.querySelector('#accLogoutBtn').addEventListener('click', async function(){
+          try{ await supa.auth.signOut(); }catch(_e){}
+          if (global.state) global.state.session = null;
+          location.hash = '/account/login';
+        });
+      };
+      const supaNow = getSupa();
+      if (supaNow) render(supaNow); else whenSupaReady(render);
     },
 
     async renderRegister(el){
