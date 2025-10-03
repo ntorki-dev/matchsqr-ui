@@ -1,4 +1,4 @@
-/*! Match Square - app.js (stable + header/auth/route tweaks) v49.1 */
+ /*! Match Square - app.js (stable + header/auth/route tweaks) v49.1 */
 
 (function (global) {
   'use strict';
