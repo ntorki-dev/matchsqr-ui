@@ -1,5 +1,4 @@
-
-/*! account/account.js — v49.s4 (single-file, surgical & robust) */
+/*! account/account.js — v49.s5 (single-file, surgical & robust) */
 (function (global) {
   'use strict';
   const App = global.MatchSquareApp || (global.MatchSquareApp = {});
@@ -17,124 +16,52 @@
     }
     return el;
   }
-  function hideEl(el){
-    if (!el) return;
-    if (!el.dataset.msPrevDisplay) el.dataset.msPrevDisplay = el.style.display || '';
-    el.style.display = 'none';
-  }
-  function showEl(el){
-    if (!el) return;
-    el.style.display = el.dataset.msPrevDisplay || '';
-    delete el.dataset.msPrevDisplay;
-  }
-  function hideById(id){ hideEl($(id)); }
-  function showById(id){ showEl($(id)); }
+  function hideById(id){ const n=$(id); if (n){ n.classList.add('hidden'); n.style.display='none'; } }
+  function showById(id){ const n=$(id); if (n){ n.classList.remove('hidden'); n.style.display=''; } }
 
-  // ---------- Supabase client (no duplicates) ----------
-  function hasSupa(){ return !!(global.state && global.state.supa); }
+  // ---------- Supabase access (never create a second client) ----------
   function getSupaSync(){ return (global.state && global.state.supa) || null; }
-  function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
-
-  async function waitForSupa(maxMs){
-    const deadline = Date.now() + (maxMs || 10000);
-    while (Date.now() < deadline){
-      if (hasSupa()) return getSupaSync();
-      await sleep(50);
-    }
-    // As a LAST resort, initialize once if absolutely missing (prevents loops).
-    if (!global.__MS_SUPA && global.supabase && global.CONFIG && global.CONFIG.FUNCTIONS_BASE){
-      try{
-        const resp = await fetch(global.CONFIG.FUNCTIONS_BASE.replace(/\/$/,'') + '/config');
-        const cfg = await resp.json();
-        const url = cfg.supabase_url || cfg.public_supabase_url || cfg.url;
-        const anon = cfg.supabase_anon_key || cfg.public_supabase_anon_key || cfg.anon;
-        if (url && anon){
-          global.__MS_SUPA = global.supabase.createClient(url, anon);
-          if (global.state) global.state.supa = global.__MS_SUPA;
-        }
-      }catch(_e){}
-    }
-    return getSupaSync();
+  function onceStateReady(cb){
+    // Poll very lightly for up to 10s for state.supa; then run cb
+    let tries = 0;
+    const t = setInterval(function(){
+      tries++;
+      if (getSupaSync() || tries > 200){ clearInterval(t); try{ cb(getSupaSync()); }catch(_e){} }
+    }, 50);
   }
 
-  // ---------- Header button toggle ----------
+  // ---------- Header button helpers (style stays in app.js; we only navigate) ----------
   function setHeaderForLogin(){
     const btn = $('btnAuth'); if (!btn) return;
-    btn.title = 'Login';
-    btn.className = 'btn';          // keep original pill style for "Login"
-    btn.style.background = '';
-    btn.style.border = '';
-    btn.style.padding = '';
-    btn.style.margin = '';
-    btn.innerHTML = 'Login';
     btn.onclick = function(){ location.hash = '/account/login'; };
   }
   function setHeaderForProfile(){
     const btn = $('btnAuth'); if (!btn) return;
-    btn.title = 'Account';
-    btn.className = '';             // remove pill/background
-    btn.style.background = 'none';
-    btn.style.border = 'none';
-    btn.style.padding = '0';
-    btn.style.margin = '0';
-    btn.innerHTML =
-      '<span style="display:inline-grid;place-items:center;width:34px;height:34px;border-radius:9999px;border:1px solid rgba(255,255,255,.3);background:transparent;">' +
-        '<svg width="18" height="18" viewBox="0 0 24 24" style="display:block;color:#16a34a">' +
-          '<path fill="currentColor" d="M12 12a4 4 0 1 0-0.001-8.001A4 4 0 0 0 12 12zm0 2c-4.42 0-8 1.79-8 4v2h16v-2c0-2.21-3.58-4-8-4z"></path>' +
-        '</svg>' +
-      '</span>';
     btn.onclick = function(){ location.hash = '/account/profile'; };
-  }
-  function updateHeaderFromSession(){
-    try{
-      const session = global.state && global.state.session;
-      if (session && session.access_token) setHeaderForProfile();
-      else setHeaderForLogin();
-    }catch(_e){}
   }
 
   // ---------- Page mode helpers ----------
   function enterAccountPageMode(){
     ensureRoot();
-    // Hide all main sections under body except header and #spa-root
-    const body = document.body;
-    const keep = new Set();
-    const hdr = body.querySelector('header'); if (hdr) keep.add(hdr);
-    const spa = $('spa-root'); if (spa) keep.add(spa);
-    Array.from(body.children).forEach(node => {
-      if (!keep.has(node)) hideEl(node);
-    });
-    if (spa) spa.removeAttribute('hidden');
+    hideById('homeSection'); hideById('hostSection'); hideById('joinSection');
+    const root = $('spa-root'); if (root) root.removeAttribute('hidden');
     window.scrollTo(0,0);
   }
   function leaveAccountPageMode(){
-    const body = document.body;
-    Array.from(body.children).forEach(node => {
-      showEl(node);
-    });
-    const spa = $('spa-root'); if (spa) spa.setAttribute('hidden','');
+    showById('homeSection'); hideById('hostSection'); hideById('joinSection');
+    const root = $('spa-root'); if (root) root.setAttribute('hidden','');
   }
+  window.addEventListener('hashchange', function(){
+    if (!/^#\/account\//.test(location.hash || '')) leaveAccountPageMode();
+  });
 
   // ---------- Screens ----------
   App.screens.account = {
     async renderLogin(el){
       enterAccountPageMode();
-      updateHeaderFromSession();
+      setHeaderForLogin();
 
-      let supa = await waitForSupa(10000);
-      if (!supa){
-        el.innerHTML = '<section class="p-4 max-w-md mx-auto"><h2 class="text-lg">Login</h2><p class="text-sm">Please refresh — auth is not ready yet.</p></section>';
-        return;
-      }
-
-      // Keep header synced with auth changes
-      try{
-        supa.auth.onAuthStateChange((_evt, newSession)=>{
-          if (global.state) global.state.session = newSession || null;
-          updateHeaderFromSession();
-        });
-      }catch(_e){}
-
+      // Render first, then wire when supa is ready
       el.innerHTML = [
         '<section class="p-4 max-w-md mx-auto">',
         '  <h2 class="text-lg">Login</h2>',
@@ -152,57 +79,68 @@
       const pass  = el.querySelector('#accPassword');
       const msg   = el.querySelector('#accLoginMsg');
 
-      form.addEventListener('submit', async function(ev){
-        ev.preventDefault();
-        msg.textContent = 'Signing in...';
+      function wireWhenReady(supa){
+        if (!supa){ msg.textContent = 'Please refresh — auth is not ready yet.'; return; }
+        // Keep button states correct
         try{
-          const { error } = await supa.auth.signInWithPassword({ email: email.value.trim(), password: pass.value });
-          if (error){ msg.textContent = 'Login failed, ' + error.message; return; }
-          try{ const r = await supa.auth.getSession(); if (global.state) global.state.session = r?.data?.session || null; }catch(_e){}
-          updateHeaderFromSession();
-          location.hash = '/account/profile';
-        }catch(e){
-          msg.textContent = 'Unexpected error, please try again';
-        }
-      });
+          supa.auth.getSession().then(r=>{
+            const s = r?.data?.session || null;
+            if (global.state) global.state.session = s;
+          });
+          supa.auth.onAuthStateChange((_evt, s)=>{
+            if (global.state) global.state.session = s || null;
+          });
+        }catch(_e){}
+
+        form.addEventListener('submit', async function(ev){
+          ev.preventDefault();
+          msg.textContent = 'Signing in...';
+          try{
+            const { error } = await supa.auth.signInWithPassword({ email: email.value.trim(), password: pass.value });
+            if (error){ msg.textContent = 'Login failed, ' + error.message; return; }
+            location.hash = '/account/profile';
+          }catch(e){
+            msg.textContent = 'Unexpected error, please try again';
+          }
+        }, { once: true }); // avoid duplicate wiring
+        msg.textContent = '';
+      }
+
+      const supaNow = getSupaSync();
+      if (supaNow) wireWhenReady(supaNow);
+      else onceStateReady(wireWhenReady);
     },
 
     async renderProfile(el){
       enterAccountPageMode();
+      setHeaderForProfile();
 
-      let supa = await waitForSupa(10000);
-      if (!supa){
-        el.innerHTML = '<section class="p-4 max-w-md mx-auto"><h2 class="text-lg">Account</h2><p class="text-sm">Please refresh — auth is not ready yet.</p></section>';
-        return;
+      function render(supa){
+        if (!supa){
+          el.innerHTML = '<section class="p-4 max-w-md mx-auto"><h2 class="text-lg">Account</h2><p class="text-sm">Please refresh — auth is not ready yet.</p></section>';
+          return;
+        }
+        supa.auth.getUser().then(({ data: { user } })=>{
+          const email = (user && user.email) || '';
+          el.innerHTML = [
+            '<section class="p-4 max-w-md mx-auto">',
+            '  <h2 class="text-lg">Account</h2>',
+            `  <p class="text-sm" style="opacity:.8">Signed in as ${email ? email.replace(/</g,'&lt;') : '(unknown)'}</p>`,
+            '  <div style="height:8px"></div>',
+            '  <button id="accLogoutBtn" class="btn">Logout</button>',
+            '</section>'
+          ].join('');
+          el.querySelector('#accLogoutBtn').addEventListener('click', async function(){
+            try{ await supa.auth.signOut(); }catch(_e){}
+            if (global.state) global.state.session = null;
+            location.hash = '/account/login';
+          });
+        });
       }
 
-      try{
-        supa.auth.onAuthStateChange((_evt, newSession)=>{
-          if (global.state) global.state.session = newSession || null;
-          updateHeaderFromSession();
-        });
-      }catch(_e){}
-
-      const { data: { user } } = await supa.auth.getUser();
-      const email = (user && user.email) || '';
-
-      updateHeaderFromSession();
-
-      el.innerHTML = [
-        '<section class="p-4 max-w-md mx-auto">',
-        '  <h2 class="text-lg">Account</h2>',
-        `  <p class="text-sm" style="opacity:.8">Signed in as ${email ? email.replace(/</g,'&lt;') : '(unknown)'}</p>`,
-        '  <div style="height:8px"></div>',
-        '  <button id="accLogoutBtn" class="btn">Logout</button>',
-        '</section>'
-      ].join('');
-
-      el.querySelector('#accLogoutBtn').addEventListener('click', async function(){
-        try{ await supa.auth.signOut(); }catch(_e){}
-        try{ if (global.state) global.state.session = null; }catch(_e){}
-        updateHeaderFromSession();
-        location.hash = '/account/login';
-      });
+      const supaNow = getSupaSync();
+      if (supaNow) render(supaNow);
+      else onceStateReady(render);
     },
 
     async renderRegister(el){
@@ -215,12 +153,4 @@
       el.innerHTML = '<section class="p-4"><h2 class="text-lg">Subscription</h2><p class="text-sm opacity-70">Coming later.</p></section>';
     }
   };
-
-  // Leave account mode when navigating elsewhere
-  window.addEventListener('hashchange', function(){
-    if (!/^#\/account\//.test(location.hash || '')) {
-      leaveAccountPageMode();
-    }
-  });
-
 })(window);
