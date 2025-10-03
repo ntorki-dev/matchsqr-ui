@@ -1,4 +1,4 @@
-/*! account/account.js — v49.s8 (single-file, surgical, honors return-to) */
+/*! account/account.js — v49.s9 (single-file, honors return-to safely) */
 (function (global) {
   'use strict';
   const App = global.MatchSquareApp || (global.MatchSquareApp = {});
@@ -93,12 +93,13 @@
               password: pass.value
             });
             if (error){ msg.textContent = 'Login failed: ' + error.message; return; }
-            // Honor return-to if set by host guard; else go profile
+
+            // Honor return-to only if it is NOT an /account/... route; else go profile
             try {
               const ret = sessionStorage.getItem('ms_return_to');
-              if (ret) {
+              if (ret && !/^#?\/account\//.test(ret)) {
                 sessionStorage.removeItem('ms_return_to');
-                location.hash = ret;
+                location.hash = ret.charAt(0)==='#' ? ret : '#'+ret;
               } else {
                 location.hash = '/account/profile';
               }
