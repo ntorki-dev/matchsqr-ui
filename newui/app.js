@@ -259,64 +259,51 @@ submit && submit.addEventListener('click', async function(){
       if(!url||!anon) throw new Error('Missing supabase url/anon');
       state.supa=window.supabase.createClient(url,anon); log('Supabase client initialized.');
 
-  try{
-    if (state.supa && state.supa.auth){
-      state.supa.auth.onAuthStateChange((event, session)=>{
-        try{ state.session = session || null; }catch(_e){}
-        updateHeaderAuthUi();
-      });
-      // Also get current session once at boot to set initial UI
-      state.supa.auth.getSession().then(function(res){
-        try{ state.session = res?.data?.session || null; }catch(_e){}
-        updateHeaderAuthUi();
-      });
-    }
-  }catch(e){}
+  // keep header in sync with auth
+  if (state.supa && state.supa.auth){
+    state.supa.auth.onAuthStateChange((event, session)=>{ state.session = session || null; updateHeaderAuthUi(); });
+    state.supa.auth.getSession().then(r=>{ state.session = r?.data?.session || null; updateHeaderAuthUi(); });
+  }
   initHeader();
 
     }catch(e){ log('Config error: '+e.message); }
   }
   loadConfig();
 
-  // ===== Header Auth Controls (v49.0.3) =====
+  // ===== Header Auth Controls v49.1 =====
   function msProfileIconHtml(){
-    return '<span class="ms-avatar" style="display:inline-grid;place-items:center;width:32px;height:32px;border-radius:9999px;border:1px solid rgba(0,0,0,.15);background:#fff;">'
-         + '<svg width="16" height="16" viewBox="0 0 24 24" style="display:block;color:#16a34a;">'
-         + '<path fill="currentColor" d="M12 12a4 4 0 1 0-0.001-8.001A4 4 0 0 0 12 12zm0 2c-4.42 0-8 1.79-8 4v2h16v-2c0-2.21-3.58-4-8-4z"/>'
-         + '</svg></span>';
+    return '<span class="ms-avatar">'
+         +   '<svg viewBox="0 0 24 24" aria-hidden="true">'
+         +     '<path fill="currentColor" d="M12 12a4 4 0 1 0-0.001-8.001A4 4 0 0 0 12 12zm0 2c-4.42 0-8 1.79-8 4v2h16v-2c0-2.21-3.58-4-8-4z"/>'
+         +   '</svg>'
+         + '</span>';
   }
   function updateHeaderAuthUi(){
-    try{
-      if (!els.btnAuth) return;
-      const session = state.session;
-      if (session && session.access_token){
-        els.btnAuth.innerHTML = msProfileIconHtml();
-        els.btnAuth.title = 'Account';
-        els.btnAuth.onclick = function(){
-          try{ location.hash = '/account/profile'; }catch(_e){}
-        };
-      } else {
-        els.btnAuth.textContent = 'Login';
-        els.btnAuth.title = 'Login';
-        els.btnAuth.onclick = function(){
-          try{ sessionStorage.setItem('ms_return_to', location.hash || '#'); }catch(_e){}
-          try{ location.hash = '/account/login'; }catch(_e){}
-        };
-      }
-    }catch(e){}
+    if (!els.btnAuth) return;
+    const session = state.session;
+    if (session && session.access_token){
+      els.btnAuth.innerHTML = msProfileIconHtml();
+      els.btnAuth.title = 'Account';
+      els.btnAuth.onclick = function(){ location.hash = '/account/profile'; };
+    } else {
+      els.btnAuth.innerHTML = '<span style="font-weight:600">Login</span>';
+      els.btnAuth.title = 'Login';
+      els.btnAuth.onclick = function(){
+        try{ sessionStorage.setItem('ms_return_to', location.hash || '#'); }catch(_e){}
+        location.hash = '/account/login';
+      };
+    }
   }
   function initHeader(){
-    try{
-      if (els.brandLink){
-        els.brandLink.addEventListener('click', function(ev){
-          ev.preventDefault();
-          show(els.home); hide(els.host); hide(els.join);
-          const root = document.getElementById('spa-root'); if (root) root.setAttribute('hidden','');
-          location.hash = ''; // clear SPA route
-        });
-      }
-      updateHeaderAuthUi();
-    }catch(e){}
+    if (els.brandLink){
+      els.brandLink.addEventListener('click', function(ev){
+        ev.preventDefault();
+        show(els.home); hide(els.host); hide(els.join);
+        const root = document.getElementById('spa-root'); if (root) root.setAttribute('hidden','');
+        location.hash = '';
+      });
+    }
+    updateHeaderAuthUi();
   }
 
 
@@ -744,71 +731,64 @@ submit && submit.addEventListener('click', async function(){
 
 })();
 
-  // Guard host-only actions to redirect to account login
+  // Guard host-only actions for signed-out users
   document.addEventListener('click', function(ev){
-    try{
-      var t = ev.target;
-      if (!t) return;
-      var btn = t.closest && (t.closest('#createGameBtn') || t.closest('#startGameBtn') || t.closest('#nextCardBtn') || t.closest('#endAnalyzeBtn'));
-      if (!btn) return;
-      if (!state || !state.session || !state.session.access_token){
-        try{ sessionStorage.setItem('ms_return_to', '#/host'); }catch(_e){}
-        try{ location.hash = '/account/login'; }catch(_e){}
-        ev.preventDefault();
-        ev.stopImmediatePropagation();
-      }
-    }catch(e){}
+    const t = ev.target;
+    if (!t) return;
+    const btn = t.closest && (t.closest('#createGameBtn') || t.closest('#startGameBtn') || t.closest('#nextCardBtn') || t.closest('#endAnalyzeBtn'));
+    if (!btn) return;
+    if (!state || !state.session || !state.session.access_token){
+      try{ sessionStorage.setItem('ms_return_to', '#/host'); }catch(_e){}
+      location.hash = '/account/login';
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }
   }, true);
 
 
-  // ===== Minimal SPA bootstrap for account routes (v49.0.3) =====
+  // ===== Minimal SPA for account routes v49.1 =====
   (function(){
     function ensureRoot(){
-      var el = document.getElementById('spa-root');
-      if (!el){
-        el = document.createElement('div'); el.id='spa-root'; el.setAttribute('hidden',''); document.body.appendChild(el);
-      }
+      let el = document.getElementById('spa-root');
+      if (!el){ el=document.createElement('div'); el.id='spa-root'; el.setAttribute('hidden',''); document.body.appendChild(el); }
       return el;
     }
     function loadScript(src){
-      return new Promise(function(resolve,reject){
-        var exists = Array.from(document.scripts||[]).some(function(s){ return s.src && (s.src.endsWith(src)||s.src.includes(src)); });
+      return new Promise((resolve,reject)=>{
+        const exists = Array.from(document.scripts||[]).some(s => s.src && (s.src.endsWith(src)||s.src.includes(src)));
         if (exists) return resolve();
-        var s=document.createElement('script'); s.src=src; s.async=true; s.onload=resolve; s.onerror=function(){ reject(new Error('load '+src)); };
-        document.body.appendChild(s);
+        const s=document.createElement('script'); s.src=src; s.async=true; s.onload=resolve; s.onerror=()=>reject(new Error('load '+src)); document.body.appendChild(s);
       });
     }
     function getPath(){
-      var raw=(location.hash||'').replace(/^#/,''); if(!raw) return '/';
+      const raw=(location.hash||'').replace(/^#/,''); if(!raw) return '/';
       return raw[0]==='/'? raw : '/'+raw;
     }
-    var routeConfig = {
+    const routeConfig = {
       '/account/login':        { src: 'account/account.js', fn: 'renderLogin',        ns: 'account' },
       '/account/profile':      { src: 'account/account.js', fn: 'renderProfile',      ns: 'account' },
       '/account/register':     { src: 'account/account.js', fn: 'renderRegister',     ns: 'account' },
       '/account/subscription': { src: 'account/account.js', fn: 'renderSubscription', ns: 'account' }
     };
     function isKnown(p){ return !!routeConfig[p]; }
-
-    var routerStarted=false, router=null;
+    let routerStarted=false, router=null;
     function bindRoutes(r){
-      r.add('/', function(ctx){ var el=document.getElementById('spa-root'); if(el) el.setAttribute('hidden',''); });
+      r.add('/', function(){ const el=document.getElementById('spa-root'); if(el) el.setAttribute('hidden',''); try{ show(els.home); hide(els.host); hide(els.join);}catch(_e){} });
       Object.keys(routeConfig).forEach(function(p){
-        r.add(p, async function(ctx){
-          var el=document.getElementById('spa-root'); if(!el) return;
+        r.add(p, async function(){
+          const el=document.getElementById('spa-root'); if(!el) return;
+          try{ hide(els.home); hide(els.host); hide(els.join);}catch(_e){}
           el.removeAttribute('hidden');
-          var cfg=routeConfig[p];
-          try{ await loadScript('lib/router.js'); }catch(_e){} // ensure router lib present for screen scripts too
-          try{ await loadScript(cfg.src); }catch(e){ try{ await loadScript('/newui/'+cfg.src); }catch(_e){} }
-          var screens = (window.MatchSquareApp && window.MatchSquareApp.screens) || {};
-          var ns = cfg.ns && screens[cfg.ns] || screens;
-          var fn = ns && ns[cfg.fn];
+          const cfg=routeConfig[p];
+          try{ await loadScript('account/account.js'); }catch(_e){}
+          const screens = (window.MatchSquareApp && window.MatchSquareApp.screens) || {};
+          const ns = cfg.ns && screens[cfg.ns] || screens;
+          const fn = ns && ns[cfg.fn];
           if (typeof fn === 'function'){ fn(el); } else { el.innerHTML='<div class="p-4 text-sm opacity-70">Loading...</div>'; }
         });
       });
-      r.setNotFound(function(){ var el=document.getElementById('spa-root'); if(el) el.setAttribute('hidden',''); });
+      r.setNotFound(function(){ const el=document.getElementById('spa-root'); if(el) el.setAttribute('hidden',''); });
     }
-
     async function startRouter(){
       try{
         if (!window.MatchSquareRouter){
@@ -816,15 +796,14 @@ submit && submit.addEventListener('click', async function(){
         }
         if (!window.MatchSquareRouter) return;
         if (routerStarted) return;
-        var R = window.MatchSquareRouter; router = new R(); router.mount('#spa-root'); bindRoutes(router); router.start(); routerStarted=true;
+        const R=window.MatchSquareRouter; router=new R(); router.mount('#spa-root'); bindRoutes(router); router.start(); routerStarted=true;
       }catch(e){}
     }
-
     function boot(){
       ensureRoot();
-      var p=getPath();
+      const p=getPath();
       if (isKnown(p)){ startRouter(); }
-      window.addEventListener('hashchange', function(){ var p=getPath(); if (isKnown(p)) startRouter(); });
+      window.addEventListener('hashchange', function(){ const p=getPath(); if (isKnown(p)) startRouter(); });
     }
     if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
   })();
