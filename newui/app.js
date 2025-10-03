@@ -1,28 +1,28 @@
 
-/*! Match Square - SPA bootstrap v49.0.1 */
+/*! Match Square - SPA bootstrap v49.0.2 (non-invasive) */
 (function (global, d) {
   'use strict';
 
-  // Create minimal namespace without touching existing globals
   const App = global.MatchSquareApp || (global.MatchSquareApp = {});
-  App.version = 'v49.0.1-spa';
+  App.version = 'v49.0.2-spa';
 
-  // Create #spa-root if it does not exist, keep it hidden by default
+  // Create #spa-root but keep it hidden unless we render a SPA screen
   function ensureRoot() {
     let el = d.getElementById('spa-root');
     if (!el) {
       el = d.createElement('div');
       el.id = 'spa-root';
       el.setAttribute('hidden', '');
-      // Append at the end of body to avoid layout shifts
       d.body.appendChild(el);
     }
     return el;
   }
 
-  // Dynamically load a script if needed
   function loadScript(src) {
     return new Promise((resolve, reject) => {
+      // Prevent duplicate loads
+      const already = Array.from(d.scripts).some(s => s.src && s.src.endsWith(src));
+      if (already) return resolve();
       const s = d.createElement('script');
       s.src = src;
       s.async = true;
@@ -32,90 +32,160 @@
     });
   }
 
-  // Safe route handlers, only run if screens were added
-  function bindRoutes(router) {
-    const screens = App.screens || {};
+  // Normalize hash: support "#host" and "#/host"
+  function getPath() {
+    const raw = (location.hash || '').replace(/^#/, '');
+    if (!raw) return '/';
+    return raw.startsWith('/') ? raw : '/' + raw;
+  }
 
-    // Helper wrappers to avoid errors if a screen is missing
-    function wrap(fnName, ns) {
-      return async ({ el }) => {
-        const nsObj = ns ? (screens[ns] || {}) : screens;
-        const fn = ns ? nsObj[fnName] : screens[fnName];
+  // Map routes to lazy-loaded files and function names
+  const routeConfig = {
+    '/host':        { src: 'pages/hostlobby.js', fn: 'hostLobby', ns: null },
+    '/join':        { src: 'pages/joingame.js',  fn: 'joinGame',  ns: null },
+    '/game':        { src: 'pages/gameroom.js',  fn: 'gameRoom',  ns: null },
+    '/checkout':    { src: 'pages/checkout.js', fn: 'checkout',  ns: null },
+    '/account/login':        { src: 'account/account.js', fn: 'renderLogin',        ns: 'account' },
+    '/account/register':     { src: 'account/account.js', fn: 'renderRegister',     ns: 'account' },
+    '/account/profile':      { src: 'account/account.js', fn: 'renderProfile',      ns: 'account' },
+    '/account/subscription': { src: 'account/account.js', fn: 'renderSubscription', ns: 'account' },
+  };
+
+  const knownPaths = new Set(Object.keys(routeConfig));
+
+  // Keep the SPA dormant unless a known route is hit
+  let router = null;
+  let routerReady = false;
+
+  function isKnown(path) {
+    if (knownPaths.has(path)) return true;
+    // Accept prefixed game path like "/game/ABC123" as "/game"
+    if (path.startsWith('/game/')) return true;
+    return false;
+  }
+
+  async function ensureRouter() {
+    if (routerReady) return router;
+    // Load router if needed
+    if (!global.MatchSquareRouter) {
+      try {
+        await loadScript('lib/router.js');
+      } catch (e1) {
+        await loadScript('/newui/lib/router.js');
+      }
+    }
+    const RouterCtor = global.MatchSquareRouter;
+    if (!RouterCtor) return null;
+    router = new RouterCtor();
+    router.mount('#spa-root');
+
+    // Bind routes, but do NOT render home. Keep root hidden for "/" so we do not touch homepage.
+    bindRoutes(router);
+
+    router.guards(async () => true);
+    router.start();
+    routerReady = true;
+    return router;
+  }
+
+  async function ensureScreenLoaded(path) {
+    // Collapse dynamic game route "/game/XYZ" to "/game"
+    const basePath = path.startsWith('/game/') ? '/game' : path;
+    const cfg = routeConfig[basePath];
+    if (!cfg) return;
+    const screens = App.screens || (App.screens = {});
+    // Resolve function pointer
+    function getFn() {
+      if (cfg.ns) {
+        return (screens[cfg.ns] || {})[cfg.fn];
+      }
+      return screens[cfg.fn];
+    }
+    if (typeof getFn() === 'function') return; // already available
+    // Attempt to load the script
+    try {
+      await loadScript(cfg.src);
+    } catch (e1) {
+      // Fallback to absolute-like path
+      await loadScript('/newui/' + cfg.src);
+    }
+  }
+
+  function bindRoutes(r) {
+    // Home route: keep root hidden and render nothing
+    r.add('/', async ({ el }) => {
+      if (!el) return;
+      el.setAttribute('hidden', '');
+      // Do not inject anything on homepage to avoid affecting existing UI
+    });
+
+    // Wire the routes
+    Object.keys(routeConfig).forEach((p) => {
+      r.add(p, async ({ el, path }) => {
+        if (!el) return;
+        // Show SPA region
+        el.removeAttribute('hidden');
+        await ensureScreenLoaded(p);
+        const cfg = routeConfig[p];
+        const screens = App.screens || {};
+        const fn = cfg.ns ? ((screens[cfg.ns] || {})[cfg.fn]) : screens[cfg.fn];
         if (typeof fn === 'function') {
           await fn(el);
-        } else if (el) {
+        } else {
           el.innerHTML = '<div class="p-4 text-sm opacity-70">Screen not wired yet.</div>';
         }
-      };
-    }
-
-    router
-      .add('/', async ({ el }) => {
-        if (!el) return;
-        el.innerHTML = [
-          '<section class="p-4 max-w-2xl mx-auto">',
-          '<h1 class="text-xl">Match Square</h1>',
-          '<p class="text-sm opacity-70">SPA is ready. Your current UI stays as is.</p>',
-          '</section>'
-        ].join('');
-      })
-      // Pages
-      .add('/host', wrap('hostLobby'))
-      .add('/join', wrap('joinGame'))
-      .add('/game', wrap('gameRoom'))
-      .add('/checkout', wrap('checkout'))
-      // Account subroutes
-      .add('/account/login', wrap('renderLogin', 'account'))
-      .add('/account/register', wrap('renderRegister', 'account'))
-      .add('/account/profile', wrap('renderProfile', 'account'))
-      .add('/account/subscription', wrap('renderSubscription', 'account'))
-      .setNotFound(async ({ el, path }) => {
-        if (!el) return;
-        el.innerHTML = '<div class="p-4">Not found: ' + path + '</div>';
       });
+    });
+
+    // Dynamic game route variant "/game/XYZ"
+    r.add('/game/*', async ({ el, path }) => {
+      if (!el) return;
+      el.removeAttribute('hidden');
+      await ensureScreenLoaded('/game');
+      const screens = App.screens || {};
+      const fn = screens.gameRoom;
+      if (typeof fn === 'function') {
+        await fn(el);
+      } else {
+        el.innerHTML = '<div class="p-4 text-sm opacity-70">Game screen not wired yet.</div>';
+      }
+    });
+
+    // Not found, keep root hidden so homepage stays clickable
+    r.setNotFound(async ({ el }) => {
+      if (!el) return;
+      el.setAttribute('hidden', '');
+    });
   }
 
   async function boot() {
-    try {
-      const root = ensureRoot();
+    ensureRoot();
+    const path = getPath();
 
-      // If router class is missing, load it from /newui/lib/router.js
-      if (!global.MatchSquareRouter) {
-        // Try relative path first for GitHub Pages served from /newui/
-        try {
-          await loadScript('lib/router.js');
-        } catch (e1) {
-          // Fallback: absolute-like path if site root differs
-          await loadScript('/newui/lib/router.js');
+    // If not a known SPA path, keep dormant and do not render anything
+    if (!isKnown(path)) {
+      // Still watch for future hash changes to known paths
+      window.addEventListener('hashchange', async () => {
+        const p = getPath();
+        if (isKnown(p)) {
+          await ensureRouter();
         }
-      }
-
-      // Instantiate a router safely
-      const RouterCtor = global.MatchSquareRouter;
-      if (!RouterCtor) {
-        console.warn('[MatchSquare] Router not available yet.');
-        return;
-      }
-      const router = new RouterCtor();
-
-      // Mount and bind
-      router.mount('#spa-root');
-      bindRoutes(router);
-
-      // Optional guards placeholder, does nothing now
-      router.guards(async () => true);
-
-      // Start
-      router.start();
-      console.log('[MatchSquare]', App.version, '- SPA mounted');
-    } catch (err) {
-      console.error('[MatchSquare] SPA boot error:', err);
+      });
+      return;
     }
+
+    // Known SPA route, initialize router now
+    await ensureRouter();
   }
 
-  if (d.readyState === 'loading') {
-    d.addEventListener('DOMContentLoaded', boot);
-  } else {
-    boot();
-  }
+  if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', boot);
+  else boot();
+
+  // Small helper for legacy buttons that want to navigate without changing their code
+  App.navigate = function (path) {
+    const p = path.startsWith('#') ? path.slice(1) : path;
+    location.hash = p.startsWith('/') ? p : '/' + p;
+  };
+
+  console.log('[MatchSquare]', App.version, 'loaded');
 })(window, document);
