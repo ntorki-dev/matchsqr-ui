@@ -3,7 +3,7 @@
   // === Non-conflicting UI version ===
   try{
     if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v49.0.0';
+      window.__MS_UI_VERSION = 'v48.3.1';
       var _h = document.getElementById('hostLog');
       if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
 
@@ -80,6 +80,7 @@
 
   // Elements
   const els = {
+    brandLink: $('brandLink'), btnAuth: $('btnAuth'),
     home: $('homeSection'), host: $('hostSection'), join: $('joinSection'),
     btnHome: $('btnHome'), hostBtn: $('hostBtn'), joinBtn: $('joinBtn'),
     hostLoginForm: $('hostLoginForm'), hostEmail: $('hostEmail'), hostPassword: $('hostPassword'),
@@ -257,9 +258,59 @@ submit && submit.addEventListener('click', async function(){
       const anon=cfg.supabase_anon_key||cfg.public_supabase_anon_key||cfg.anon||(window.CONFIG&&window.CONFIG.FALLBACK_SUPABASE_ANON_KEY);
       if(!url||!anon) throw new Error('Missing supabase url/anon');
       state.supa=window.supabase.createClient(url,anon); log('Supabase client initialized.');
+
+  // Keep header in sync with auth changes
+  try{
+    if (state.supa && state.supa.auth){
+      state.supa.auth.onAuthStateChange((event, session)=>{
+        try{ state.session = session || null; }catch(_e){}
+        updateHeaderAuthUi();
+      });
+    }
+  }catch(e){}
+  initHeader();
+
     }catch(e){ log('Config error: '+e.message); }
   }
   loadConfig();
+
+  // ===== Header Auth Controls (added v49) =====
+  function updateHeaderAuthUi(){
+    try{
+      if (!els.btnAuth) return;
+      const session = state.session;
+      if (session && session.access_token){
+        // Show a simple profile icon
+        els.btnAuth.innerHTML = '👤';
+        els.btnAuth.title = 'Account';
+        els.btnAuth.onclick = function(){
+          try{ location.hash = '/account/profile'; }catch(_e){}
+        };
+      } else {
+        els.btnAuth.textContent = 'Login';
+        els.btnAuth.title = 'Login';
+        els.btnAuth.onclick = function(){
+          try{ sessionStorage.setItem('ms_return_to', location.hash || '#'); }catch(_e){}
+          try{ location.hash = '/account/login'; }catch(_e){}
+        };
+      }
+    }catch(e){}
+  }
+
+  function initHeader(){
+    try{
+      if (els.brandLink){
+        els.brandLink.addEventListener('click', function(ev){
+          ev.preventDefault();
+          show(els.home); hide(els.host); hide(els.join);
+          // Keep SPA region hidden when going "home"
+          const root = document.getElementById('spa-root'); if (root) root.setAttribute('hidden','');
+        });
+      }
+      updateHeaderAuthUi();
+    }catch(e){}
+  }
+
 
   // Countdowns
   function clearHostCountdown(){ if(state.hostCountdownHandle){ clearInterval(state.hostCountdownHandle); state.hostCountdownHandle=null; } setText(els.timeLeft,'—'); state.endsAt=null; }
@@ -684,154 +735,3 @@ submit && submit.addEventListener('click', async function(){
   })();
 
 })();
-
-
-
-/*! === Match Square SPA extension v49.0.2 (non-invasive) === */
-(function (global, d) {
-  'use strict';
-
-  // Only handle hash routes that start with "#/"
-  function isSpaHash(hash) {
-    return typeof hash === 'string' && hash.indexOf('#/') === 0;
-  }
-
-  // Create #spa-root only when needed
-  function ensureRoot() {
-    let el = d.getElementById('spa-root');
-    if (!el) {
-      el = d.createElement('div');
-      el.id = 'spa-root';
-      el.setAttribute('hidden', '');
-      d.body.appendChild(el);
-    }
-    return el;
-  }
-
-  function loadScript(src) {
-    return new Promise((resolve, reject) => {
-      const already = Array.from(d.scripts).some(s => s.src && (s.src.endsWith(src) || s.src.includes(src)));
-      if (already) return resolve();
-      const s = d.createElement('script');
-      s.src = src;
-      s.async = true;
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error('Failed to load ' + src));
-      d.body.appendChild(s);
-    });
-  }
-
-  // Route config maps to external screen files
-  const routeConfig = {
-    '/host':        { src: 'pages/hostlobby.js', fn: 'hostLobby', ns: null },
-    '/join':        { src: 'pages/joingame.js',  fn: 'joinGame',  ns: null },
-    '/game':        { src: 'pages/gameroom.js',  fn: 'gameRoom',  ns: null },
-    '/checkout':    { src: 'pages/checkout.js', fn: 'checkout',  ns: null },
-    '/account/login':        { src: 'account/account.js', fn: 'renderLogin',        ns: 'account' },
-    '/account/register':     { src: 'account/account.js', fn: 'renderRegister',     ns: 'account' },
-    '/account/profile':      { src: 'account/account.js', fn: 'renderProfile',      ns: 'account' },
-    '/account/subscription': { src: 'account/account.js', fn: 'renderSubscription', ns: 'account' },
-  };
-
-  function normPath(hash) {
-    const raw = (hash || '').replace(/^#/, '');
-    const path = raw.startsWith('/') ? raw : '/' + raw;
-    // Collapse dynamic game path
-    return path.startsWith('/game/') ? '/game' : path;
-  }
-
-  async function ensureRouter() {
-    if (!global.MatchSquareRouter) {
-      try {
-        await loadScript('lib/router.js');
-      } catch (e1) {
-        await loadScript('/newui/lib/router.js');
-      }
-    }
-    return global.MatchSquareRouter ? new global.MatchSquareRouter() : null;
-  }
-
-  async function ensureScreenLoaded(path) {
-    const cfg = routeConfig[path];
-    if (!cfg) return;
-    const screens = (global.MatchSquareApp || (global.MatchSquareApp = {})).screens || ((global.MatchSquareApp.screens = {}));
-    const getFn = () => cfg.ns ? ((screens[cfg.ns]||{})[cfg.fn]) : screens[cfg.fn];
-    if (typeof getFn() === 'function') return;
-    try {
-      await loadScript(cfg.src);
-    } catch (e1) {
-      await loadScript('/newui/' + cfg.src);
-    }
-  }
-
-  async function bootSpaIfNeeded(initialHash) {
-    if (!isSpaHash(initialHash)) return; // Do nothing on legacy routes like "#host" or empty hash
-
-    const router = await ensureRouter();
-    if (!router) return;
-
-    const root = ensureRoot();
-    // Home route: keep spa hidden
-    router.add('/', async ({ el }) => { if (el) el.setAttribute('hidden', ''); });
-
-    // Bind configured routes
-    Object.keys(routeConfig).forEach(p => {
-      router.add(p, async ({ el }) => {
-        if (!el) return;
-        el.removeAttribute('hidden');
-        await ensureScreenLoaded(p);
-        const cfg = routeConfig[p];
-        const screens = (global.MatchSquareApp && global.MatchSquareApp.screens) || {};
-        const fn = cfg.ns ? ((screens[cfg.ns]||{})[cfg.fn]) : screens[cfg.fn];
-        if (typeof fn === 'function') {
-          await fn(el);
-        } else {
-          el.innerHTML = '<div class="p-4 text-sm opacity-70">Screen not wired yet.</div>';
-        }
-      });
-    });
-
-    // Dynamic game path
-    router.add('/game/*', async ({ el }) => {
-      if (!el) return;
-      el.removeAttribute('hidden');
-      await ensureScreenLoaded('/game');
-      const fn = (global.MatchSquareApp && global.MatchSquareApp.screens && global.MatchSquareApp.screens.gameRoom);
-      if (typeof fn === 'function') await fn(el);
-      else el.innerHTML = '<div class="p-4 text-sm opacity-70">Game screen not wired yet.</div>';
-    });
-
-    // Do not show not-found to avoid altering legacy UI
-    router.setNotFound(async ({ el }) => { if (el) el.setAttribute('hidden',''); });
-
-    // Only start listening if the hash begins with "#/"
-    router.mount('#spa-root');
-    router.guards(async () => true);
-    router.start();
-
-    // Also listen for future transitions to "#/..."
-    window.addEventListener('hashchange', function () {
-      const h = location.hash || '';
-      // If someone navigates back to legacy hash like "#host", hide spa area
-      if (!isSpaHash(h)) {
-        const el = d.getElementById('spa-root');
-        if (el) el.setAttribute('hidden','');
-      }
-    });
-  }
-
-  if (d.readyState === 'loading') {
-    d.addEventListener('DOMContentLoaded', function(){ bootSpaIfNeeded(location.hash || ''); });
-  } else {
-    bootSpaIfNeeded(location.hash || '');
-  }
-
-  // Expose helper without affecting legacy code
-  (global.MatchSquareApp || (global.MatchSquareApp = {})).navigate = function (path) {
-    const p = path.startsWith('#') ? path : '#'+path;
-    // Force SPA prefix
-    if (p.indexOf('#/') !== 0) location.hash = '#/' + p.replace(/^#/, '');
-    else location.hash = p;
-  };
-
-})(window, document);
