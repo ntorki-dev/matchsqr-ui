@@ -1,5 +1,4 @@
-
-/*! Account screens v49.1 */
+/*! Account screens v49 — header-only page mode */
 (function (global) {
   'use strict';
   const App = global.MatchSquareApp || (global.MatchSquareApp = {});
@@ -21,8 +20,32 @@
     return global.__MS_SUPA;
   }
 
+  // --- Helpers to make account a "page with header only" ---
+  function enterAccountPageMode(){
+    // Hide legacy sections explicitly so only header + account content remain
+    ['home','host','join'].forEach(id => {
+      const n = document.getElementById(id);
+      if (n) n.style.display = 'none';
+    });
+    // Ensure SPA root is visible for account pages
+    const root = document.getElementById('spa-root');
+    if (root) root.removeAttribute('hidden');
+  }
+  function leaveAccountPageMode(){
+    // Restore default: show home, hide host/join (your header Home click already does this too)
+    const home = document.getElementById('home');
+    if (home) home.style.display = '';
+    const host = document.getElementById('host');
+    if (host) host.style.display = 'none';
+    const join = document.getElementById('join');
+    if (join) join.style.display = 'none';
+    const root = document.getElementById('spa-root');
+    if (root) root.setAttribute('hidden','');
+  }
+
   App.screens.account = {
     async renderLogin(el){
+      enterAccountPageMode();
       const supa = await getSupabase();
       el.innerHTML = [
         '<section class="p-4 max-w-md mx-auto">',
@@ -43,15 +66,18 @@
         ev.preventDefault();
         msg.textContent = 'Signing in...';
         try{
-          const { data, error } = await supa.auth.signInWithPassword({ email: email.value.trim(), password: pass.value });
+          const { error } = await supa.auth.signInWithPassword({ email: email.value.trim(), password: pass.value });
           if (error){ msg.textContent = 'Login failed, ' + error.message; return; }
-          msg.textContent = 'OK';
+          // After successful login → profile page
           location.hash = '/account/profile';
-        }catch(e){ msg.textContent = 'Unexpected error, please try again'; }
+        }catch(e){
+          msg.textContent = 'Unexpected error, please try again';
+        }
       });
     },
 
     async renderProfile(el){
+      enterAccountPageMode();
       const supa = await getSupabase();
       const { data: { user } } = await supa.auth.getUser();
       const email = (user && user.email) || '';
@@ -65,16 +91,26 @@
       ].join('');
       el.querySelector('#accLogoutBtn').addEventListener('click', async function(){
         try{ await supa.auth.signOut(); }catch(_e){}
+        // After logout → login page
         location.hash = '/account/login';
       });
     },
 
     async renderRegister(el){
+      enterAccountPageMode();
       el.innerHTML = '<section class="p-4"><h2 class="text-lg">Register</h2><p class="text-sm opacity-70">Coming later.</p></section>';
     },
 
     async renderSubscription(el){
+      enterAccountPageMode();
       el.innerHTML = '<section class="p-4"><h2 class="text-lg">Subscription</h2><p class="text-sm opacity-70">Coming later.</p></section>';
     }
   };
+
+  // Optional: when you navigate away from account to home via the brand, this keeps things tidy
+  window.addEventListener('hashchange', function(){
+    if (!/^#\/account\//.test(location.hash || '')) {
+      leaveAccountPageMode();
+    }
+  });
 })(window);
