@@ -1,4 +1,3 @@
-
 /*! Account screens v49.0.3 */
 (function (global) {
   'use strict';
