@@ -1,4 +1,5 @@
-/*! Account screens v49.0.3 */
+
+/*! Account screens v49.1 */
 (function (global) {
   'use strict';
   const App = global.MatchSquareApp || (global.MatchSquareApp = {});
@@ -19,8 +20,6 @@
     global.__MS_SUPA = global.supabase.createClient(url, anon);
     return global.__MS_SUPA;
   }
-  function getReturnTo(){ try{ return sessionStorage.getItem('ms_return_to') || '#'; }catch(_e){ return '#'; } }
-  function clearReturnTo(){ try{ sessionStorage.removeItem('ms_return_to'); }catch(_e){} }
 
   App.screens.account = {
     async renderLogin(el){
@@ -47,7 +46,6 @@
           const { data, error } = await supa.auth.signInWithPassword({ email: email.value.trim(), password: pass.value });
           if (error){ msg.textContent = 'Login failed, ' + error.message; return; }
           msg.textContent = 'OK';
-          clearReturnTo();
           location.hash = '/account/profile';
         }catch(e){ msg.textContent = 'Unexpected error, please try again'; }
       });
