@@ -1,62 +1,68 @@
 
-/*! account/account.js — v49.s2 (single-file, surgical) */
+/*! account/account.js — v49.s4 (single-file, surgical & robust) */
 (function (global) {
   'use strict';
   const App = global.MatchSquareApp || (global.MatchSquareApp = {});
   App.screens = App.screens || {};
 
-  // ---------- Utilities ----------
-  function q(id){ return document.getElementById(id); }
+  // ---------- DOM helpers ----------
+  function $(id){ return document.getElementById(id); }
+  function ensureRoot(){
+    var el = $('spa-root');
+    if (!el){
+      el = document.createElement('div');
+      el.id = 'spa-root';
+      el.setAttribute('hidden','');
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+  function hideEl(el){
+    if (!el) return;
+    if (!el.dataset.msPrevDisplay) el.dataset.msPrevDisplay = el.style.display || '';
+    el.style.display = 'none';
+  }
+  function showEl(el){
+    if (!el) return;
+    el.style.display = el.dataset.msPrevDisplay || '';
+    delete el.dataset.msPrevDisplay;
+  }
+  function hideById(id){ hideEl($(id)); }
+  function showById(id){ showEl($(id)); }
+
+  // ---------- Supabase client (no duplicates) ----------
+  function hasSupa(){ return !!(global.state && global.state.supa); }
+  function getSupaSync(){ return (global.state && global.state.supa) || null; }
   function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
   async function waitForSupa(maxMs){
-    const deadline = Date.now() + (maxMs || 5000);
+    const deadline = Date.now() + (maxMs || 10000);
     while (Date.now() < deadline){
-      if (global.state && global.state.supa) return global.state.supa;
+      if (hasSupa()) return getSupaSync();
       await sleep(50);
     }
-    throw new Error('Supabase client not ready');
-  }
-
-  // Make account routes render as a "page" with header only.
-  // We hide all BODY children except <header> and #spa-root.
-  function enterAccountPageMode(){
-    const body = document.body;
-    const keep = new Set();
-    const hdr = body.querySelector('header');
-    if (hdr) keep.add(hdr);
-    const spa = q('spa-root');
-    if (spa) keep.add(spa);
-
-    Array.from(body.children).forEach(node => {
-      if (!keep.has(node)){
-        if (!node.hasAttribute('data-ms-hidden')){
-          node.setAttribute('data-ms-hidden', '1');
-          node.style.display = 'none';
+    // As a LAST resort, initialize once if absolutely missing (prevents loops).
+    if (!global.__MS_SUPA && global.supabase && global.CONFIG && global.CONFIG.FUNCTIONS_BASE){
+      try{
+        const resp = await fetch(global.CONFIG.FUNCTIONS_BASE.replace(/\/$/,'') + '/config');
+        const cfg = await resp.json();
+        const url = cfg.supabase_url || cfg.public_supabase_url || cfg.url;
+        const anon = cfg.supabase_anon_key || cfg.public_supabase_anon_key || cfg.anon;
+        if (url && anon){
+          global.__MS_SUPA = global.supabase.createClient(url, anon);
+          if (global.state) global.state.supa = global.__MS_SUPA;
         }
-      }
-    });
-    if (spa) spa.removeAttribute('hidden');
-    window.scrollTo(0,0);
-  }
-  function leaveAccountPageMode(){
-    const body = document.body;
-    Array.from(body.children).forEach(node => {
-      if (node.hasAttribute('data-ms-hidden')){
-        node.style.display = '';
-        node.removeAttribute('data-ms-hidden');
-      }
-    });
-    const spa = q('spa-root');
-    if (spa) spa.setAttribute('hidden','');
+      }catch(_e){}
+    }
+    return getSupaSync();
   }
 
-  // Header button helpers
+  // ---------- Header button toggle ----------
   function setHeaderForLogin(){
-    const btn = q('btnAuth'); if (!btn) return;
+    const btn = $('btnAuth'); if (!btn) return;
     btn.title = 'Login';
-    btn.className = 'btn';          // preserve original blue pill style for "Login"
-    btn.style.background = '';      // reset any inline tweaks
+    btn.className = 'btn';          // keep original pill style for "Login"
+    btn.style.background = '';
     btn.style.border = '';
     btn.style.padding = '';
     btn.style.margin = '';
@@ -64,9 +70,9 @@
     btn.onclick = function(){ location.hash = '/account/login'; };
   }
   function setHeaderForProfile(){
-    const btn = q('btnAuth'); if (!btn) return;
+    const btn = $('btnAuth'); if (!btn) return;
     btn.title = 'Account';
-    btn.className = '';             // remove pill style
+    btn.className = '';             // remove pill/background
     btn.style.background = 'none';
     btn.style.border = 'none';
     btn.style.padding = '0';
@@ -79,9 +85,7 @@
       '</span>';
     btn.onclick = function(){ location.hash = '/account/profile'; };
   }
-
-  // Keep header in sync if app.js updates state.session elsewhere
-  function syncHeaderFromSession(){
+  function updateHeaderFromSession(){
     try{
       const session = global.state && global.state.session;
       if (session && session.access_token) setHeaderForProfile();
@@ -89,18 +93,47 @@
     }catch(_e){}
   }
 
+  // ---------- Page mode helpers ----------
+  function enterAccountPageMode(){
+    ensureRoot();
+    // Hide all main sections under body except header and #spa-root
+    const body = document.body;
+    const keep = new Set();
+    const hdr = body.querySelector('header'); if (hdr) keep.add(hdr);
+    const spa = $('spa-root'); if (spa) keep.add(spa);
+    Array.from(body.children).forEach(node => {
+      if (!keep.has(node)) hideEl(node);
+    });
+    if (spa) spa.removeAttribute('hidden');
+    window.scrollTo(0,0);
+  }
+  function leaveAccountPageMode(){
+    const body = document.body;
+    Array.from(body.children).forEach(node => {
+      showEl(node);
+    });
+    const spa = $('spa-root'); if (spa) spa.setAttribute('hidden','');
+  }
+
   // ---------- Screens ----------
   App.screens.account = {
     async renderLogin(el){
       enterAccountPageMode();
-      syncHeaderFromSession();
+      updateHeaderFromSession();
 
-      let supa;
-      try{ supa = await waitForSupa(6000); }
-      catch(e){
+      let supa = await waitForSupa(10000);
+      if (!supa){
         el.innerHTML = '<section class="p-4 max-w-md mx-auto"><h2 class="text-lg">Login</h2><p class="text-sm">Please refresh — auth is not ready yet.</p></section>';
         return;
       }
+
+      // Keep header synced with auth changes
+      try{
+        supa.auth.onAuthStateChange((_evt, newSession)=>{
+          if (global.state) global.state.session = newSession || null;
+          updateHeaderFromSession();
+        });
+      }catch(_e){}
 
       el.innerHTML = [
         '<section class="p-4 max-w-md mx-auto">',
@@ -125,8 +158,8 @@
         try{
           const { error } = await supa.auth.signInWithPassword({ email: email.value.trim(), password: pass.value });
           if (error){ msg.textContent = 'Login failed, ' + error.message; return; }
-          try{ if (global.state) global.state.session = (await supa.auth.getSession()).data.session; }catch(_e){}
-          setHeaderForProfile();
+          try{ const r = await supa.auth.getSession(); if (global.state) global.state.session = r?.data?.session || null; }catch(_e){}
+          updateHeaderFromSession();
           location.hash = '/account/profile';
         }catch(e){
           msg.textContent = 'Unexpected error, please try again';
@@ -137,17 +170,23 @@
     async renderProfile(el){
       enterAccountPageMode();
 
-      let supa;
-      try{ supa = await waitForSupa(6000); }
-      catch(e){
+      let supa = await waitForSupa(10000);
+      if (!supa){
         el.innerHTML = '<section class="p-4 max-w-md mx-auto"><h2 class="text-lg">Account</h2><p class="text-sm">Please refresh — auth is not ready yet.</p></section>';
         return;
       }
 
+      try{
+        supa.auth.onAuthStateChange((_evt, newSession)=>{
+          if (global.state) global.state.session = newSession || null;
+          updateHeaderFromSession();
+        });
+      }catch(_e){}
+
       const { data: { user } } = await supa.auth.getUser();
       const email = (user && user.email) || '';
 
-      setHeaderForProfile();
+      updateHeaderFromSession();
 
       el.innerHTML = [
         '<section class="p-4 max-w-md mx-auto">',
@@ -161,7 +200,7 @@
       el.querySelector('#accLogoutBtn').addEventListener('click', async function(){
         try{ await supa.auth.signOut(); }catch(_e){}
         try{ if (global.state) global.state.session = null; }catch(_e){}
-        setHeaderForLogin();
+        updateHeaderFromSession();
         location.hash = '/account/login';
       });
     },
@@ -184,6 +223,4 @@
     }
   });
 
-  // Also sync header on load in case app updated session
-  try{ syncHeaderFromSession(); }catch(_e){}
 })(window);
