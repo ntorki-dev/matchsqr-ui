@@ -32,14 +32,12 @@
   <script src="./config.js"></script>
 </head>
 <body>
-  <header class="topbar">
+  <header class="topbar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
   <a id="brandLink" href="#" class="brand-link" style="display:flex;align-items:center;gap:8px;text-decoration:none;color:inherit">
-    <img src="/assets/logo.png" alt="Matchsqr logo" width="40" height="40" style="display:block"/>
-    <span class="brand-text">Matchsqr</span>
+    <img src="assets/logo.png" alt="Matchsqr logo" width="40" height="40" style="display:block"/>
+    <span class="brand-text" style="font-weight:600">Matchsqr</span>
   </a>
-  <div class="topbar-right">
-    <!-- Keep legacy Home button hidden to preserve existing bindings if any -->
-    <button id="btnHome" class="btn" style="display:none">Home</button>
+  <div class="topbar-right" style="display:flex;align-items:center;gap:8px;">
     <button id="btnAuth" class="btn">Login</button>
   </div>
 </header>
