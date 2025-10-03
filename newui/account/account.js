@@ -1,47 +1,72 @@
-/*! Account screens — surgical replacement (v49.s1) */
+
+/*! account/account.js — v49.s2 (single-file, surgical) */
 (function (global) {
   'use strict';
   const App = global.MatchSquareApp || (global.MatchSquareApp = {});
   App.screens = App.screens || {};
 
-  // --- Utilities ---
-  function $(id){ return document.getElementById(id); }
-  function hideById(id){ const n=$(id); if (n) n.classList.add('hidden'); }
-  function showById(id){ const n=$(id); if (n) n.classList.remove('hidden'); }
+  // ---------- Utilities ----------
+  function q(id){ return document.getElementById(id); }
+  function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
-  function getSupa(){
-    // Reuse ONE existing client to avoid "Multiple GoTrueClient instances" warning
-    if (global.state && global.state.supa) return global.state.supa;
-    throw new Error('Supabase client not ready'); // strict: do not create another client
+  async function waitForSupa(maxMs){
+    const deadline = Date.now() + (maxMs || 5000);
+    while (Date.now() < deadline){
+      if (global.state && global.state.supa) return global.state.supa;
+      await sleep(50);
+    }
+    throw new Error('Supabase client not ready');
   }
 
+  // Make account routes render as a "page" with header only.
+  // We hide all BODY children except <header> and #spa-root.
   function enterAccountPageMode(){
-    hideById('home');
-    hideById('host');
-    hideById('join');
-    const root = $('spa-root'); if (root) root.removeAttribute('hidden');
+    const body = document.body;
+    const keep = new Set();
+    const hdr = body.querySelector('header');
+    if (hdr) keep.add(hdr);
+    const spa = q('spa-root');
+    if (spa) keep.add(spa);
+
+    Array.from(body.children).forEach(node => {
+      if (!keep.has(node)){
+        if (!node.hasAttribute('data-ms-hidden')){
+          node.setAttribute('data-ms-hidden', '1');
+          node.style.display = 'none';
+        }
+      }
+    });
+    if (spa) spa.removeAttribute('hidden');
     window.scrollTo(0,0);
   }
   function leaveAccountPageMode(){
-    showById('home');
-    hideById('host');
-    hideById('join');
-    const root = $('spa-root'); if (root) root.setAttribute('hidden','');
+    const body = document.body;
+    Array.from(body.children).forEach(node => {
+      if (node.hasAttribute('data-ms-hidden')){
+        node.style.display = '';
+        node.removeAttribute('data-ms-hidden');
+      }
+    });
+    const spa = q('spa-root');
+    if (spa) spa.setAttribute('hidden','');
   }
 
+  // Header button helpers
   function setHeaderForLogin(){
-    // Keep your original button style (do not change classes/styles)
-    var btn = $('btnAuth'); if (!btn) return;
-    btn.removeAttribute('title');
-    btn.style.background = ''; btn.style.border = ''; btn.style.padding=''; btn.style.margin='';
-    btn.textContent = 'Login';
-    btn.onclick = function(){ try{ location.hash = '/account/login'; }catch(_e){} };
+    const btn = q('btnAuth'); if (!btn) return;
+    btn.title = 'Login';
+    btn.className = 'btn';          // preserve original blue pill style for "Login"
+    btn.style.background = '';      // reset any inline tweaks
+    btn.style.border = '';
+    btn.style.padding = '';
+    btn.style.margin = '';
+    btn.innerHTML = 'Login';
+    btn.onclick = function(){ location.hash = '/account/login'; };
   }
   function setHeaderForProfile(){
-    var btn = $('btnAuth'); if (!btn) return;
-    // Remove any button background/border to avoid the white "square"
+    const btn = q('btnAuth'); if (!btn) return;
     btn.title = 'Account';
-    btn.className = ''; // remove .btn etc.
+    btn.className = '';             // remove pill style
     btn.style.background = 'none';
     btn.style.border = 'none';
     btn.style.padding = '0';
@@ -52,17 +77,26 @@
           '<path fill="currentColor" d="M12 12a4 4 0 1 0-0.001-8.001A4 4 0 0 0 12 12zm0 2c-4.42 0-8 1.79-8 4v2h16v-2c0-2.21-3.58-4-8-4z"></path>' +
         '</svg>' +
       '</span>';
-    btn.onclick = function(){ try{ location.hash = '/account/profile'; }catch(_e){} };
+    btn.onclick = function(){ location.hash = '/account/profile'; };
   }
 
-  // --- Screens ---
+  // Keep header in sync if app.js updates state.session elsewhere
+  function syncHeaderFromSession(){
+    try{
+      const session = global.state && global.state.session;
+      if (session && session.access_token) setHeaderForProfile();
+      else setHeaderForLogin();
+    }catch(_e){}
+  }
+
+  // ---------- Screens ----------
   App.screens.account = {
     async renderLogin(el){
       enterAccountPageMode();
-      setHeaderForLogin();
+      syncHeaderFromSession();
 
       let supa;
-      try{ supa = getSupa(); }
+      try{ supa = await waitForSupa(6000); }
       catch(e){
         el.innerHTML = '<section class="p-4 max-w-md mx-auto"><h2 class="text-lg">Login</h2><p class="text-sm">Please refresh — auth is not ready yet.</p></section>';
         return;
@@ -104,7 +138,7 @@
       enterAccountPageMode();
 
       let supa;
-      try{ supa = getSupa(); }
+      try{ supa = await waitForSupa(6000); }
       catch(e){
         el.innerHTML = '<section class="p-4 max-w-md mx-auto"><h2 class="text-lg">Account</h2><p class="text-sm">Please refresh — auth is not ready yet.</p></section>';
         return;
@@ -149,4 +183,7 @@
       leaveAccountPageMode();
     }
   });
+
+  // Also sync header on load in case app updated session
+  try{ syncHeaderFromSession(); }catch(_e){}
 })(window);
