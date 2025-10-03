@@ -1,51 +1,38 @@
-/*! Account screens v49 — header-only page mode */
+/*! Account screens v49.1 (reuse existing supabase client) */
 (function (global) {
   'use strict';
   const App = global.MatchSquareApp || (global.MatchSquareApp = {});
   App.screens = App.screens || {};
 
-  function getFunctionsBase(){
-    try{ return (window.CONFIG && window.CONFIG.FUNCTIONS_BASE) || ''; }catch(_e){ return ''; }
+  function getFunctionsBase() {
+    try { return (window.CONFIG && window.CONFIG.FUNCTIONS_BASE) || ''; } catch { return ''; }
   }
-  async function getSupabase(){
-    if (global.__MS_SUPA) return global.__MS_SUPA;
+
+  async function getSupabase() {
+    // Reuse the app client if it exists to avoid the GoTrue warning
+    if (global.MatchSquareApp && global.MatchSquareApp.state && global.MatchSquareApp.state.supa) {
+      return global.MatchSquareApp.state.supa;
+    }
     if (!global.supabase) throw new Error('Supabase JS not loaded');
-    const base = getFunctionsBase(); if (!base) throw new Error('FUNCTIONS_BASE not set');
-    const res = await fetch(base.replace(/\/$/,'') + '/config');
+
+    const base = getFunctionsBase();
+    if (!base) throw new Error('FUNCTIONS_BASE not set');
+
+    const res = await fetch(base.replace(/\/$/, '') + '/config');
     const cfg = await res.json();
     const url = cfg.supabase_url || cfg.public_supabase_url || cfg.url;
     const anon = cfg.supabase_anon_key || cfg.public_supabase_anon_key || cfg.anon;
-    if (!url || !anon) throw new Error('Missing supabase url/anon');
-    global.__MS_SUPA = global.supabase.createClient(url, anon);
-    return global.__MS_SUPA;
-  }
+    if (!url || !anon) throw new Error('Missing Supabase url/anon');
 
-  // --- Helpers to make account a "page with header only" ---
-  function enterAccountPageMode(){
-    // Hide legacy sections explicitly so only header + account content remain
-    ['home','host','join'].forEach(id => {
-      const n = document.getElementById(id);
-      if (n) n.style.display = 'none';
-    });
-    // Ensure SPA root is visible for account pages
-    const root = document.getElementById('spa-root');
-    if (root) root.removeAttribute('hidden');
-  }
-  function leaveAccountPageMode(){
-    // Restore default: show home, hide host/join (your header Home click already does this too)
-    const home = document.getElementById('home');
-    if (home) home.style.display = '';
-    const host = document.getElementById('host');
-    if (host) host.style.display = 'none';
-    const join = document.getElementById('join');
-    if (join) join.style.display = 'none';
-    const root = document.getElementById('spa-root');
-    if (root) root.setAttribute('hidden','');
+    // Create once and expose on App.state for reuse
+    const supa = global.supabase.createClient(url, anon);
+    global.MatchSquareApp.state = global.MatchSquareApp.state || {};
+    global.MatchSquareApp.state.supa = supa;
+    return supa;
   }
 
   App.screens.account = {
-    async renderLogin(el){
-      enterAccountPageMode();
+    async renderLogin(el) {
       const supa = await getSupabase();
       el.innerHTML = [
         '<section class="p-4 max-w-md mx-auto">',
@@ -58,29 +45,36 @@
         '  <p id="accLoginMsg" class="text-sm" style="opacity:.7;margin-top:8px"></p>',
         '</section>'
       ].join('');
+
       const form = el.querySelector('#accLoginForm');
       const email = el.querySelector('#accEmail');
       const pass  = el.querySelector('#accPassword');
       const msg   = el.querySelector('#accLoginMsg');
-      form.addEventListener('submit', async function(ev){
+
+      form.addEventListener('submit', async (ev) => {
         ev.preventDefault();
         msg.textContent = 'Signing in...';
-        try{
-          const { error } = await supa.auth.signInWithPassword({ email: email.value.trim(), password: pass.value });
-          if (error){ msg.textContent = 'Login failed, ' + error.message; return; }
-          // After successful login → profile page
+        try {
+          const { error } = await supa.auth.signInWithPassword({
+            email: email.value.trim(),
+            password: pass.value
+          });
+          if (error) {
+            msg.textContent = 'Login failed, ' + error.message;
+            return;
+          }
           location.hash = '/account/profile';
-        }catch(e){
+        } catch {
           msg.textContent = 'Unexpected error, please try again';
         }
       });
     },
 
-    async renderProfile(el){
-      enterAccountPageMode();
+    async renderProfile(el) {
       const supa = await getSupabase();
       const { data: { user } } = await supa.auth.getUser();
       const email = (user && user.email) || '';
+
       el.innerHTML = [
         '<section class="p-4 max-w-md mx-auto">',
         '  <h2 class="text-lg">Account</h2>',
@@ -89,28 +83,19 @@
         '  <button id="accLogoutBtn" class="btn">Logout</button>',
         '</section>'
       ].join('');
-      el.querySelector('#accLogoutBtn').addEventListener('click', async function(){
-        try{ await supa.auth.signOut(); }catch(_e){}
-        // After logout → login page
+
+      el.querySelector('#accLogoutBtn').addEventListener('click', async () => {
+        try { await supa.auth.signOut(); } catch {}
         location.hash = '/account/login';
       });
     },
 
-    async renderRegister(el){
-      enterAccountPageMode();
+    async renderRegister(el) {
       el.innerHTML = '<section class="p-4"><h2 class="text-lg">Register</h2><p class="text-sm opacity-70">Coming later.</p></section>';
     },
 
-    async renderSubscription(el){
-      enterAccountPageMode();
+    async renderSubscription(el) {
       el.innerHTML = '<section class="p-4"><h2 class="text-lg">Subscription</h2><p class="text-sm opacity-70">Coming later.</p></section>';
     }
   };
-
-  // Optional: when you navigate away from account to home via the brand, this keeps things tidy
-  window.addEventListener('hashchange', function(){
-    if (!/^#\/account\//.test(location.hash || '')) {
-      leaveAccountPageMode();
-    }
-  });
 })(window);
