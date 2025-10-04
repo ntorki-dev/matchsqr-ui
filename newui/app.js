@@ -12,11 +12,10 @@
   // ===== Config & Supabase (preserve working pattern) =====
   const CONFIG = window.CONFIG || {};
   const RAW_BASE = CONFIG.FUNCTIONS_BASE || "";
-  // Normalize base once to avoid double slashes
-  const FUNCTIONS_BASE = (RAW_BASE || "").replace(/\/+$/,"");
-
+  const FUNCTIONS_BASE = (RAW_BASE || "").replace(/\/+$/,""); // normalize
   let supabase = null;
   let __supabaseAnonKey = CONFIG.SUPABASE_ANON_KEY || CONFIG.FALLBACK_SUPABASE_ANON_KEY || "";
+
   async function ensureSupabase(){
     if (supabase) return supabase;
     const g=(typeof globalThis!=="undefined"?globalThis:window);
@@ -36,7 +35,6 @@
     return supabase;
   }
 
-  // Build auth headers expected by your working edge functions
   async function buildAuthHeaders(){
     await ensureSupabase();
     let token = "";
@@ -44,12 +42,8 @@
       const { data } = await supabase.auth.getSession();
       token = (data && data.session && data.session.access_token) || "";
     }catch(e){ /* ignore */ }
-    // If no user token, fall back to anon key
     const authToken = token || __supabaseAnonKey || "";
-    const headers = {
-      "Content-Type": "application/json",
-    };
-    // Many Supabase edge functions expect both Authorization and apikey
+    const headers = { "Content-Type": "application/json" };
     if (authToken){
       headers["Authorization"] = "Bearer " + authToken;
       headers["apikey"] = __supabaseAnonKey || authToken;
@@ -57,14 +51,13 @@
     return headers;
   }
 
-  // Join base + path safely
   function joinPath(base, path){
     const b = (base||"").replace(/\/+$/,"");
     const p = (path||"").replace(/^\/+/,"");
     return b + "/" + p;
   }
 
-  // ===== API via fetch (no supabase.functions.invoke) =====
+  // ===== API via fetch =====
   async function edge(path, { method="POST", body }={}){
     if (window.__MOCK__) return Mock.edge(path, {method, body});
     const url = joinPath(FUNCTIONS_BASE, path);
@@ -74,10 +67,14 @@
     const text = await res.text();
     let data=null; try{ data=JSON.parse(text); }catch{}
     debug({ edge_result:{ status:res.status, data, text:data?undefined:text } });
-    if (!res.ok) throw new Error((data&&data.message) || text || "Request failed");
+    if (!res.ok){
+      const err = new Error((data&&data.message) || text || "Request failed");
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
     return data || {};
   }
-
   const API = {
     createGame: (opts)=> edge("/create_game",{ body:opts||{} }),
     joinGuest: (p)=> edge("/join_game_guest",{ body:p }),
@@ -93,7 +90,12 @@
       const res = await fetch(url, { headers });
       const data = await res.json();
       debug({ edge_result:{ status:res.status, data } });
-      if (!res.ok) throw new Error((data&&data.message)||"get_state failed");
+      if (!res.ok) {
+        const err = new Error((data&&data.message)||"get_state failed");
+        err.status = res.status;
+        err.data = data;
+        throw err;
+      }
       return data;
     }
   };
@@ -122,16 +124,20 @@
     del(k){ localStorage.removeItem(k); sessionStorage.removeItem(k); }
   };
 
-  // ===== Router & Layout & Pages (unchanged from v4) =====
-  // NOTE: To keep this fix minimal for you, I am not reprinting the entire app here.
-  // Replace your /newui/app.js with this full file from the download. It contains
-  // the exact same markup and page logic as v4 plus the fixed edge() and getState().
+  // ===== Router =====
+  const routes={};
+  function route(p,h){ routes[p]=h; }
+  function parseHash(){ const h=location.hash||"#/"; const [p,q]=h.split("?"); return { path:p, query:Object.fromEntries(new URLSearchParams(q)) }; }
+  async function navigate(){
+    const {path}=parseHash();
+    const gm = path.match(/^#\/game\/(.+)$/);
+    if (routes[path]) return routes[path]();
+    if (gm) return pages.game(gm[1]);
+    return pages.home();
+  }
+  window.addEventListener("hashchange", navigate);
 
-  // ----- BEGIN: the rest of v4's app.js pasted verbatim below (pages, layout, game, routes, boot) -----
-
-  // Build minimal stubs so this file is self-contained in case you're diffing.
-  // (Full content is same as v4; only API calls changed.)
-
+  // ===== Layout =====
   function navHome(){
     return `<div class="nav home">
       <a class="brand" href="#/"><img src="./assets/logo.png" alt="logo"/><span>MatchSqr</span></a>
@@ -150,8 +156,6 @@
       </div>
     </div>`;
   }
-  const routes={}; function route(p,h){ routes[p]=h; }
-  function parseHash(){ const h=location.hash||"#/"; const [p,q]=h.split("?"); return { path:p, query:Object.fromEntries(new URLSearchParams(q)) }; }
   function render(content, variant="app"){
     const app=document.getElementById("app");
     app.innerHTML = `
@@ -163,7 +167,9 @@
     setOfflineBanner(!navigator.onLine);
   }
 
+  // ===== Pages =====
   const pages={};
+
   pages.home=()=>{
     render(`
       <section class="hero">
@@ -200,7 +206,22 @@
           <button class="btn" id="createGame">Create Game</button>
           <p class="help">You will receive a game code and lobby page to invite players.</p>
         </div>`;
-      $("#createGame").onclick=async()=>{ try{ const data=await API.createGame({}); storage.set("active_room", data, true); location.hash="#/game/"+data.game_code; }catch(e){ toast(e.message||"Failed to create"); } };
+      $("#createGame").onclick=async()=>{
+        try{
+          const data=await API.createGame({});
+          storage.set("active_room", data, true);
+          location.hash="#/game/"+data.game_code;
+        }catch(e){
+          if (e && e.status===409 && e.data && e.data.error==="host_has_active_game" && e.data.code){
+            const code=e.data.code;
+            storage.set("active_room", { game_code: code }, true);
+            pages.host();
+            toast("You have an active game. Opening existing room.");
+            return;
+          }
+          toast(e.message||"Failed to create");
+        }
+      };
     }
   };
 
@@ -341,6 +362,8 @@
     $("#sendReport").onclick=()=>toast("Email requested. Check your inbox");
   };
 
+  // ===== Game Room =====
+  pages.game=(code)=>{ render(`<section class="container"><div id="gameRoot"></div></section>`); Game.mount(code); };
   const Game={
     code:null, poller:null,
     state:{ phase:"lobby", ends_at:null, players:[], active_player_id:null, question:null },
@@ -440,7 +463,7 @@
     }
   };
 
-  // Routes & Boot
+  // ===== Routes =====
   route("#/", pages.home);
   route("#/host", pages.host);
   route("#/join", pages.join);
@@ -449,23 +472,27 @@
   route("#/forgot", pages.forgot);
   route("#/reset", pages.reset);
   route("#/account", pages.account);
-  // billing route omitted here intentionally to keep patch concise if not used
   route("#/billing", function(){ render(`<section class="container"><div class="card"><h2>Billing</h2><p class="help">Simulated purchases only.</p></div></section>`); });
 
+  // ===== Boot =====
   (async function(){
     if (!location.hash) location.hash="#/";
     const app=document.getElementById("app");
     if (app && !document.getElementById("debug-tray")){
       app.insertAdjacentHTML("beforeend", `<div class="debug-tray" id="debug-tray"><pre id="debug-pre"></pre></div>`);
     }
-    // Prime supabase so anon key is available for auth headers even if logged out
-    try{ await ensureSupabase(); }catch(e){ /* continue; edge() will surface error */ }
-    // initial navigation
+    try{ await ensureSupabase(); }catch(e){}
     const { path } = (function(){ const h=location.hash||"#/"; const [p]=h.split("?"); return { path:p }; })();
-    if (path==="#/host") pages.host(); else if (path==="#/join") pages.join(); else if (path.startsWith("#/login")) pages.login(); else pages.home();
-    window.addEventListener("hashchange", ()=>{
-      const h=location.hash||"#/"; if (h==="#/") pages.home(); else if (h==="#/host") pages.host(); else if (h==="#/join") pages.join(); else if (h==="#/login") pages.login(); else if (h==="#/register") pages.register(); else if (h==="#/forgot") pages.forgot(); else if (h==="#/reset") pages.reset(); else if (h==="#/account") pages.account(); else if (h.startsWith("#/game/")) { const code=h.split("/")[2]; document.getElementById("gameRoot")?null:render(`<section class="container"><div id="gameRoot"></div></section>`); (function mount(){ const GameRef = window.Game || null; })(); }
-    });
+    if (path==="#/host") pages.host();
+    else if (path==="#/join") pages.join();
+    else if (path==="#/login") pages.login();
+    else if (path==="#/register") pages.register();
+    else if (path==="#/forgot") pages.forgot();
+    else if (path==="#/reset") pages.reset();
+    else if (path==="#/account") pages.account();
+    else if (path.startsWith("#/game/")) { const code=path.split("/")[2]; pages.game(code); }
+    else pages.home();
+    window.addEventListener("hashchange", navigate);
   })();
 
 })();
