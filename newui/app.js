@@ -1,23 +1,44 @@
-import * as cfg from "./config.js";
+// ---- Robust Supabase bootstrap (works with exports OR globals) ----
+import * as cfg from "./config.js"; // safe even if it exports nothing
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-/**
- * Resilient Supabase client bootstrap:
- * - If config.js exports `supabase`, use it.
- * - Else, if it exports `SUPABASE_URL` and `SUPABASE_KEY`, create a client here.
- * - Else, if it has a default export object, try that.
- * - If none are found, throw a clear error.
- */
-let __SUPABASE_URL = cfg.SUPABASE_URL ?? (cfg.default && cfg.default.SUPABASE_URL);
-let __SUPABASE_KEY = cfg.SUPABASE_KEY ?? (cfg.default && cfg.default.SUPABASE_KEY);
-export const supabase = cfg.supabase
-  ?? (cfg.default && cfg.default.supabase)
-  ?? ((__SUPABASE_URL && __SUPABASE_KEY) ? createClient(__SUPABASE_URL, __SUPABASE_KEY) : null);
-
-if (!supabase) {
-  console.error("[MS] config.js must export either `supabase` or `SUPABASE_URL` & `SUPABASE_KEY`.");
-  throw new Error("Supabase client not found. Please ensure config.js exports the client or the URL/KEY.");
+function pick(obj, keys) {
+  for (const k of keys) {
+    if (obj && Object.prototype.hasOwnProperty.call(obj, k) && obj[k]) return obj[k];
+  }
+  return undefined;
 }
+
+function resolveSupabase() {
+  // 0) Shortcut if someone already attached a client to globals
+  const g = (typeof globalThis !== "undefined" ? globalThis : window);
+  if (g && g.supabase) return { src: "global.supabase", client: g.supabase };
+
+  // 1) Direct export of a client
+  if (cfg && cfg.supabase) return { src: "cfg.supabase", client: cfg.supabase };
+  if (cfg && cfg.default && cfg.default.supabase) return { src: "cfg.default.supabase", client: cfg.default.supabase };
+
+  // 2) Build from exported URL/KEY variants
+  const URL_KEYS  = ["SUPABASE_URL", "PUBLIC_SUPABASE_URL", "__SUPABASE_URL", "url"];
+  const KEY_KEYS  = ["SUPABASE_KEY", "PUBLIC_SUPABASE_ANON_KEY", "PUBLIC_ANON_KEY", "ANON_KEY", "FALLBACK_SUPABASE_KEY", "__SUPABASE_KEY", "key"];
+
+  const expUrl  = pick(cfg, URL_KEYS) ?? pick(cfg && cfg.default || {}, URL_KEYS);
+  const expKey  = pick(cfg, KEY_KEYS) ?? pick(cfg && cfg.default || {}, KEY_KEYS);
+  if (expUrl && expKey) return { src: "cfg.URL+KEY", client: createClient(expUrl, expKey) };
+
+  // 3) Build from globals (legacy configs often set these)
+  const globUrl = pick(g, ["SUPABASE_URL", "PUBLIC_SUPABASE_URL", "__SUPABASE_URL"]);
+  const globKey = pick(g, ["SUPABASE_KEY", "PUBLIC_SUPABASE_ANON_KEY", "PUBLIC_ANON_KEY", "ANON_KEY", "FALLBACK_SUPABASE_KEY", "__SUPABASE_KEY"]);
+  if (globUrl && globKey) return { src: "global.URL+KEY", client: createClient(globUrl, globKey) };
+
+  // 4) Give up with a precise error
+  throw new Error("[MS] Supabase client not found. Ensure config.js exports `supabase` or URL+KEY (any of: SUPABASE_URL/PUBLIC_SUPABASE_URL/__SUPABASE_URL and SUPABASE_KEY/PUBLIC_SUPABASE_ANON_KEY/ANON_KEY/FALLBACK_SUPABASE_KEY).");
+}
+
+const __S = resolveSupabase();
+export const supabase = __S.client;
+
+// ========== Rest of app (unchanged UI) ==========
 
 // ---------- Utils ----------
 const log = (...args) => { if (window.__DEBUG__) console.log("[MS]", ...args); };
@@ -92,30 +113,24 @@ function debug(obj){ const pre = $("#debug-pre"); if (!pre) return; const s = pr
 const Auth = {
   user: null,
   async load(){ const { data:{ user } } = await supabase.auth.getUser(); this.user = user; return user; },
-  async login(email, password, remember){
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    storage.set("remember_me", !!remember, !!remember);
-    return data.user;
-  },
+  async login(email, password, remember){ const { data, error } = await supabase.auth.signInWithPassword({ email, password }); if (error) throw error; storage.set("remember_me", !!remember, !!remember); return data.user; },
   async register({ email, password, name, dob, gender }){
-    const { data, error } = await supabase.auth.signUp({ email, password, options:{ data:{ name, dob, gender } }});
-    if (error) throw error;
-    return data.user;
+    const { data, error } = await supabase.auth.signUp({ email, password, options:{ data:{ name, dob, gender }}});
+    if (error) throw error; return data.user;
   },
   async logout(){ await supabase.auth.signOut(); this.user = null; }
 };
 
-// ---------- Edge functions ----------
+// ---------- API ----------
 async function invoke(name, payload){
-  try{
+  try {
     if (window.__MOCK__) return Mock.invoke(name, payload);
     debug({ invoke:name, payload });
     const { data, error } = await supabase.functions.invoke(name, { body: payload });
     if (error) throw error;
     debug({ result: data });
     return data;
-  }catch(e){
+  } catch(e){
     console.error("[MS] invoke error", name, e);
     toast("Something went wrong, see console");
     throw e;
@@ -131,7 +146,7 @@ const API = {
   getState: (payload)     => invoke("get_state", payload)
 };
 
-// ---------- Built-in simulator for self-test (toggle in index.html) ----------
+// ---------- Mock for self-test ----------
 const Mock = {
   _db: {
     game_code: "ABCD12",
@@ -161,7 +176,6 @@ const Mock = {
 // ---------- Pages ----------
 const pages = {};
 
-// HOME
 pages.home = () => {
   renderLayout(`
     <section class="container">
@@ -182,7 +196,6 @@ pages.home = () => {
   `);
 };
 
-// LOGIN
 pages.login = () => {
   renderLayout(`
     <section class="container" style="max-width:520px;">
@@ -212,7 +225,6 @@ pages.login = () => {
   };
 };
 
-// REGISTER
 pages.register = () => {
   renderLayout(`
     <section class="container" style="max-width:640px;">
@@ -252,7 +264,6 @@ pages.register = () => {
   };
 };
 
-// FORGOT / RESET
 pages.forgot = () => {
   renderLayout(`
     <section class="container" style="max-width:520px;">
@@ -272,6 +283,7 @@ pages.forgot = () => {
     }catch(e){ toast(e.message || "Failed to send link"); }
   };
 };
+
 pages.reset = () => {
   renderLayout(`
     <section class="container" style="max-width:520px;">
@@ -293,7 +305,6 @@ pages.reset = () => {
   };
 };
 
-// HOST
 pages.host = () => {
   renderLayout(`
     <section class="container">
@@ -337,7 +348,6 @@ async function renderHostControls(){
   }
 }
 
-// JOIN
 pages.join = () => {
   renderLayout(`
     <section class="container" style="max-width:520px;">
@@ -362,7 +372,6 @@ pages.join = () => {
   };
 };
 
-// ACCOUNT
 pages.account = () => {
   renderLayout(`
     <section class="container" style="max-width:720px;">
@@ -386,11 +395,9 @@ pages.account = () => {
   $("#sendReport").onclick = () => toast("Email requested. Check your inbox");
 };
 
-// TERMS / PRIVACY
 pages.terms   = () => { renderLayout(`<section class="container"><div class="card"><h2>Terms</h2><p class="help">Your terms content here.</p></div></section>`); };
 pages.privacy = () => { renderLayout(`<section class="container"><div class="card"><h2>Privacy</h2><p class="help">Your privacy policy here.</p></div></section>`); };
 
-// BILLING (Simulated)
 pages.billing = () => {
   renderLayout(`
     <section class="container" style="max-width:720px;">
@@ -409,7 +416,6 @@ pages.billing = () => {
   $("#sub").onclick   = () => { toast("Simulated: subscription active"); };
 };
 
-// GAME (single route: lobby -> running -> ended/summary)
 pages.game = (code) => {
   renderLayout(`<section class="container"><div id="gameRoot"></div></section>`);
   GameController.mount(code);
@@ -549,7 +555,6 @@ const GameController = {
   }
 };
 
-// ---------- Routes ----------
 route("#/", pages.home);
 route("#/login", pages.login);
 route("#/register", pages.register);
@@ -562,7 +567,6 @@ route("#/billing", pages.billing);
 route("#/terms", pages.terms);
 route("#/privacy", pages.privacy);
 
-// ---------- Boot ----------
 (async function boot(){
   await Auth.load();
   if (!location.hash) location.hash = "#/";
