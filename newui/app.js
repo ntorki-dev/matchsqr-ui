@@ -1,4 +1,23 @@
-import { supabase } from "./config.js";
+import * as cfg from "./config.js";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+/**
+ * Resilient Supabase client bootstrap:
+ * - If config.js exports `supabase`, use it.
+ * - Else, if it exports `SUPABASE_URL` and `SUPABASE_KEY`, create a client here.
+ * - Else, if it has a default export object, try that.
+ * - If none are found, throw a clear error.
+ */
+let __SUPABASE_URL = cfg.SUPABASE_URL ?? (cfg.default && cfg.default.SUPABASE_URL);
+let __SUPABASE_KEY = cfg.SUPABASE_KEY ?? (cfg.default && cfg.default.SUPABASE_KEY);
+export const supabase = cfg.supabase
+  ?? (cfg.default && cfg.default.supabase)
+  ?? ((__SUPABASE_URL && __SUPABASE_KEY) ? createClient(__SUPABASE_URL, __SUPABASE_KEY) : null);
+
+if (!supabase) {
+  console.error("[MS] config.js must export either `supabase` or `SUPABASE_URL` & `SUPABASE_KEY`.");
+  throw new Error("Supabase client not found. Please ensure config.js exports the client or the URL/KEY.");
+}
 
 // ---------- Utils ----------
 const log = (...args) => { if (window.__DEBUG__) console.log("[MS]", ...args); };
@@ -73,25 +92,31 @@ function debug(obj){ const pre = $("#debug-pre"); if (!pre) return; const s = pr
 const Auth = {
   user: null,
   async load(){ const { data:{ user } } = await supabase.auth.getUser(); this.user = user; return user; },
-  async login(email, password, remember){ const { data, error } = await supabase.auth.signInWithPassword({ email, password }); if (error) throw error; storage.set("remember_me", !!remember, !!remember); return data.user; },
+  async login(email, password, remember){
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    storage.set("remember_me", !!remember, !!remember);
+    return data.user;
+  },
   async register({ email, password, name, dob, gender }){
-    const { data, error } = await supabase.auth.signUp({ email, password, options:{ data:{ name, dob, gender }}});
-    if (error) throw error; return data.user;
+    const { data, error } = await supabase.auth.signUp({ email, password, options:{ data:{ name, dob, gender } }});
+    if (error) throw error;
+    return data.user;
   },
   async logout(){ await supabase.auth.signOut(); this.user = null; }
 };
 
-// ---------- API Wrappers + MOCK ----------
+// ---------- Edge functions ----------
 async function invoke(name, payload){
-  try {
+  try{
     if (window.__MOCK__) return Mock.invoke(name, payload);
     debug({ invoke:name, payload });
     const { data, error } = await supabase.functions.invoke(name, { body: payload });
     if (error) throw error;
     debug({ result: data });
     return data;
-  } catch(e){
-    log("invoke error", name, e);
+  }catch(e){
+    console.error("[MS] invoke error", name, e);
     toast("Something went wrong, see console");
     throw e;
   }
@@ -106,7 +131,7 @@ const API = {
   getState: (payload)     => invoke("get_state", payload)
 };
 
-// Built-in simulator for self-test without backend
+// ---------- Built-in simulator for self-test (toggle in index.html) ----------
 const Mock = {
   _db: {
     game_code: "ABCD12",
@@ -120,33 +145,14 @@ const Mock = {
       { title:"Q2", text:"What does a perfect day look like for you?" }
     ]
   },
-  async invoke(name, payload){
+  async invoke(name){
     const S = this._db;
     if (name==="create_game") return { game_code: S.game_code };
     if (name==="join_game_guest") return { player_id:"p2" };
-    if (name==="start_game"){
-      S.phase="running";
-      const end = new Date(Date.now()+ 20*60*1000); // 20 min
-      S.ends_at = end.toISOString();
-      return { ok:true };
-    }
-    if (name==="next_question"){
-      S.idx = Math.min(S.idx+1, S.questions.length-1);
-      S.active_player_id = (S.active_player_id==="p1")?"p2":"p1";
-      return { ok:true };
-    }
-    if (name==="end_game_and_analyze"){
-      S.phase="ended"; return { ok:true };
-    }
-    if (name==="get_state"){
-      return {
-        phase: S.phase,
-        ends_at: S.ends_at,
-        players: S.players,
-        active_player_id: S.active_player_id,
-        question: S.questions[S.idx] || null
-      };
-    }
+    if (name==="start_game"){ S.phase="running"; S.ends_at = new Date(Date.now()+ 20*60*1000).toISOString(); return { ok:true }; }
+    if (name==="next_question"){ S.idx = Math.min(S.idx+1, S.questions.length-1); S.active_player_id = (S.active_player_id==="p1")?"p2":"p1"; return { ok:true }; }
+    if (name==="end_game_and_analyze"){ S.phase="ended"; return { ok:true }; }
+    if (name==="get_state"){ return { phase:S.phase, ends_at:S.ends_at, players:S.players, active_player_id:S.active_player_id, question:S.questions[S.idx]||null }; }
     if (name==="entitlement_check"){ return { ok:true }; }
     return { ok:true };
   }
@@ -155,7 +161,7 @@ const Mock = {
 // ---------- Pages ----------
 const pages = {};
 
-// Home
+// HOME
 pages.home = () => {
   renderLayout(`
     <section class="container">
@@ -176,7 +182,7 @@ pages.home = () => {
   `);
 };
 
-// Login
+// LOGIN
 pages.login = () => {
   renderLayout(`
     <section class="container" style="max-width:520px;">
@@ -206,7 +212,7 @@ pages.login = () => {
   };
 };
 
-// Register
+// REGISTER
 pages.register = () => {
   renderLayout(`
     <section class="container" style="max-width:640px;">
@@ -246,7 +252,7 @@ pages.register = () => {
   };
 };
 
-// Forgot / Reset
+// FORGOT / RESET
 pages.forgot = () => {
   renderLayout(`
     <section class="container" style="max-width:520px;">
@@ -287,7 +293,7 @@ pages.reset = () => {
   };
 };
 
-// Host
+// HOST
 pages.host = () => {
   renderLayout(`
     <section class="container">
@@ -331,7 +337,7 @@ async function renderHostControls(){
   }
 }
 
-// Join
+// JOIN
 pages.join = () => {
   renderLayout(`
     <section class="container" style="max-width:520px;">
@@ -356,7 +362,7 @@ pages.join = () => {
   };
 };
 
-// Account
+// ACCOUNT
 pages.account = () => {
   renderLayout(`
     <section class="container" style="max-width:720px;">
@@ -380,11 +386,11 @@ pages.account = () => {
   $("#sendReport").onclick = () => toast("Email requested. Check your inbox");
 };
 
-// Terms / Privacy
+// TERMS / PRIVACY
 pages.terms   = () => { renderLayout(`<section class="container"><div class="card"><h2>Terms</h2><p class="help">Your terms content here.</p></div></section>`); };
 pages.privacy = () => { renderLayout(`<section class="container"><div class="card"><h2>Privacy</h2><p class="help">Your privacy policy here.</p></div></section>`); };
 
-// Billing (simulated)
+// BILLING (Simulated)
 pages.billing = () => {
   renderLayout(`
     <section class="container" style="max-width:720px;">
@@ -403,7 +409,7 @@ pages.billing = () => {
   $("#sub").onclick   = () => { toast("Simulated: subscription active"); };
 };
 
-// Game route with states: lobby, running, ended(summary in-room)
+// GAME (single route: lobby -> running -> ended/summary)
 pages.game = (code) => {
   renderLayout(`<section class="container"><div id="gameRoot"></div></section>`);
   GameController.mount(code);
@@ -428,7 +434,7 @@ const GameController = {
       const data = await API.getState({ game_code:this.code });
       this.state = Object.assign({}, this.state, data);
       this.render();
-    }catch(e){ log("state refresh error", e); }
+    }catch(e){ console.error("[MS] state refresh error", e); }
   },
   render(){
     const root = $("#gameCard");
@@ -543,7 +549,7 @@ const GameController = {
   }
 };
 
-// ---------- Route bindings ----------
+// ---------- Routes ----------
 route("#/", pages.home);
 route("#/login", pages.login);
 route("#/register", pages.register);
