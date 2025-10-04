@@ -1,5 +1,5 @@
 
-/*! pages/hostlobby.js — v49.h3 */
+/*! pages/hostlobby.js — v49.h4 */
 (function (global, d) {
   'use strict';
   const App = global.MatchSquareApp || (global.MatchSquareApp = {});
@@ -24,27 +24,19 @@
     return { supa: s.supa || null, session: s.session || null };
   }
 
-  // Reuse the existing backend flow by triggering the legacy hidden "Create Game" button
-  async function triggerLegacyCreate(){
+  function triggerLegacyCreate(){
     const btn = d.getElementById('createGameBtn');
-    if (btn) { btn.click(); return true; }
+    if (btn && typeof btn.click === 'function') { btn.click(); return true; }
     return false;
   }
-
   function triggerLegacyEnterHost(){
-    // Prefer clicking the original Host button so all original init code runs
     try {
       const hostBtn = (global.els && global.els.hostBtn) || d.getElementById('hostBtn');
-      if (hostBtn && typeof hostBtn.click === 'function') {
-        hostBtn.click();
-        return true;
-      }
+      if (hostBtn && typeof hostBtn.click === 'function') { hostBtn.click(); return true; }
     } catch(_){}
-    // Fallback to show/hide
     showById('hostSection'); hideById('homeSection'); hideById('joinSection');
     return false;
   }
-
   function triggerLegacyEndGame(){
     try{
       const endBtn = d.getElementById('endAnalyzeBtn');
@@ -52,7 +44,6 @@
     }catch(_){}
     return false;
   }
-
   function waitForStateGame(timeoutMs){
     return new Promise((resolve)=>{
       const t0 = Date.now();
@@ -67,7 +58,6 @@
       })();
     });
   }
-
   function copyToClipboard(text){
     if (!text) return;
     try{ navigator.clipboard && navigator.clipboard.writeText(text); }
@@ -76,7 +66,6 @@
       ta.select(); d.execCommand && d.execCommand('copy'); d.body.removeChild(ta);
     }
   }
-
   function isGameRunning(st){
     if (!st) return false;
     if (!st.gameId || !st.gameCode) return false;
@@ -91,7 +80,6 @@
     }catch(_){}
     return true;
   }
-
   function goToLegacyRoom(){
     leavePageMode();
     triggerLegacyEnterHost();
@@ -100,20 +88,19 @@
   }
 
   App.screens.hostLobby = async function(el){
+    // Ensure container is visible and not null
+    if (!el){ el = $('spa-root') || d.body; }
     enterPageMode();
 
-    // Auth guard
     const { session } = getAuth();
-    if (!session || !session.access_token){
+    if (!session || !(session.access_token || (session.user && session.user.id)) ){
       try { sessionStorage.setItem('ms_return_to', '/host'); } catch(_){}
       location.hash = '/account/login';
       return;
     }
 
-    // Current state snapshot
     const st = global.state || {};
 
-    // Render shell
     el.innerHTML = [
       '<section class="p-4 max-w-2xl mx-auto">',
       '  <h2 class="text-2xl" style="font-weight:700;margin:4px 0 16px 0;">Get Ready</h2>',
@@ -145,7 +132,6 @@
       '</section>'
     ].join('');
 
-    // Elements
     const runningBox = el.querySelector('#hlRunning');
     const outCodeR = el.querySelector('#hlGameCodeR');
     const copyR = el.querySelector('#hlCopyR');
@@ -161,18 +147,14 @@
     function showRunning(code){
       outCodeR.textContent = code || '—';
       runningBox.classList.remove('hidden');
-      // hide create flow when a game is running
       const wrap = el.querySelector('#hlCreateWrap'); if (wrap) wrap.classList.add('hidden');
     }
 
-    // If a game is already running for the host, reflect it and auto-redirect to the room
     if (isGameRunning(st)){
       showRunning(st.gameCode);
-      // small delay so user sees status, then go to room
       setTimeout(goToLegacyRoom, 200);
     }
 
-    // Handlers for running game
     copyR.addEventListener('click', function(){
       const c = (outCodeR.textContent || '').trim();
       if (c && c !== '—') copyToClipboard(c);
@@ -184,7 +166,6 @@
       if (!ok) alert('End action unavailable in this build.');
     });
 
-    // Create flow
     copyBtn.addEventListener('click', function(){
       const code = (outCode.textContent || '').trim();
       if (code && code !== '—') copyToClipboard(code);
@@ -192,7 +173,6 @@
     goBtn.addEventListener('click', goToLegacyRoom);
 
     createBtn.addEventListener('click', async function(){
-      // Prevent creating when running
       const cur = global.state || {};
       if (isGameRunning(cur)){
         showRunning(cur.gameCode);
@@ -200,7 +180,7 @@
         return;
       }
       createBtn.disabled = true; createBtn.textContent = 'Creating...';
-      const ok = await triggerLegacyCreate();
+      const ok = triggerLegacyCreate();
       if (!ok){
         createBtn.disabled = false; createBtn.textContent = 'Create Game';
         alert('Create action is unavailable in this build.');
