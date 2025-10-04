@@ -1,170 +1,174 @@
 
-/*! pages/hostlobby.js — v49.clean */
-(function (global) {
+/*! pages/hostlobby.js — v49.h7 (stable render + solid "Go to Room") */
+(function (global, d) {
   'use strict';
   const App = global.MatchSquareApp || (global.MatchSquareApp = {});
   App.screens = App.screens || {};
 
-  function $(id){ return document.getElementById(id); }
-  function hide(id){ const n=$(id); if(n){ n.style.display='none'; n.classList.add('hidden'); } }
-  function show(id){ const n=$(id); if(n){ n.style.display=''; n.classList.remove('hidden'); } }
-  function el(tag, attrs, html){
-    const x = document.createElement(tag);
-    if (attrs) Object.keys(attrs).forEach(k=> x.setAttribute(k, attrs[k]));
-    if (html!=null) x.innerHTML = html;
-    return x;
-  }
+  // ---------- tiny utils ----------
+  const $ = (id)=> d.getElementById(id);
+  const showEl = (el)=> { if (el) { el.classList.remove('hidden'); el.style.display = ''; } };
+  const hideEl = (el)=> { if (el) { el.classList.add('hidden'); el.style.display = 'none'; } };
 
-  function enterPageMode(){
-    hide('homeSection'); hide('hostSection'); hide('joinSection');
-    let root = $('spa-root'); if (!root){ root = el('div', { id:'spa-root' }); document.body.appendChild(root); }
-    root.removeAttribute('hidden'); window.scrollTo(0,0); return root;
+  function ensureSpaRoot() {
+    let el = $('spa-root');
+    if (!el) { el = d.createElement('div'); el.id = 'spa-root'; d.body.appendChild(el); }
+    el.removeAttribute('hidden');
+    return el;
   }
-  function leavePageMode(){ const root=$('spa-root'); if(root) root.setAttribute('hidden',''); }
-
   function state(){ return global.state || {}; }
-  function session(){ return (state() && state().session) || null; }
-  function supa(){ return (state() && state().supa) || null; }
-
-  function copy(text){
-    try{ navigator.clipboard.writeText(text); }catch(_){
-      const ta = document.createElement('textarea'); ta.value=text; document.body.appendChild(ta);
-      ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+  function hasSession() {
+    const s = state().session;
+    return !!(s && (s.access_token || (s.user && s.user.id)));
+  }
+  function isRunning(st) {
+    if (!st) return false;
+    if (!st.gameCode) return false;
+    const s = (st.status || '').toString().toLowerCase();
+    if (s === 'ended' || s === 'cancelled') return false;
+    if (st.endsAt) {
+      const t = new Date(st.endsAt).getTime();
+      if (!isNaN(t) && t < Date.now()) return false;
+    }
+    return true;
+  }
+  function copyText(text){
+    if (!text) return;
+    try { navigator.clipboard?.writeText(text); }
+    catch {
+      const ta = d.createElement('textarea'); ta.value = text; d.body.appendChild(ta);
+      ta.select(); d.execCommand && d.execCommand('copy'); d.body.removeChild(ta);
     }
   }
-
-  async function detectRunningForHost(){
-    try{
-      const s = session(); const sp = supa();
-      if (!s || !sp) return null;
-      // Use Supabase to ask for a game for this host that isn't ended
-      const uid = s.user && s.user.id;
-      if (!uid) return null;
-      const q = await sp.from('games')
-        .select('id, code, status, ends_at')
-        .eq('host_id', uid)
-        .in('status', ['created','running'])
-        .order('created_at', { ascending: false })
-        .limit(1);
-      if (q.error) return null;
-      const row = (q.data && q.data[0]) || null;
-      if (!row) return null;
-      return { id: row.id, code: row.code, status: row.status, ends_at: row.ends_at };
-    }catch(_){ return null; }
+  function triggerLegacyCreate(){
+    const btn = $('createGameBtn');
+    if (btn && typeof btn.click === 'function') { btn.click(); return true; }
+    return false;
+  }
+  function waitForGameCode(ms){
+    return new Promise(resolve=>{
+      const start = Date.now();
+      (function poll(){
+        const st = state();
+        if (st && st.gameCode) return resolve(st.gameCode);
+        if (Date.now() - start >= ms) return resolve(null);
+        setTimeout(poll, 250);
+      })();
+    });
   }
 
-  function goToLegacyHostRoom(){
-    leavePageMode();
-    try{
-      const btn = (global.els && global.els.hostBtn) || document.getElementById('hostBtn');
-      if (btn && typeof btn.click === 'function') { btn.click(); return; }
-    }catch(_){}
-    show('hostSection'); hide('homeSection'); hide('joinSection');
+  // Enter the legacy host room reliably
+  function enterLegacyHostRoom() {
+    // 1) Try the real Host button to execute your original init
+    try {
+      const hostBtn = (global.els && global.els.hostBtn) || $('hostBtn');
+      if (hostBtn && typeof hostBtn.click === 'function') {
+        hostBtn.click();
+      } else {
+        // 2) Fallback: switch sections the same way legacy code does
+        const home = $('homeSection'), host = $('hostSection'), join = $('joinSection');
+        if (home) hideEl(home);
+        if (join) hideEl(join);
+        if (host) showEl(host);
+      }
+    } catch {}
+
+    // 3) Align hash for any legacy observers
+    try { location.hash = 'host'; } catch {}
+
+    // 4) Optional refresh hooks if exposed
+    try { if (typeof global.__ms_refreshRoom === 'function') global.__ms_refreshRoom(); } catch {}
+    try { if (typeof global.refreshRoom === 'function') global.refreshRoom(); } catch {}
+
+    // 5) Ensure the SPA container hides so the room is fully visible
+    const root = $('spa-root'); if (root) root.setAttribute('hidden', '');
   }
 
-  function renderShell(root){
-    root.innerHTML = [
+  function renderShell(el){
+    el.innerHTML = [
       '<section class="p-4 max-w-2xl mx-auto">',
       '  <h2 class="text-2xl" style="font-weight:700;margin:4px 0 16px 0;">Get Ready</h2>',
-      '  <div id="hlRunning" class="card hidden" style="padding:12px;margin-bottom:12px">',
-      '    <div>There is a game running.</div>',
-      '    <div class="row" style="align-items:center;gap:8px;margin-top:8px">',
-      '      <strong>Game Code:</strong> <span id="hlCodeR" class="mono">—</span>',
-      '      <button id="hlCopyR" class="btn" title="Copy">📋</button>',
+      '  <div id="createWrap" class="row" style="gap:8px;margin-bottom:12px">',
+      '    <button id="btnCreate" class="btn primary">Create Game</button>',
+      '  </div>',
+      '  <div id="runningWrap" class="card hidden" style="padding:12px">',
+      '    <div class="row" style="align-items:center;gap:8px">',
+      '      <strong>Game Code:</strong> <span id="codeOut" class="mono">—</span>',
+      '      <button id="btnCopy" class="btn" title="Copy">📋</button>',
       '    </div>',
       '    <div class="row" style="gap:8px;margin-top:10px">',
-      '      <button id="hlGoR" class="btn primary">Go to Game Room</button>',
-      '      <button id="hlEndR" class="btn">End Game</button>',
-      '    </div>',
-      '  </div>',
-      '  <div id="hlCreateWrap">',
-      '    <button id="hlCreate" class="btn primary">Create Game</button>',
-      '    <div id="hlInfo" class="card hidden" style="padding:12px;margin-top:12px">',
-      '      <div class="row" style="align-items:center;gap:8px">',
-      '        <strong>Game Code:</strong> <span id="hlCode" class="mono">—</span>',
-      '        <button id="hlCopy" class="btn" title="Copy">📋</button>',
-      '      </div>',
-      '      <div class="row" style="gap:8px;margin-top:10px">',
-      '        <button id="hlGo" class="btn">Go to Game Room</button>',
-      '      </div>',
+      '      <button id="btnGoRoom" class="btn">Go to Game Room</button>',
       '    </div>',
       '  </div>',
       '</section>'
     ].join('');
   }
 
-  App.screens.hostLobby = async function(root){
-    root = enterPageMode();
-    renderShell(root);
+  App.screens.hostLobby = async function(el){
+    // Always render shell first so it's never blank
+    const mount = el || ensureSpaRoot();
+    renderShell(mount);
 
-    const sess = session();
-    if (!sess || !sess.access_token){
-      try{ sessionStorage.setItem('ms_return_to','/host'); }catch(_){}
+    // Hide legacy sections while in the lobby
+    try{
+      const H = $('homeSection'), HS = $('hostSection'), JS = $('joinSection');
+      if (H) H.style.display = 'none';
+      if (HS) HS.style.display = 'none';
+      if (JS) JS.style.display = 'none';
+    }catch{}
+
+    // After first paint, guard auth
+    if (!hasSession()) {
+      try { sessionStorage.setItem('ms_return_to', '/host'); } catch {}
       location.hash = '/account/login';
       return;
     }
 
-    const codeOutR = root.querySelector('#hlCodeR');
-    const runBox = root.querySelector('#hlRunning');
-    const copyR = root.querySelector('#hlCopyR');
-    const goR = root.querySelector('#hlGoR');
-    const endR = root.querySelector('#hlEndR');
+    // Wire elements
+    const createWrap = $('createWrap');
+    const btnCreate  = $('btnCreate');
+    const runningWrap= $('runningWrap');
+    const codeOut    = $('codeOut');
+    const btnCopy    = $('btnCopy');
+    const btnGoRoom  = $('btnGoRoom');
 
-    const createBtn = root.querySelector('#hlCreate');
-    const info = root.querySelector('#hlInfo');
-    const codeOut = root.querySelector('#hlCode');
-    const copyBtn = root.querySelector('#hlCopy');
-    const goBtn = root.querySelector('#hlGo');
+    const showCreateOnly = ()=>{ showEl(createWrap); hideEl(runningWrap); };
+    const showRunningOnly = (code)=>{ codeOut.textContent = code || '—'; hideEl(createWrap); showEl(runningWrap); };
 
-    function showRunning(code){
-      codeOutR.textContent = code || '—';
-      runBox.classList.remove('hidden'); runBox.style.display='';
-      const wrap = root.querySelector('#hlCreateWrap'); if (wrap) { wrap.classList.add('hidden'); wrap.style.display='none'; }
-    }
+    // Initial: pick ONE view based on live state
+    const st = state();
+    if (isRunning(st)) showRunningOnly(st.gameCode);
+    else showCreateOnly();
 
-    // Detect running game via state or DB
-    let st = state();
-    if (st && st.gameCode && st.status && st.status!=='ended'){
-      showRunning(st.gameCode);
-    } else {
-      const row = await detectRunningForHost();
-      if (row && row.code){
-        showRunning(row.code);
-        // Prepare host state for room
-        try{ await global.autoJoinAsHost(row.code); }catch(_){}
+    // Copy + Go handlers
+    btnCopy.addEventListener('click', ()=> copyText(codeOut.textContent.trim()));
+    btnGoRoom.addEventListener('click', enterLegacyHostRoom);
+
+    // Create flow
+    btnCreate.addEventListener('click', async ()=>{
+      // If something started already, just show running
+      if (isRunning(state())) { showRunningOnly(state().gameCode); return; }
+
+      btnCreate.disabled = true; btnCreate.textContent = 'Creating...';
+      const ok = triggerLegacyCreate();
+      if (!ok) {
+        btnCreate.disabled = false; btnCreate.textContent = 'Create Game';
+        alert('Create action is unavailable in this build.');
+        return;
       }
-    }
-
-    copyR.addEventListener('click', ()=>{ const t=(codeOutR.textContent||'').trim(); if(t && t!=='—') copy(t); });
-    goR.addEventListener('click', goToLegacyHostRoom);
-    endR.addEventListener('click', function(){
-      if(!confirm('End the current game?')) return;
-      try{
-        const endBtn = document.getElementById('endAnalyzeBtn');
-        if(endBtn && typeof endBtn.click==='function'){ endBtn.click(); }
-      }catch(_){}
-    });
-
-    copyBtn.addEventListener('click', ()=>{ const t=(codeOut.textContent||'').trim(); if(t && t!=='—') copy(t); });
-    goBtn.addEventListener('click', goToLegacyHostRoom);
-
-    createBtn.addEventListener('click', async function(){
-      // If running already, just go
-      const cur = state();
-      if (cur && cur.gameCode && cur.status && cur.status!=='ended'){ showRunning(cur.gameCode); return; }
-
-      createBtn.disabled = true; createBtn.textContent='Creating...';
-      // Reuse your existing handler to avoid diverging from backend logic
-      const btn = document.getElementById('createGameBtn');
-      if (btn && typeof btn.click==='function'){ btn.click(); }
-      // Poll for code for up to 10s
-      const t0 = Date.now();
-      (function wait(){
-        const s = state();
-        if (s && s.gameCode){ codeOut.textContent = s.gameCode; info.classList.remove('hidden'); info.style.display=''; createBtn.disabled=false; createBtn.textContent='Create Game'; return; }
-        if (Date.now()-t0>10000){ createBtn.disabled=false; createBtn.textContent='Create Game'; alert('Could not confirm the new game. If you already have an active game, use Go to Game Room.'); return; }
-        setTimeout(wait, 300);
-      })();
+      const code = await waitForGameCode(12000);
+      btnCreate.disabled = false;
+      if (code) {
+        showRunningOnly(code);
+      } else {
+        // If the state flipped to running but we missed the exact code, accept the current snapshot
+        if (isRunning(state())) {
+          showRunningOnly(state().gameCode);
+        } else {
+          btnCreate.textContent = 'Create Game';
+          alert('Could not confirm the new game. Please try again.');
+        }
+      }
     });
   };
-})(window);
+})(window, document);
