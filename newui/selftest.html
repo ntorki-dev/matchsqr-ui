@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Self Test</title>
+  <link rel="stylesheet" href="./app.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+</head>
+<body>
+  <div id="out" class="container"></div>
+  <script src="./config.js"></script>
+  <script>
+    window.__DEBUG__ = true;
+    window.__MOCK__  = true; // simulate endpoints
+  </script>
+  <script src="./app.js"></script>
+  <script>
+    (async function(){
+      const out = document.getElementById('out');
+      function line(s){ const p=document.createElement('pre'); p.textContent=s; out.appendChild(p); }
+      function click(sel){ const el=document.querySelector(sel); if (el) el.click(); return !!el; }
+      // Flow: Host -> Create -> Room -> Start -> Next -> End -> Summary
+      location.hash = "#/host"; await new Promise(r=>setTimeout(r,100));
+      line("Host page loaded");
+      line("Create click: " + click("#createGame"));
+      await new Promise(r=>setTimeout(r,120));
+      line("Go start: " + click("#startGame"));
+      await new Promise(r=>setTimeout(r,120));
+      line("Next card: " + click("#nextCard"));
+      await new Promise(r=>setTimeout(r,120));
+      line("End & analyze: " + click("#endAnalyze"));
+      await new Promise(r=>setTimeout(r,120));
+      const summary = !!document.getElementById("emailReport");
+      line("Summary present: " + summary);
+    })();
+  </script>
+</body>
+</html>

@@ -3,25 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Match Square - New v3.0</title>
+  <title>MatchSqr</title>
   <link rel="icon" href="./assets/favicon.ico" />
-  <link rel="stylesheet" href="./tokens.css" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./app.css" />
-  <!-- Global Supabase UMD -->
+  <!-- Global Supabase UMD, matching your working pattern -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 </head>
 <body>
   <div id="app"></div>
-
-  <footer class="version-footer"><span>New v3.0</span></footer>
-
   <script>
-    window.__MS_UI_VERSION = "New v3.0";
-    window.__DEBUG__ = true;      // logs to console & tray
-    window.__MOCK__  = false;     // set true to simulate
+    // Diagnostics flags (not loaded from URL; off by default)
+    window.__DEBUG__ = false;
+    window.__MOCK__  = false;
   </script>
   <script src="./config.js"></script>
-  <script src="./selftest.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>
