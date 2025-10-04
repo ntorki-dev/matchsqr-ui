@@ -262,12 +262,12 @@
 
   // ===== Header Auth Controls =====
   function msProfileIconHtml(){
-    return '<span style="display:inline-grid;place-items:center;width:34px;height:34px;border-radius:9999px;border:1px solid rgba(255,255,255,.3);background:transparent;">'
-         +   '<svg width="18" height="18" viewBox="0 0 24 24" style="display:block;color:#16a34a;">'
-         +     '<path fill="currentColor" d="M12 12a4 4 0 1 0-0.001-8.001A4 4 0 0 0 12 12zm0 2c-4.42 0-8 1.79-8 4v2h16v-2c0-2.21-3.58-4-8-4z"/>'
-         +   '</svg>'
-         + '</span>';
-  }
+  return '<span class="ms-avatar" aria-label="Account">'
+       +   '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">'
+       +     '<path fill="currentColor" d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-4.42 0-8 1.79-8 4v2h16v-2c0-2.21-3.58-4-8-4z"/>'
+       +   '</svg>'
+       + '</span>';
+}
   function updateHeaderAuthUi(){
     if (!els.btnAuth) return;
     const session = state.session;
