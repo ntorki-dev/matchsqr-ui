@@ -3,27 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Match Square - New v2.2</title>
+  <title>Match Square - New v3.0</title>
   <link rel="icon" href="./assets/favicon.ico" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-  <!-- Global Supabase (legacy-compatible) -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <link rel="stylesheet" href="./tokens.css" />
   <link rel="stylesheet" href="./app.css" />
+  <!-- Global Supabase UMD -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 </head>
 <body>
   <div id="app"></div>
 
-  <footer class="version-footer">
-    <span id="version-badge">New v2.2</span>
-  </footer>
+  <footer class="version-footer"><span>New v3.0</span></footer>
 
   <script>
-    window.__MS_UI_VERSION = "New v2.2";
-    window.__DEBUG__ = true;   // show console logs
-    window.__MOCK__  = false;  // set true to simulate without backend
+    window.__MS_UI_VERSION = "New v3.0";
+    window.__DEBUG__ = true;      // logs to console & tray
+    window.__MOCK__  = false;     // set true to simulate
   </script>
   <script src="./config.js"></script>
+  <script src="./selftest.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>

@@ -1,178 +1,147 @@
 (function(){
-  // Utilities
+  // ========= Utils =========
   const log = (...args) => { if (window.__DEBUG__) console.log("[MS]", ...args); };
   const $ = (sel, root=document) => root.querySelector(sel);
-  const sleep = (ms) => new Promise(r=>setTimeout(r, ms));
-  function toast(msg, ms=2500){
-    const t = document.createElement("div"); t.className="toast"; t.textContent=msg;
-    document.body.appendChild(t); setTimeout(()=>t.remove(), ms);
-  }
+  const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+  const sleep = (ms)=>new Promise(r=>setTimeout(r, ms));
+  function toast(msg, ms=2200){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), ms); }
   function setOfflineBanner(show){ const b=$(".offline-banner"); if(!b) return; b.classList.toggle("show", !!show); }
   window.addEventListener("offline",()=>setOfflineBanner(true));
   window.addEventListener("online",()=>setOfflineBanner(false));
+  function debug(obj){ const pre=$("#debug-pre"); if(!pre) return; const s = pre.textContent + "\n" + JSON.stringify(obj,null,2); pre.textContent = s.slice(-30000); }
 
-  // Debug tray
-  function debug(obj){
-    const pre = $("#debug-pre"); if(!pre) return;
-    const s = pre.textContent + "\n" + JSON.stringify(obj,null,2);
-    pre.textContent = s.slice(-30000);
-  }
-
-  // Config bootstrap (global CONFIG & global supabase)
+  // ========= Config & Supabase (global) =========
   const CONFIG = window.CONFIG || {};
-  const FUNCTIONS_BASE = CONFIG.FUNCTIONS_BASE || CONFIG.functions_base || "";
+  const FUNCTIONS_BASE = CONFIG.FUNCTIONS_BASE || "";
   let supabase = null;
   async function ensureSupabase(){
     if (supabase) return supabase;
     const g = (typeof globalThis!=="undefined"?globalThis:window);
-    if (g.supabase) {
-      // If config endpoint exists, prefer dynamic URL/KEY. Else use FALLBACK_*.
-      let url = CONFIG.SUPABASE_URL || CONFIG.FALLBACK_SUPABASE_URL || g.SUPABASE_URL || g.__SUPABASE_URL || "";
-      let key = CONFIG.SUPABASE_ANON_KEY || CONFIG.FALLBACK_SUPABASE_ANON_KEY || g.SUPABASE_KEY || g.__SUPABASE_KEY || "";
-      try{
-        const res = await fetch(FUNCTIONS_BASE + "/config", { method:"GET" });
-        if (res.ok){
-          const c = await res.json();
-          url = c.supabase_url || url;
-          key = c.supabase_anon_key || key;
-        }
-      }catch(e){ log("config endpoint skipped", e); }
-      if (!url || !key) log("Using fallback URL/KEY only");
-      supabase = g.supabase.createClient(url, key);
-      return supabase;
-    }
-    throw new Error("Global supabase not found. Ensure CDN script is loaded before app.js");
+    if (!g.supabase) throw new Error("Supabase UMD not loaded");
+    let url = CONFIG.SUPABASE_URL || CONFIG.FALLBACK_SUPABASE_URL || g.SUPABASE_URL || g.__SUPABASE_URL || "";
+    let key = CONFIG.SUPABASE_ANON_KEY || CONFIG.FALLBACK_SUPABASE_ANON_KEY || g.SUPABASE_KEY || g.__SUPABASE_KEY || "";
+    try{
+      const res = await fetch(FUNCTIONS_BASE + "/config");
+      if (res.ok){ const c=await res.json(); url = c.supabase_url || url; key = c.supabase_anon_key || key; }
+    }catch(e){ log("config fetch skipped", e); }
+    supabase = g.supabase.createClient(url, key);
+    return supabase;
   }
 
-  // API via fetch to edge
+  // ========= API via fetch =========
   async function edge(path, { method="POST", body }={}){
     if (window.__MOCK__) return Mock.edge(path, {method, body});
     const url = FUNCTIONS_BASE + path;
-    const payload = body ? JSON.stringify(body) : undefined;
-    const headers = { "Content-Type":"application/json" };
     debug({ edge:{ url, method, body } });
-    const res = await fetch(url, { method, headers, body:payload });
-    let data=null, text=null;
-    try{ data = await res.json(); }catch{ text = await res.text(); }
-    debug({ edge_result:{ status:res.status, data, text } });
+    const res = await fetch(url, { method, headers:{"Content-Type":"application/json"}, body: body?JSON.stringify(body):undefined });
+    const text = await res.text();
+    let data=null; try{ data = JSON.parse(text); }catch{}
+    debug({ edge_result:{ status:res.status, data, text:data?undefined:text } });
     if (!res.ok) throw new Error((data && data.message) || text || "Request failed");
-    return data ?? {};
+    return data || {};
   }
-
   const API = {
-    createGame: (opts)=> edge("/create_game", { body: opts||{} }),
-    joinGuest: (p)=> edge("/join_game_guest", { body: p }),
-    startGame: (p)=> edge("/start_game", { body: p }),
-    nextQuestion: (p)=> edge("/next_question", { body: p }),
-    endAnalyze: (p)=> edge("/end_game_and_analyze", { body: p }),
-    entitlementCheck: (p)=> edge("/entitlement_check", { body: p }),
-    getState: async (p)=> {
-      if (window.__MOCK__) return Mock.edge("/get_state", { method:"GET", body:p });
+    createGame: (opts)=> edge("/create_game",{ body: opts||{} }),
+    joinGuest: (p)=> edge("/join_game_guest",{ body:p }),
+    startGame: (p)=> edge("/start_game",{ body:p }),
+    nextQuestion: (p)=> edge("/next_question",{ body:p }),
+    endAnalyze: (p)=> edge("/end_game_and_analyze",{ body:p }),
+    entitlementCheck: (p)=> edge("/entitlement_check",{ body:p }),
+    getState: async (p)=>{
+      if (window.__MOCK__) return Mock.edge("/get_state",{method:"GET", body:p});
       const url = FUNCTIONS_BASE + "/get_state?code=" + encodeURIComponent(p.game_code || p.code || "");
       debug({ edge:{ url, method:"GET" } });
-      const res = await fetch(url);
-      const data = await res.json();
+      const res = await fetch(url); const data = await res.json();
       debug({ edge_result:{ status:res.status, data } });
-      if (!res.ok) throw new Error(data && data.message || "get_state failed");
+      if (!res.ok) throw new Error((data&&data.message)||"get_state failed");
       return data;
-    },
+    }
   };
 
-  // Mock when __MOCK__=true
+  // ========= Mock for self-test =========
   const Mock = {
-    db:{
-      code:"ABCD12", phase:"lobby", ends_at:null, idx:0,
-      players:[{id:"p1", name:"Host"},{id:"p2", name:"Guest"}],
-      active:"p1",
-      qs:[
-        {title:"Q1", text:"What energizes you lately?"},
-        {title:"Q2", text:"What does a perfect day look like for you?"}
-      ]
-    },
-    async edge(path, {method, body}){
+    db:{ code:"ABCD12", phase:"lobby", ends_at:null, idx:0, players:[{id:"p1",name:"Host"},{id:"p2",name:"Guest"}], active:"p1",
+      qs:[{title:"Q1",text:"What energizes you lately?"},{title:"Q2",text:"What does a perfect day look like for you?"}] },
+    async edge(path,{method,body}){
       const S=this.db;
       if (path==="/create_game") return { game_code:S.code };
       if (path==="/join_game_guest") return { player_id:"p2" };
-      if (path==="/start_game"){ S.phase="running"; S.ends_at=new Date(Date.now()+20*60*1000).toISOString(); return {ok:true}; }
-      if (path==="/next_question"){ S.idx=Math.min(S.idx+1,S.qs.length-1); S.active=(S.active==="p1")?"p2":"p1"; return {ok:true}; }
-      if (path==="/end_game_and_analyze"){ S.phase="ended"; return {ok:true}; }
+      if (path==="/start_game"){ S.phase="running"; S.ends_at=new Date(Date.now()+20*60*1000).toISOString(); return { ok:true }; }
+      if (path==="/next_question"){ if (body && body.answer) {/* accept */} S.idx=Math.min(S.idx+1,S.qs.length-1); S.active=(S.active==="p1")?"p2":"p1"; return { ok:true }; }
+      if (path==="/end_game_and_analyze"){ S.phase="ended"; return { ok:true }; }
       if (path==="/entitlement_check"){ return { ok:true }; }
-      if (path==="/get_state"){ return { phase:S.phase, ends_at:S.ends_at, players:S.players, active_player_id:S.active, question:S.qs[S.idx] }; }
+      if (path==="/get_state"){ return { phase:S.phase, ends_at:S.ends_at, players:S.players, active_player_id:S.active, question:S.qs[S.idx]||null }; }
       return { ok:true };
     }
   };
 
-  // Storage
+  // ========= Storage =========
   const storage = {
     set(k,v,remember=false){ (remember?localStorage:sessionStorage).setItem(k, JSON.stringify(v)); },
-    get(k){ try{ const v=localStorage.getItem(k)??sessionStorage.getItem(k); return v?JSON.parse(v):null; }catch{ return null; } },
+    get(k){ try{ const v=localStorage.getItem(k) ?? sessionStorage.getItem(k); return v?JSON.parse(v):null; }catch{ return null; } },
     del(k){ localStorage.removeItem(k); sessionStorage.removeItem(k); }
   };
 
-  // Router
+  // ========= Router =========
   const routes={};
   function route(p,h){ routes[p]=h; }
   function parseHash(){ const h=location.hash||"#/"; const [p,q]=h.split("?"); return { path:p, query:Object.fromEntries(new URLSearchParams(q)) }; }
   async function navigate(){
     const {path}=parseHash();
-    const gm=path.match(/^#\/game\/(.+)$/);
+    const gm = path.match(/^#\/game\/(.+)$/);
     if (routes[path]) return routes[path]();
     if (gm) return pages.game(gm[1]);
     return pages.home();
   }
   window.addEventListener("hashchange", navigate);
 
-  // Layout
-  function renderLayout(content){
+  // ========= Layout =========
+  function layout(content){
     const app=document.getElementById("app");
-    app.innerHTML=`
+    app.innerHTML = `
       <div class="offline-banner">You are offline. Trying to reconnect…</div>
       <div class="navbar container">
-        <a class="nav-logo" href="#/"><img src="./assets/logo.png" alt="logo"/><strong>Match Square</strong></a>
+        <a class="nav-logo" href="#/"><img src="./assets/logo.png" alt="logo"><strong>Match Square</strong></a>
         <div class="nav-right">
           <a class="btn ghost" href="#/host">Host</a>
           <a class="btn ghost" href="#/join">Join</a>
-          <a class="btn secondary" href="#/account"><img class="avatar" src="./assets/profile.png" alt="profile"/></a>
+          <a class="btn secondary" href="#/account"><img class="avatar" src="./assets/profile.png" alt="profile"></a>
         </div>
       </div>
       ${content}
       <div class="debug-tray" id="debug-tray"><pre id="debug-pre"></pre></div>
     `;
-    if (parseHash().query.debug==="1") document.getElementById("debug-tray").style.display="block";
+    if (parseHash().query.debug==="1") $("#debug-tray").style.display="block";
     setOfflineBanner(!navigator.onLine);
   }
 
-  // Pages
+  // ========= Pages =========
   const pages={};
 
   pages.home=()=>{
-    renderLayout(`
+    layout(`
       <section class="container">
         <div class="grid grid-2">
           <div class="card">
             <h1 class="hero-title">Build real connection, one game at a time.</h1>
             <p class="help">Start a game with someone new, discover compatibility through questions, then unlock chat at 90%.</p>
-            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px;">
+            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:12px;">
               <a class="btn" href="#/host">Host a game</a>
               <a class="btn ghost" href="#/join">Join a game</a>
             </div>
           </div>
-          <div class="card">
-            <img src="./assets/globe.png" alt="illustration" style="width:100%; height:auto; border-radius:12px;" />
-          </div>
+          <div class="card"><img src="./assets/globe.png" alt="globe" style="width:100%;height:auto;border-radius:14px"></div>
         </div>
       </section>
     `);
   };
 
   pages.host=()=>{
-    renderLayout(`
-      <section class="container"><div class="card"><h2>Host a game</h2><div id="hostControls"></div></div></section>
-    `);
+    layout(`<section class="container"><div class="card"><h2>Host a game</h2><div id="hostControls"></div></div></section>`);
     const state=storage.get("active_room");
     const el=$("#hostControls");
     if (state && state.game_code){
-      el.innerHTML=`
+      el.innerHTML = `
         <div class="grid">
           <div>Active room: <strong>${state.game_code}</strong></div>
           <div style="display:flex; gap:10px;">
@@ -183,56 +152,46 @@
       $("#goRoom").onclick=()=>location.hash="#/game/"+state.game_code;
       $("#copyLink").onclick=()=>{ navigator.clipboard.writeText(location.origin + "/#/game/" + state.game_code); toast("Link copied"); };
     }else{
-      el.innerHTML=`
+      el.innerHTML = `
         <div class="grid">
           <button class="btn" id="createGame">Create Game</button>
           <p class="help">You will receive a game code and lobby page to invite players.</p>
         </div>`;
-      $("#createGame").onclick=async()=>{
-        try{
-          const data=await API.createGame({});
-          storage.set("active_room", data, true);
-          location.hash="#/game/"+data.game_code;
-        }catch(e){ toast(e.message||"Failed to create"); }
-      };
+      $("#createGame").onclick=async()=>{ try{ const data=await API.createGame({}); storage.set("active_room", data, true); location.hash="#/game/"+data.game_code; }catch(e){ toast(e.message||"Failed to create"); } };
     }
   };
 
   pages.join=()=>{
-    renderLayout(`
+    layout(`
       <section class="container" style="max-width:520px;">
         <div class="card">
           <h2>Join a game</h2>
-          <input id="gameId" class="input" placeholder="Game code"/>
-          <input id="nickname" class="input" placeholder="Nickname (optional)"/>
-          <button id="joinBtn" class="btn" style="margin-top:10px;">Join</button>
+          <div class="form-row">
+            <input id="gameId" class="input" placeholder="Game code">
+            <input id="nickname" class="input" placeholder="Nickname (optional)">
+            <button id="joinBtn" class="btn" style="margin-top:8px;">Join</button>
+          </div>
         </div>
       </section>
     `);
     $("#joinBtn").onclick=async()=>{
-      const game_code=$("#gameId").value.trim();
-      const nickname=$("#nickname").value.trim()||undefined;
+      const game_code=$("#gameId").value.trim(); const nickname=$("#nickname").value.trim()||undefined;
       if (!game_code) return toast("Enter game code");
-      try{
-        const data=await API.joinGuest({ game_code, nickname });
-        storage.set("active_room", { game_code }, true);
-        storage.set("player_id", data.player_id, true);
-        location.hash="#/game/"+game_code;
-      }catch(e){ toast(e.message||"Failed to join"); }
+      try{ const data=await API.joinGuest({ game_code, nickname }); storage.set("active_room",{ game_code },true); storage.set("player_id", data.player_id, true); location.hash="#/game/"+game_code; }
+      catch(e){ toast(e.message||"Failed to join"); }
     };
   };
 
   pages.login=()=>{
-    renderLayout(`
+    layout(`
       <section class="container" style="max-width:520px;">
-        <div class="card">
-          <h2>Login</h2>
-          <div class="grid">
-            <input id="email" class="input" placeholder="Email" type="email"/>
-            <input id="password" class="input" placeholder="Password" type="password"/>
-            <label style="display:flex; gap:8px; align-items:center;"><input id="remember" type="checkbox"/> Remember me</label>
+        <div class="card"><h2>Login</h2>
+          <div class="form-row">
+            <input id="email" class="input" placeholder="Email" type="email">
+            <input id="password" class="input" placeholder="Password" type="password">
+            <label><input id="remember" type="checkbox"> Remember me</label>
             <button id="loginBtn" class="btn">Login</button>
-            <div style="display:flex; gap:10px; justify-content:space-between;">
+            <div style="display:flex;gap:10px;justify-content:space-between;">
               <a class="help" href="#/register">Create account</a>
               <a class="help" href="#/forgot">Forgot password?</a>
             </div>
@@ -243,31 +202,25 @@
     $("#loginBtn").onclick=async()=>{
       try{
         const sb=await ensureSupabase();
-        const email=$("#email").value.trim();
-        const password=$("#password").value;
-        const remember=$("#remember").checked;
-        const { data, error } = await sb.auth.signInWithPassword({ email, password });
+        const { data, error } = await sb.auth.signInWithPassword({ email:$("#email").value.trim(), password:$("#password").value });
         if (error) throw error;
-        storage.set("remember_me", !!remember, !!remember);
+        storage.set("remember_me", !!$("#remember").checked, !!$("#remember").checked);
         toast("Welcome back"); location.hash="#/";
       }catch(e){ toast(e.message||"Login failed"); }
     };
   };
 
   pages.register=()=>{
-    renderLayout(`
+    layout(`
       <section class="container" style="max-width:640px;">
-        <div class="card">
-          <h2>Create account</h2>
-          <div class="grid grid-2">
-            <input id="name" class="input" placeholder="Full name"/>
-            <input id="dob" class="input" placeholder="Date of birth" type="date"/>
-            <select id="gender" class="select">
-              <option value="">Gender</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option>
-            </select>
-            <input id="email" class="input" placeholder="Email" type="email"/>
-            <input id="password" class="input" placeholder="Password" type="password"/>
-            <label style="grid-column:1 / -1;"><input id="consent" type="checkbox"/> I agree to the <a href="#/terms">Terms</a> and <a href="#/privacy">Privacy Policy</a></label>
+        <div class="card"><h2>Create account</h2>
+          <div class="grid form-2">
+            <input id="name" class="input" placeholder="Full name">
+            <input id="dob" class="input" type="date" placeholder="Date of birth">
+            <select id="gender" class="select"><option value="">Gender</option><option>Female</option><option>Male</option><option>Other</option></select>
+            <input id="email" class="input" placeholder="Email" type="email">
+            <input id="password" class="input" placeholder="Password" type="password">
+            <label style="grid-column:1 / -1;"><input id="consent" type="checkbox"> I agree to the <a href="#/terms">Terms</a> and <a href="#/privacy">Privacy Policy</a></label>
             <button id="registerBtn" class="btn" style="grid-column:1 / -1;">Create account</button>
             <div><a class="help" href="#/login">Already have an account? Login</a></div>
           </div>
@@ -278,11 +231,8 @@
       if (!$("#consent").checked) return toast("Please accept Terms and Privacy");
       try{
         const sb=await ensureSupabase();
-        const payload={
-          name:$("#name").value.trim(), dob:$("#dob").value, gender:$("#gender").value,
-          email:$("#email").value.trim(), password:$("#password").value
-        };
-        const { data, error } = await sb.auth.signUp({ email:payload.email, password:payload.password, options:{ data:{ name:payload.name, dob:payload.dob, gender:payload.gender } } });
+        const payload={ name:$("#name").value.trim(), dob:$("#dob").value, gender:$("#gender").value, email:$("#email").value.trim(), password:$("#password").value };
+        const { error } = await sb.auth.signUp({ email:payload.email, password:payload.password, options:{ data:{ name:payload.name, dob:payload.dob, gender:payload.gender } } });
         if (error) throw error;
         toast("Check your email to verify"); location.hash="#/login";
       }catch(e){ toast(e.message||"Registration failed"); }
@@ -290,39 +240,37 @@
   };
 
   pages.forgot=()=>{
-    renderLayout(`
+    layout(`
       <section class="container" style="max-width:520px;">
         <div class="card"><h2>Forgot password</h2>
-          <input id="email" class="input" placeholder="Email" type="email"/>
-          <button id="forgotBtn" class="btn" style="margin-top:10px;">Send reset link</button>
+          <input id="email" class="input" placeholder="Email" type="email">
+          <button id="forgotBtn" class="btn" style="margin-top:8px;">Send reset link</button>
         </div>
       </section>
     `);
     $("#forgotBtn").onclick=async()=>{
       try{
         const sb=await ensureSupabase();
-        const email=$("#email").value.trim();
-        const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + "/#/reset" });
+        const { error } = await sb.auth.resetPasswordForEmail($("#email").value.trim(), { redirectTo: location.origin + "/#/reset" });
         if (error) throw error;
         toast("Reset email sent");
-      }catch(e){ toast(e.message||"Failed to send link"); }
+      }catch(e){ toast(e.message||"Failed to send"); }
     };
   };
 
   pages.reset=()=>{
-    renderLayout(`
+    layout(`
       <section class="container" style="max-width:520px;">
         <div class="card"><h2>Reset password</h2>
-          <input id="password" class="input" placeholder="New password" type="password"/>
-          <button id="resetBtn" class="btn" style="margin-top:10px;">Update password</button>
+          <input id="password" class="input" placeholder="New password" type="password">
+          <button id="resetBtn" class="btn" style="margin-top:8px;">Update password</button>
         </div>
       </section>
     `);
     $("#resetBtn").onclick=async()=>{
       try{
         const sb=await ensureSupabase();
-        const newPassword=$("#password").value;
-        const { error } = await sb.auth.updateUser({ password:newPassword });
+        const { error } = await sb.auth.updateUser({ password: $("#password").value });
         if (error) throw error;
         toast("Password updated"); location.hash="#/login";
       }catch(e){ toast(e.message||"Failed to update"); }
@@ -330,15 +278,13 @@
   };
 
   pages.account=()=>{
-    renderLayout(`
+    layout(`
       <section class="container" style="max-width:720px;">
         <div class="card"><h2>Account</h2>
-          <div class="grid grid-2">
-            <input id="name" class="input" placeholder="Name"/>
-            <input id="dob" class="input" placeholder="Date of birth" type="date"/>
-            <select id="gender" class="select">
-              <option value="">Gender</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option>
-            </select>
+          <div class="grid form-2">
+            <input id="name" class="input" placeholder="Name">
+            <input id="dob" class="input" type="date" placeholder="Date of birth">
+            <select id="gender" class="select"><option value="">Gender</option><option>Female</option><option>Male</option><option>Other</option></select>
             <button id="saveProfile" class="btn">Save</button>
             <button id="sendReport" class="btn secondary">Send latest report to my email</button>
           </div>
@@ -349,7 +295,7 @@
   };
 
   pages.billing=()=>{
-    renderLayout(`
+    layout(`
       <section class="container" style="max-width:720px;">
         <div class="card"><h2>Billing</h2>
           <div class="grid">
@@ -365,44 +311,37 @@
     $("#sub").onclick=()=>toast("Simulated: subscription active");
   };
 
-  // Game controller
-  pages.game=(code)=>{
-    renderLayout(`<section class="container"><div id="gameRoot"></div></section>`);
-    Game.mount(code);
-  };
+  // ========= Game =========
+  pages.game=(code)=>{ layout(`<section class="container"><div id="gameRoot"></div></section>`); Game.mount(code); };
 
   const Game={
     code:null, poller:null,
     state:{ phase:"lobby", ends_at:null, players:[], active_player_id:null, question:null },
     async mount(code){
       this.code=code;
-      $("#gameRoot").innerHTML=`<div class="card"><h2>Game ${code}</h2><div id="gameCard"></div></div>`;
-      this.render();
-      await this.refresh();
-      this.startPolling();
+      $("#gameRoot").innerHTML = `<div class="card"><h2>Game ${code}</h2><div id="gameCard"></div></div>`;
+      this.render(); await this.refresh(); this.start();
     },
-    unmount(){ if(this.poller) clearInterval(this.poller); },
-    startPolling(){ if(this.poller) clearInterval(this.poller); this.poller=setInterval(()=>this.refresh(), 3500); },
+    start(){ if(this.poller) clearInterval(this.poller); this.poller=setInterval(()=>this.refresh(), 3000); },
+    isActive(){ const me=storage.get("player_id"); return me && me===this.state.active_player_id; },
     async refresh(){
-      try{
-        const data=await API.getState({ game_code:this.code });
-        this.state={ ...this.state, ...data };
-        this.render();
-      }catch(e){ toast(e.message||"Failed to refresh"); }
+      try{ const data=await API.getState({ game_code:this.code }); this.state = Object.assign({}, this.state, data); this.render(); }
+      catch(e){ debug({ refresh_error:e.message }); }
     },
+    countdown(iso){ if(!iso) return "--:--"; const end=new Date(iso).getTime(); const diff=Math.max(0,Math.floor((end-Date.now())/1000)); const m=String(Math.floor(diff/60)).padStart(2,"0"); const s=String(diff%60).padStart(2,"0"); return `${m}:${s}`; },
     render(){
-      const root=$("#gameCard"); const s=this.state;
-      if (s.phase==="lobby")   return this.renderLobby(root);
+      const s=this.state, root=$("#gameCard");
+      if (s.phase==="lobby") return this.renderLobby(root);
       if (s.phase==="running") return this.renderRunning(root);
-      if (s.phase==="ended")   return this.renderSummary(root);
-      return this.renderLobby(root);
+      if (s.phase==="ended") return this.renderSummary(root);
+      this.renderLobby(root);
     },
     renderLobby(root){
       const players=(this.state.players||[]).map(p=>`<li>${p.name||p.nickname||"Player"}</li>`).join("");
-      root.innerHTML=`
+      root.innerHTML = `
         <div class="grid">
           <div>Share this code: <strong>${this.code}</strong></div>
-          <div style="display:flex; gap:10px;">
+          <div style="display:flex;gap:10px;">
             <button class="btn" id="copyInvite">Copy invite</button>
             <button class="btn warn" id="startGame">Start</button>
           </div>
@@ -411,37 +350,40 @@
       $("#copyInvite").onclick=()=>{ navigator.clipboard.writeText(location.origin + "/#/game/" + this.code); toast("Link copied"); };
       $("#startGame").onclick=async()=>{ try{ await API.startGame({ game_code:this.code }); await this.refresh(); }catch(e){ toast(e.message||"Start failed"); } };
     },
-    countdown(iso){ if(!iso) return ""; const end=new Date(iso).getTime(); const diff=Math.max(0, Math.floor((end-Date.now())/1000)); const m=String(Math.floor(diff/60)).padStart(2,"0"); const s=String(diff%60).padStart(2,"0"); return `${m}:${s}`; },
-    isActive(){ const me=storage.get("player_id"); return me && me===this.state.active_player_id; },
     renderRunning(root){
       const remaining=this.countdown(this.state.ends_at);
-      const secs=remaining? (parseInt(remaining.split(":")[0])*60 + parseInt(remaining.split(":")[1])) : 0;
-      const canExtend = secs<=600;
-      root.innerHTML=`
+      const [mm,ss] = remaining.split(":").map(x=>parseInt(x)||0);
+      const canExtend = (mm*60+ss) <= 600;
+      root.innerHTML = `
         <div class="grid">
-          <div style="display:flex; align-items:center; justify-content:space-between;">
-            <div></div><div class="timer">⏱ ${remaining || "--:--"}</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div>
+              <span class="badge-dot simple"></span>
+              <span class="badge-dot medium"></span>
+              <span class="badge-dot deep"></span>
+            </div>
+            <div class="timer">⏱ ${remaining}</div>
           </div>
           <div class="card">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
               <h3 style="margin:0;">${this.state.question?.title || "Question"}</h3>
-              <button class="btn ghost" id="clarifyBtn" title="Clarification">?</button>
+              <button class="btn ghost" id="clarifyBtn">?</button>
             </div>
             <p class="help">${this.state.question?.text || ""}</p>
-            <div style="display:flex; gap:8px; margin-top:10px;">
+            <div style="display:flex;gap:8px;margin-top:10px;">
               <button id="micBtn" class="btn secondary" ${this.isActive()?"":"disabled"}>Mic</button>
-              <input id="answer" class="input" placeholder="Type your answer..." ${this.isActive()?"":"disabled"} />
+              <input id="answer" class="input" placeholder="Type your answer..." ${this.isActive()?"":"disabled"}>
               <button id="submitBtn" class="btn" ${this.isActive()?"":"disabled"}>Submit</button>
             </div>
           </div>
-          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
             <button id="nextCard" class="btn">Reveal next card</button>
             <a class="btn secondary" href="#/billing" ${canExtend?"":"aria-disabled='true'"}>Extend</a>
             <button id="endAnalyze" class="btn danger">End and analyze</button>
           </div>
         </div>
-        <dialog id="clarifyModal" style="padding:0; border:0; border-radius:12px; max-width:560px;">
-          <div class="card"><h3 style="margin-top:0;">Clarification</h3><p class="help">Short explanation for this question.</p><div style="text-align:right;"><button class="btn ghost" id="closeClarify">Close</button></div></div>
+        <dialog id="clarifyModal" style="padding:0;border:0;border-radius:12px;max-width:560px;">
+          <div class="card"><h3 style="margin:0 0 8px 0;">Clarification</h3><p class="help">Short explanation.</p><div style="text-align:right"><button class="btn ghost" id="closeClarify">Close</button></div></div>
         </dialog>`;
       $("#clarifyBtn").onclick=()=>$("#clarifyModal").showModal();
       $("#closeClarify").onclick=()=>$("#clarifyModal").close();
@@ -454,13 +396,13 @@
       $("#endAnalyze").onclick=async()=>{ try{ await API.endAnalyze({ game_code:this.code }); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } };
     },
     renderSummary(root){
-      root.innerHTML=`
+      root.innerHTML = `
         <div class="grid">
           <div class="card">
             <h3>Summary</h3>
             <p class="help">A quick view of how the game went. Full report can be emailed.</p>
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-              <a class="btn" id="emailReport">Email me my full report</a>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <button id="emailReport" class="btn">Email me my full report</button>
               <button id="copyShare" class="btn secondary">Share</button>
             </div>
             <p class="help">Note, data is retained for about 30 minutes.</p>
@@ -471,35 +413,48 @@
     }
   };
 
-  // Terms/Privacy placeholders (text per your spec can be dropped in)
-  pages.terms=()=>renderLayout(`<section class="container"><div class="card"><h2>Terms</h2><p class="help">Terms content.</p></div></section>`);
-  pages.privacy=()=>renderLayout(`<section class="container"><div class="card"><h2>Privacy</h2><p class="help">Privacy content.</p></div></section>`);
-  pages.billing=pages.billing; // already defined
+  // ========= Routes =========
+  route("#/", pages.home);
+  route("#/host", pages.host);
+  route("#/join", pages.join);
+  route("#/login", pages.login);
+  route("#/register", pages.register);
+  route("#/forgot", pages.forgot);
+  route("#/reset", pages.reset);
+  route("#/account", pages.account);
+  route("#/billing", pages.billing);
 
-  // Routes
-  function bind(){
-    route("#/", pages.home);
-    route("#/host", pages.host);
-    route("#/join", pages.join);
-    route("#/login", pages.login);
-    route("#/register", pages.register);
-    route("#/forgot", pages.forgot);
-    route("#/reset", pages.reset);
-    route("#/account", pages.account);
-    route("#/billing", pages.billing);
-    route("#/terms", pages.terms);
-    route("#/privacy", pages.privacy);
-  }
+  // ========= SelfTest Harness =========
+  window.__SelfTest = {
+    async runAll(){
+      const results = [];
+      const push = (name, ok, info="")=>results.push({ test:name, ok, info });
 
-  // Boot
+      // Mock mode recommended for automation
+      const origMock = window.__MOCK__;
+      window.__MOCK__ = true;
+
+      try{
+        location.hash="#/host"; await sleep(50);
+        // Create game
+        $("#createGame")?.click(); await sleep(30);
+        const room = JSON.parse(localStorage.getItem("active_room") or sessionStorage.getItem("active_room"));
+      except_stmt= "" # placeholder
+      }catch(e){
+        results.push({ test:"exception", ok:false, info:String(e) });
+      }finally{
+        window.__MOCK__ = origMock;
+      }
+      return results;
+    }
+  };
+
+  // ========= Boot =========
   (async function(){
-    bind();
-    // mount layout once
     if (!location.hash) location.hash="#/";
-    // attach debug tray if asked
+    // attach debug tray node
     const app = document.getElementById("app");
     app.insertAdjacentHTML("beforeend", `<div class="debug-tray" id="debug-tray"><pre id="debug-pre"></pre></div>`);
-    if (parseHash().query && parseHash().query.debug==="1") document.getElementById("debug-tray").style.display="block";
     navigate();
   })();
 
