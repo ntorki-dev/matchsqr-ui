@@ -1,5 +1,5 @@
 
-/*! pages/hostlobby.js — v49.h2 */
+/*! pages/hostlobby.js — v49.h3 */
 (function (global, d) {
   'use strict';
   const App = global.MatchSquareApp || (global.MatchSquareApp = {});
@@ -31,6 +31,28 @@
     return false;
   }
 
+  function triggerLegacyEnterHost(){
+    // Prefer clicking the original Host button so all original init code runs
+    try {
+      const hostBtn = (global.els && global.els.hostBtn) || d.getElementById('hostBtn');
+      if (hostBtn && typeof hostBtn.click === 'function') {
+        hostBtn.click();
+        return true;
+      }
+    } catch(_){}
+    // Fallback to show/hide
+    showById('hostSection'); hideById('homeSection'); hideById('joinSection');
+    return false;
+  }
+
+  function triggerLegacyEndGame(){
+    try{
+      const endBtn = d.getElementById('endAnalyzeBtn');
+      if (endBtn && typeof endBtn.click === 'function') { endBtn.click(); return true; }
+    }catch(_){}
+    return false;
+  }
+
   function waitForStateGame(timeoutMs){
     return new Promise((resolve)=>{
       const t0 = Date.now();
@@ -58,7 +80,8 @@
   function isGameRunning(st){
     if (!st) return false;
     if (!st.gameId || !st.gameCode) return false;
-    if (st.status && String(st.status).toLowerCase() === 'ended') return false;
+    const ended = st.status && String(st.status).toLowerCase() === 'ended';
+    if (ended) return false;
     try{
       if (st.endsAt){
         const now = Date.now();
@@ -70,15 +93,9 @@
   }
 
   function goToLegacyRoom(){
-    // Leave SPA and reveal legacy host room
     leavePageMode();
-    showById('hostSection'); hideById('homeSection'); hideById('joinSection');
-    // Try to nudge legacy UI to refresh if it exposes hooks
-    try{ if (typeof global.__ms_refreshRoom === 'function') global.__ms_refreshRoom(); }catch(_){}
-    try{ if (typeof global.refreshRoom === 'function') global.refreshRoom(); }catch(_){}
-    // Align hash to any legacy logic that may look at it
+    triggerLegacyEnterHost();
     try{ location.hash = 'host'; }catch(_){}
-    // Scroll into view
     try{ $('hostSection')?.scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){}
   }
 
@@ -100,66 +117,102 @@
     el.innerHTML = [
       '<section class="p-4 max-w-2xl mx-auto">',
       '  <h2 class="text-2xl" style="font-weight:700;margin:4px 0 16px 0;">Get Ready</h2>',
-      '  <div class="row" style="gap:8px;margin-bottom:12px">',
-      '    <button id="hlCreate" class="btn primary">Create Game</button>',
+      '  <div id="hlRunning" class="card hidden" style="padding:12px;margin-bottom:12px">',
+      '    <div class="row" style="align-items:center;gap:8px">There is a game running.</div>',
+      '    <div class="row" style="align-items:center;gap:8px;margin-top:8px">',
+      '      <strong>Game Code:</strong> <span id="hlGameCodeR" class="mono">—</span>',
+      '      <button id="hlCopyR" class="btn" title="Copy">📋</button>',
+      '    </div>',
+      '    <div class="row" style="gap:8px;margin-top:10px">',
+      '      <button id="hlGoRoomR" class="btn primary">Go to Game Room</button>',
+      '      <button id="hlEndR" class="btn">End Game</button>',
+      '    </div>',
       '  </div>',
-      '  <div id="hlInfo" class="card hidden" style="padding:12px">',
-      '    <div class="row" style="align-items:center;gap:8px">',
-      '      <strong>Game Code:</strong> <span id="hlGameCode" class="mono">—</span>',
-      '      <button id="hlCopy" class="btn" title="Copy">📋</button>',
+      '  <div id="hlCreateWrap">',
+      '    <div class="row" style="gap:8px;margin-bottom:12px">',
+      '      <button id="hlCreate" class="btn primary">Create Game</button>',
+      '    </div>',
+      '    <div id="hlInfo" class="card hidden" style="padding:12px">',
+      '      <div class="row" style="align-items:center;gap:8px">',
+      '        <strong>Game Code:</strong> <span id="hlGameCode" class="mono">—</span>',
+      '        <button id="hlCopy" class="btn" title="Copy">📋</button>',
+      '      </div>',
+      '      <div class="row" style="gap:8px;margin-top:10px">',
+      '        <button id="hlGoRoom" class="btn">Go to Game Room</button>',
+      '      </div>',
       '    </div>',
       '  </div>',
       '</section>'
     ].join('');
 
-    const btn = el.querySelector('#hlCreate');
+    // Elements
+    const runningBox = el.querySelector('#hlRunning');
+    const outCodeR = el.querySelector('#hlGameCodeR');
+    const copyR = el.querySelector('#hlCopyR');
+    const goR = el.querySelector('#hlGoRoomR');
+    const endR = el.querySelector('#hlEndR');
+
+    const createBtn = el.querySelector('#hlCreate');
     const info = el.querySelector('#hlInfo');
     const outCode = el.querySelector('#hlGameCode');
     const copyBtn = el.querySelector('#hlCopy');
+    const goBtn = el.querySelector('#hlGoRoom');
 
     function showRunning(code){
-      outCode.textContent = code || '—';
-      info.classList.remove('hidden');
-      btn.textContent = 'Go to Game Room';
-      btn.classList.remove('primary');
-      btn.onclick = function(){ goToLegacyRoom(); };
+      outCodeR.textContent = code || '—';
+      runningBox.classList.remove('hidden');
+      // hide create flow when a game is running
+      const wrap = el.querySelector('#hlCreateWrap'); if (wrap) wrap.classList.add('hidden');
     }
 
-    // If a game is already running for the host, reflect it immediately
+    // If a game is already running for the host, reflect it and auto-redirect to the room
     if (isGameRunning(st)){
       showRunning(st.gameCode);
+      // small delay so user sees status, then go to room
+      setTimeout(goToLegacyRoom, 200);
     }
 
+    // Handlers for running game
+    copyR.addEventListener('click', function(){
+      const c = (outCodeR.textContent || '').trim();
+      if (c && c !== '—') copyToClipboard(c);
+    });
+    goR.addEventListener('click', goToLegacyRoom);
+    endR.addEventListener('click', function(){
+      if (!confirm('End the current game?')) return;
+      const ok = triggerLegacyEndGame();
+      if (!ok) alert('End action unavailable in this build.');
+    });
+
+    // Create flow
     copyBtn.addEventListener('click', function(){
       const code = (outCode.textContent || '').trim();
       if (code && code !== '—') copyToClipboard(code);
     });
+    goBtn.addEventListener('click', goToLegacyRoom);
 
-    btn.addEventListener('click', async function(){
-      // If already in "Go to Game Room" mode, just go
-      if (/Go to Game Room/i.test(btn.textContent)) { goToLegacyRoom(); return; }
-
-      // If a game is already running, do not create a new one
+    createBtn.addEventListener('click', async function(){
+      // Prevent creating when running
       const cur = global.state || {};
       if (isGameRunning(cur)){
         showRunning(cur.gameCode);
+        setTimeout(goToLegacyRoom, 100);
         return;
       }
-
-      // Create new game through legacy flow
-      btn.disabled = true; btn.textContent = 'Creating...';
+      createBtn.disabled = true; createBtn.textContent = 'Creating...';
       const ok = await triggerLegacyCreate();
       if (!ok){
-        btn.disabled = false; btn.textContent = 'Create Game';
+        createBtn.disabled = false; createBtn.textContent = 'Create Game';
         alert('Create action is unavailable in this build.');
         return;
       }
       const res = await waitForStateGame(10000);
-      btn.disabled = false;
+      createBtn.disabled = false;
       if (res && res.code){
-        showRunning(res.code);
+        outCode.textContent = res.code;
+        info.classList.remove('hidden');
       } else {
-        btn.textContent = 'Create Game';
+        createBtn.textContent = 'Create Game';
         alert('Could not confirm the new game. Please try again.');
       }
     }, false);
