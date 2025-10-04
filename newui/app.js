@@ -204,7 +204,8 @@
         const sb=await ensureSupabase();
         const { data, error } = await sb.auth.signInWithPassword({ email:$("#email").value.trim(), password:$("#password").value });
         if (error) throw error;
-        storage.set("remember_me", !!$("#remember").checked, !!$("#remember").checked);
+        const remember = !!$("#remember").checked;
+        storage.set("remember_me", remember, remember);
         toast("Welcome back"); location.hash="#/";
       }catch(e){ toast(e.message||"Login failed"); }
     };
@@ -352,7 +353,8 @@
     },
     renderRunning(root){
       const remaining=this.countdown(this.state.ends_at);
-      const [mm,ss] = remaining.split(":").map(x=>parseInt(x)||0);
+      const parts = remaining.split(":");
+      const mm = parseInt(parts[0]||"0",10), ss = parseInt(parts[1]||"0",10);
       const canExtend = (mm*60+ss) <= 600;
       root.innerHTML = `
         <div class="grid">
@@ -424,26 +426,57 @@
   route("#/account", pages.account);
   route("#/billing", pages.billing);
 
-  // ========= SelfTest Harness =========
+  // ========= SelfTest Harness (fixed) =========
   window.__SelfTest = {
     async runAll(){
       const results = [];
-      const push = (name, ok, info="")=>results.push({ test:name, ok, info });
+      const push = (name, ok, info="") => results.push({ test:name, ok, info });
 
-      // Mock mode recommended for automation
-      const origMock = window.__MOCK__;
+      const originalMock = window.__MOCK__;
       window.__MOCK__ = true;
+      try {
+        // Host → Create
+        location.hash = "#/host"; await sleep(100);
+        const createBtn = document.getElementById("createGame");
+        if (createBtn) { createBtn.click(); push("host_create_click", true); } else { push("host_create_click", false, "button not found"); }
+        await sleep(150);
 
-      try{
-        location.hash="#/host"; await sleep(50);
-        // Create game
-        $("#createGame")?.click(); await sleep(30);
-        const room = JSON.parse(localStorage.getItem("active_room") or sessionStorage.getItem("active_room"));
-      except_stmt= "" # placeholder
-      }catch(e){
-        results.push({ test:"exception", ok:false, info:String(e) });
-      }finally{
-        window.__MOCK__ = origMock;
+        // Room set?
+        let ar = null;
+        try {
+          ar = JSON.parse(localStorage.getItem("active_room") || sessionStorage.getItem("active_room") || "null");
+        } catch(e) {}
+        push("active_room_set", !!(ar && ar.game_code), JSON.stringify(ar||{}));
+
+        // Navigate to room
+        if (ar && ar.game_code) {
+          location.hash = "#/game/" + ar.game_code; await sleep(150);
+          push("navigate_room", !!document.getElementById("gameCard"));
+        }
+
+        // Start → Running
+        const startBtn = document.getElementById("startGame");
+        if (startBtn) { startBtn.click(); push("start_click", true); } else { push("start_click", false, "start not found"); }
+        await sleep(150);
+
+        // Next card
+        const nextBtn = document.getElementById("nextCard");
+        if (nextBtn) { nextBtn.click(); push("next_click", true); } else { push("next_click", false, "next not found"); }
+        await sleep(150);
+
+        // End & analyze
+        const endBtn = document.getElementById("endAnalyze");
+        if (endBtn) { endBtn.click(); push("end_click", true); } else { push("end_click", false, "end not found"); }
+        await sleep(150);
+
+        // Summary visible?
+        const emailBtn = document.getElementById("emailReport");
+        push("summary_email_btn", !!emailBtn);
+
+      } catch(e){
+        push("exception", false, String(e));
+      } finally {
+        window.__MOCK__ = originalMock;
       }
       return results;
     }
@@ -452,7 +485,7 @@
   // ========= Boot =========
   (async function(){
     if (!location.hash) location.hash="#/";
-    // attach debug tray node
+    // ensure debug tray exists
     const app = document.getElementById("app");
     app.insertAdjacentHTML("beforeend", `<div class="debug-tray" id="debug-tray"><pre id="debug-pre"></pre></div>`);
     navigate();
