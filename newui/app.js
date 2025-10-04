@@ -244,7 +244,7 @@
     if(!base){ log('Please set FUNCTIONS_BASE in config.js'); return; }
     state.functionsBase = base;
     try{
-      const r=await fetch(base+'/config'); const text=await r.text(); let cfg; try{ cfg=JSON.parse(text);}catch{cfg={};}
+      const r=await fetch(base+'/config'); const text=await r.text(); let cfg; try{ cfg=JSON.parse(text);}catch(e){cfg={};}
       const url=cfg.supabase_url||cfg.public_supabase_url||cfg.url||(window.CONFIG&&window.CONFIG.FALLBACK_SUPABASE_URL);
       const anon=cfg.supabase_anon_key||cfg.public_supabase_anon_key||cfg.anon||(window.CONFIG&&window.CONFIG.FALLBACK_SUPABASE_ANON_KEY);
       if(!url||!anon) throw new Error('Missing supabase url/anon');
