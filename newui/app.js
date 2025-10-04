@@ -227,8 +227,8 @@
   if (els.hostBtn) els.hostBtn.onclick = ()=>{
   try{
     var s = window.state || {}; var sess = s.session || null;
-    if (sess && sess.access_token){ location.hash = '/host'; return; }
-    try{ sessionStorage.setItem('ms_return_to','/host'); }catch(_){ }
+    if (sess && (sess.access_token || (sess.user && sess.user.id))){ location.hash = '/host'; return; }
+    try{ sessionStorage.setItem('ms_return_to','/host'); }catch(_){}
     location.hash = '/account/login';
   }catch(_){ hide(els.home); show(els.host); hide(els.join); }
 };
@@ -641,11 +641,11 @@
 
 
 
-/*! === SPA bootstrap v49.fix === */
+/*! === SPA bootstrap v49.final === */
 (function (global, d) {
   'use strict';
   var App = global.MatchSquareApp || (global.MatchSquareApp = {});
-  App.version_spa = 'v49.fix';
+  App.version_spa = 'v49.final';
 
   function ensureRoot(){
     var el = d.getElementById('spa-root');
@@ -669,7 +669,6 @@
     });
   }
   function rawHash(){
-    // handle "#/host", "?#/host", "?a=b#/host"
     var href = String(location.href);
     var i = href.indexOf('#');
     return i>=0 ? href.slice(i+1) : '';
@@ -691,28 +690,25 @@
   };
   var known = Object.keys(routeConfig);
 
-  function isKnown(p){
-    if (known.indexOf(p)>=0) return true;
-    if (p.indexOf('/game/')===0) return true;
-    return false;
-  }
+  function isKnown(p){ return p.indexOf('/game/')===0 || known.indexOf(p)>=0; }
 
   var router=null, started=false;
   function bindRoutes(r){
     r.add('/', function(ctx){ if (ctx.el) ctx.el.setAttribute('hidden',''); });
+
     known.forEach(function(p){
       r.add(p, async function(ctx){
         if (!ctx.el) return;
         ctx.el.removeAttribute('hidden');
-        var cfg = routeConfig[p];
-        // lazy load screen
-        try { await loadScript(cfg.src); } catch(e){ try{ await loadScript('/newui/'+cfg.src); }catch(e2){} }
+        try { await loadScript(routeConfig[p].src); } catch(e){ try{ await loadScript('/newui/'+routeConfig[p].src); }catch(e2){} }
         var screens = App.screens || {};
+        var cfg = routeConfig[p];
         var fn = cfg.ns ? ((screens[cfg.ns]||{})[cfg.fn]) : screens[cfg.fn];
-        if (typeof fn === 'function') { fn(ctx.el); }
+        if (typeof fn === 'function'){ fn(ctx.el); }
         else { ctx.el.innerHTML = '<div class="p-4 text-sm opacity-70">Screen not wired yet.</div>'; }
       });
     });
+
     r.add('/game/*', async function(ctx){
       if (!ctx.el) return;
       ctx.el.removeAttribute('hidden');
@@ -721,6 +717,7 @@
       if (typeof fn==='function'){ fn(ctx.el); }
       else { ctx.el.innerHTML = '<div class="p-4 text-sm opacity-70">Game screen not wired yet.</div>'; }
     });
+
     r.setNotFound(function(ctx){ if (ctx.el) ctx.el.setAttribute('hidden',''); });
   }
 
@@ -741,7 +738,6 @@
     ensureRoot();
     var path = getPath();
     if (!isKnown(path)){
-      // listen for future switch to known route
       window.addEventListener('hashchange', async function(){
         var p = getPath();
         if (isKnown(p)) await ensureRouter();
@@ -754,7 +750,6 @@
   if (d.readyState==='loading') d.addEventListener('DOMContentLoaded', boot);
   else boot();
 
-  // Public helper
   App.navigate = function(path){
     var p = path.charAt(0)==='#' ? path.slice(1) : path;
     location.hash = p.charAt(0)==='/' ? p : '/'+p;
