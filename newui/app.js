@@ -1,4 +1,4 @@
- (function(){
+(function(){
 
   // === Non-conflicting UI version ===
   try{
