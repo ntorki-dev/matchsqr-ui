@@ -28,6 +28,16 @@ h2{margin-top:16px;}
 /* Header auth control */
 #btnAuth{background:none;border:none;padding:0;margin:0;cursor:pointer;line-height:0;}
 /* Round green person icon inside transparent circle with subtle border */
-.ms-avatar{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:9999px;border:1px solid rgba(255,255,255,.30);background:transparent;color:#16a34a;}
-.ms-avatar svg{display:block;width:18px;height:18px;color:inherit;}
+/* Avatar control */
+.ms-avatar{
+  display:inline-grid;
+  place-items:center;
+  width:36px;
+  height:36px;
+  border-radius:50%;
+  background:#16a34a;
+  color:#ffffff;
+  text-decoration:none;
+}
+.ms-avatar svg{ width:18px; height:18px; display:block; color:inherit; }
 #spa-root[hidden]{display:none!important;}
