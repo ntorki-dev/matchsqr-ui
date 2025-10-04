@@ -38,13 +38,8 @@
     <span class="brand-text" style="font-weight:600">Matchsqr</span>
   </a>
   <div class="topbar-right" style="display:flex;align-items:center;gap:8px;">
-    <!-- Both hidden by default to avoid flicker until session is known -->
-    <a id="loginLink" class="btn ghost small" href="#/account/login" hidden>Login</a>
-    <a id="accountLink" class="ms-avatar" href="#/account/profile" hidden aria-label="Account">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path fill="currentColor" d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-4.42 0-8 1.79-8 4v2h16v-2c0-2.21-3.58-4-8-4z"/>
-      </svg>
-    </a>
+    <!-- IMPORTANT: no class, no background -->
+    <button id="btnAuth" aria-label="Account/Login"></button>
   </div>
 </header>
 
