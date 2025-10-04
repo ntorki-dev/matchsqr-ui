@@ -224,7 +224,14 @@
   const show = (el)=>{ if(!el) return; el.classList.remove('hidden'); el.style.display=''; };
   const hide = (el)=>{ if(!el) return; el.classList.add('hidden'); el.style.display='none'; };
   if (els.btnHome) els.btnHome.onclick = ()=>{ show(els.home); hide(els.host); hide(els.join); };
-  if (els.hostBtn) els.hostBtn.onclick = ()=>{ hide(els.home); show(els.host); hide(els.join); };
+  if (els.hostBtn) els.hostBtn.onclick = ()=>{
+  try{
+    var s = window.state || {}; var sess = s.session || null;
+    if (sess && sess.access_token){ location.hash = '/host'; return; }
+    try{ sessionStorage.setItem('ms_return_to','/host'); }catch(_){ }
+    location.hash = '/account/login';
+  }catch(_){ hide(els.home); show(els.host); hide(els.join); }
+};
   if (els.joinBtn) els.joinBtn.onclick = ()=>{ hide(els.home); hide(els.host); show(els.join); };
 
   // State
