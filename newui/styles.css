@@ -1,35 +1,33 @@
-/* ========= your existing styles (keep everything you already had) ========= */
-/* If you have existing content here, keep it ABOVE. The block below is additive. */
 
+/* Matchsqr UI Styles v49.2 - cleaned */
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;line-height:1.4;margin:0;color:#1f2937;background:#fff;}
+.nav{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0f172a;color:#fff;}
+.brand{font-weight:700;display:flex;align-items:center;gap:8px;text-decoration:none;color:#fff;}
+.right{display:flex;gap:8px;align-items:center;}
+.container{max-width:960px;margin:24px auto;padding:0 16px;}
+.hero{text-align:center;margin:48px 0;}
+h1{font-size:32px;margin:0 0 8px 0;}
+h2{margin-top:16px;}
+.sub{color:#6b7280;}
+.cta{display:flex;gap:12px;justify-content:center;margin-top:18px;flex-wrap:wrap;}
+.btn{border:1px solid #16a34a;color:#16a34a;background:#fff;padding:10px 16px;border-radius:10px;cursor:pointer;}
+.btn.primary{background:#16a34a;color:#fff;}
+.btn.ghost{border-color:#475569;color:#e2e8f0;background:#1f2937;}
+.btn.small{padding:8px 12px;}
+.btn.danger{border-color:#ef4444;color:#ef4444;}
+.hidden{display:none;}
+.panel{border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin-top:12px;background:#fafafa;}
+.grid{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin:10px 0;}
+.grid input{padding:10px;border:1px solid #d1d5db;border-radius:8px;}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+.muted{color:#6b7280;font-size:14px;}
+.mono{background:#f7f7f7;padding:10px;border-radius:8px;overflow:auto;min-height:60px;}
+.foot{max-width:960px;margin:40px auto 24px auto;padding:0 16px;color:#94a3b8;}
+@media (max-width:640px){.grid{grid-template-columns:1fr;}.nav{flex-wrap:wrap;gap:8px;}}
 
-/* ========= v49.2 header/account styles (clean) ========= */
-#btnAuth {
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0;
-  cursor: pointer;
-  line-height: 0;
-}
-
-#btnAuth .ms-avatar {
-  display: inline-grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 9999px;
-  border: 1px solid rgba(255,255,255,.30);
-  background: transparent;
-}
-
-#btnAuth .ms-avatar svg {
-  display: block;
-  width: 18px;
-  height: 18px;
-  color: #16a34a; /* green icon */
-}
-
-/* Make sure the account container fully hides when not in use */
-#spa-root[hidden] {
-  display: none !important;
-}
+/* Header auth control */
+#btnAuth{background:none;border:none;padding:0;margin:0;cursor:pointer;line-height:0;}
+/* Round green person icon inside transparent circle with subtle border */
+.ms-avatar{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:9999px;border:1px solid rgba(255,255,255,.30);background:transparent;color:#16a34a;}
+.ms-avatar svg{display:block;width:18px;height:18px;color:inherit;}
+#spa-root[hidden]{display:none!important;}
