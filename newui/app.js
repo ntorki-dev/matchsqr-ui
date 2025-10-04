@@ -261,14 +261,13 @@
   loadConfig();
 
   // ===== Header Auth Controls =====
-  function msProfileIconHtml(){
+  function function msProfileIconHtml(){
   return '<span class="ms-avatar" aria-label="Account">'
-       +   '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">'
+       +   '<svg viewBox="0 0 24 24" aria-hidden="true">'
        +     '<path fill="currentColor" d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-4.42 0-8 1.79-8 4v2h16v-2c0-2.21-3.58-4-8-4z"/>'
        +   '</svg>'
        + '</span>';
-}
-  function updateHeaderAuthUi(){
+}  function updateHeaderAuthUi(){
     if (!els.btnAuth) return;
     const session = state.session;
     if (session && session.access_token){
