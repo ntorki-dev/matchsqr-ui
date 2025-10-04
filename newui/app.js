@@ -83,7 +83,7 @@
 
   // Elements
   const els = {
-    brandLink: $('brandLink'), btnAuth: $('btnAuth'),
+    brandLink: $('brandLink'), loginLink: $('loginLink'), accountLink: $('accountLink'),
     home: $('homeSection'), host: $('hostSection'), join: $('joinSection'),
     btnHome: $('btnHome'), hostBtn: $('hostBtn'), joinBtn: $('joinBtn'),
     hostLoginForm: $('hostLoginForm'), hostEmail: $('hostEmail'), hostPassword: $('hostPassword'),
@@ -260,33 +260,20 @@
   }
   loadConfig();
 
-  // ===== Header Auth Controls =====
-  function msProfileIconHtml(){
-    return '<span style="display:inline-grid;place-items:center;width:34px;height:34px;border-radius:9999px;border:1px solid rgba(255,255,255,.3);background:transparent;">'
-         +   '<svg width="18" height="18" viewBox="0 0 24 24" style="display:block;color:#16a34a;">'
-         +     '<path fill="currentColor" d="M12 12a4 4 0 1 0-0.001-8.001A4 4 0 0 0 12 12zm0 2c-4.42 0-8 1.79-8 4v2h16v-2c0-2.21-3.58-4-8-4z"/>'
-         +   '</svg>'
-         + '</span>';
-  }
+  // ===== Header Auth Controls
   function updateHeaderAuthUi(){
-    if (!els.btnAuth) return;
-    const session = state.session;
-    if (session && session.access_token){
-      els.btnAuth.className = '';
-      els.btnAuth.innerHTML = msProfileIconHtml();
-      els.btnAuth.title = 'Account';
-      els.btnAuth.onclick = function(){ location.hash = '/account/profile'; };
+    if (!els.loginLink || !els.accountLink) return;
+    const isLoggedIn = !!(state.session && state.session.access_token);
+    if (isLoggedIn){
+      els.loginLink.setAttribute('hidden','');
+      els.accountLink.removeAttribute('hidden');
     } else {
-      els.btnAuth.className = 'btn ghost small';
-      els.btnAuth.innerHTML = 'Login';
-      els.btnAuth.title = 'Login';
-      els.btnAuth.onclick = function(){
-        try{ sessionStorage.setItem('ms_return_to', location.hash || '#'); }catch(_e){}
-        location.hash = '/account/login';
-      };
+      els.accountLink.setAttribute('hidden','');
+      els.loginLink.removeAttribute('hidden');
     }
   }
   function initHeader(){
+
     if (els.brandLink){
       els.brandLink.addEventListener('click', function(ev){
         ev.preventDefault();
