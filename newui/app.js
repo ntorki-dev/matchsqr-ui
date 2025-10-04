@@ -97,8 +97,6 @@
     gQuestionText: $('gQuestionText'), gQuestionClar: $('gQuestionClar'),
     joinLog: $('joinLog')
   };
-try{ window.els = els; }catch(_){}
-
 
   // ===== Answer helpers (unchanged) =====
   function MS_qHostCard(){ try { return (els.questionText && els.questionText.closest && els.questionText.closest('.card')) || null; } catch(e){ return null; } }
@@ -226,14 +224,7 @@ try{ window.els = els; }catch(_){}
   const show = (el)=>{ if(!el) return; el.classList.remove('hidden'); el.style.display=''; };
   const hide = (el)=>{ if(!el) return; el.classList.add('hidden'); el.style.display='none'; };
   if (els.btnHome) els.btnHome.onclick = ()=>{ show(els.home); hide(els.host); hide(els.join); };
-  if (els.hostBtn) els.hostBtn.onclick = ()=>{
-  try{
-    var sess = state && (state.session || null);
-    if (sess && (sess.access_token || (sess.user && sess.user.id))){ location.hash = '/host'; return; }
-    try{ sessionStorage.setItem('ms_return_to','/host'); }catch(_){}
-    location.hash = '/account/login';
-  }catch(_){ hide(els.home); show(els.host); hide(els.join); }
-};
+  if (els.hostBtn) els.hostBtn.onclick = ()=>{ hide(els.home); show(els.host); hide(els.join); };
   if (els.joinBtn) els.joinBtn.onclick = ()=>{ hide(els.home); hide(els.host); show(els.join); };
 
   // State
@@ -389,7 +380,20 @@ try{ window.els = els; }catch(_){}
     if (state.gameCode) startRoomPolling();
   }
 
-  // Create
+  
+  // Auto-Join as Host (used when an active game exists already)
+  async function autoJoinAsHost(code){
+    try{
+      if (!code) return;
+      state.gameCode = code;
+      const r = await fetch(state.functionsBase + '/get_state?code=' + encodeURIComponent(code));
+      const out = await r.json().catch(()=>({}));
+      const g = { id: out?.game_id || null, code: code, status: out?.status || null, ends_at: out?.ends_at || null };
+      applyHostGame(g);
+      startHeartbeat();
+    }catch(e){ try{ log('Auto-join failed'); }catch(_){} }
+  }
+// Create
   if (els.createGameBtn) els.createGameBtn.addEventListener('click', async ()=>{
     if(!state.session?.access_token){ log('Please login first'); return; }
     const r = await fetch(state.functionsBase + '/create_game', { method:'POST', headers:{ 'authorization':'Bearer '+state.session.access_token }});
@@ -596,6 +600,7 @@ try{ window.els = els; }catch(_){}
       return raw[0]==='/'? raw : '/'+raw;
     }
     const routeConfig = {
+      '/host':                 { src: 'pages/hostlobby.js', fn: 'hostLobby',        ns: null },
       '/account/login':        { src: 'account/account.js', fn: 'renderLogin',        ns: 'account' },
       '/account/profile':      { src: 'account/account.js', fn: 'renderProfile',      ns: 'account' },
       '/account/register':     { src: 'account/account.js', fn: 'renderRegister',     ns: 'account' },
@@ -611,7 +616,7 @@ try{ window.els = els; }catch(_){}
           try{ hide(els.home); hide(els.host); hide(els.join);}catch(_e){}
           el.removeAttribute('hidden');
           const cfg=routeConfig[p];
-          try{ await loadScript('account/account.js'); }catch(_e){}
+          try{ await loadScript(cfg.src); }catch(_e){}
           const screens = (window.MatchSquareApp && window.MatchSquareApp.screens) || {};
           const ns = cfg.ns && screens[cfg.ns] || screens;
           const fn = ns && ns[cfg.fn];
@@ -640,98 +645,3 @@ try{ window.els = els; }catch(_){}
   })();
 
 })(); 
-
-
-
-/*! MatchSquare inline SPA v49.inline */
-(function (global, d) {
-  'use strict';
-  const AppNS = global.MatchSquareApp || (global.MatchSquareApp = {});
-  AppNS.version_inline = 'v49.inline';
-
-  function ensureRoot(){
-    let el = d.getElementById('spa-root');
-    if (!el){
-      el = d.createElement('div');
-      el.id = 'spa-root';
-      el.setAttribute('hidden','');
-      d.body.appendChild(el);
-    }
-    return el;
-  }
-  function rawHash(){
-    const href = String(location.href);
-    const i = href.indexOf('#');
-    return i>=0 ? href.slice(i+1) : '';
-  }
-  function getPath(){
-    const raw = rawHash().replace(/^#/, '');
-    if (!raw) return '/';
-    return raw.startsWith('/') ? raw : '/' + raw;
-  }
-  function show(el){ if (el) { el.removeAttribute('hidden'); } }
-  function hide(el){ if (el) { el.setAttribute('hidden',''); } }
-
-  // Lazy-load a script if not already present
-  function loadScriptOnce(src){
-    return new Promise((resolve, reject) => {
-      const exists = Array.from(d.scripts).some(s => s.src && (s.src.endsWith(src) || s.src.includes(src)));
-      if (exists) return resolve();
-      const s = d.createElement('script');
-      s.src = src; s.async = true;
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error('Failed to load '+src));
-      d.body.appendChild(s);
-    });
-  }
-
-  async function renderHostLobby(){
-    const root = ensureRoot();
-    show(root);
-    // Hide legacy sections while SPA view is active
-    try{
-      const H = d.getElementById('homeSection');
-      const HS = d.getElementById('hostSection');
-      const JS = d.getElementById('joinSection');
-      if (H) H.style.display = 'none';
-      if (HS) HS.style.display = 'none';
-      if (JS) JS.style.display = 'none';
-    }catch(_){}
-    // Load the host lobby module if needed
-    if (!(global.MatchSquareApp && MatchSquareApp.screens && MatchSquareApp.screens.hostLobby)){
-      try{
-        await loadScriptOnce('pages/hostlobby.js');
-      }catch(e1){
-        await loadScriptOnce('/newui/pages/hostlobby.js');
-      }
-    }
-    const fn = global.MatchSquareApp && MatchSquareApp.screens && MatchSquareApp.screens.hostLobby;
-    if (typeof fn === 'function'){
-      try{ fn(root); }catch(err){ console.error('HostLobby render error:', err); root.innerHTML = '<div class="p-4">Error opening Host Lobby.</div>'; }
-    } else {
-      root.innerHTML = '<div class="p-4">Host Lobby not available.</div>';
-    }
-  }
-
-  function maybeHome(){
-    const root = ensureRoot();
-    // Hide SPA region and re-show legacy homepage sections
-    hide(root);
-    try{
-      const H = d.getElementById('homeSection');
-      if (H) H.style.display = '';
-    }catch(_){}
-  }
-
-  async function handleRoute(){
-    const p = getPath();
-    if (p === '/host'){ await renderHostLobby(); return; }
-    // add other routes later
-    maybeHome();
-  }
-
-  // Init
-  if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', handleRoute);
-  else handleRoute();
-  window.addEventListener('hashchange', handleRoute);
-})(window, document);
