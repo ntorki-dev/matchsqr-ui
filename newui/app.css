@@ -26,7 +26,7 @@ button{font-family:inherit}
 .nav.app{display:flex;align-items:center;justify-content:space-between;padding:14px 0}
 /* Homepage hero */
 .hero{max-width:980px;margin:64px auto 0;text-align:center}
-.hero .globe{width:200px;height:200px;margin:0 auto 18px;object-fit:contain;}
+.hero .globe{width:160px;height:160px;margin:0 auto 18px;object-fit:contain;}
 .hero h1{font-size:48px;line-height:1.15;margin:0 0 10px 0;font-weight:800}
 .hero p{max-width:720px;margin:0 auto 28px;color:var(--muted);font-size:18px}
 .cta-row{display:flex;gap:16px;justify-content:center}
