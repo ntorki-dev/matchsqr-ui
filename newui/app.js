@@ -83,7 +83,7 @@
 
   // Elements
   const els = {
-    brandLink: $('brandLink'), loginLink: $('loginLink'), accountLink: $('accountLink'),
+    brandLink: $('brandLink'), btnAuth: $('btnAuth'),
     home: $('homeSection'), host: $('hostSection'), join: $('joinSection'),
     btnHome: $('btnHome'), hostBtn: $('hostBtn'), joinBtn: $('joinBtn'),
     hostLoginForm: $('hostLoginForm'), hostEmail: $('hostEmail'), hostPassword: $('hostPassword'),
@@ -244,7 +244,7 @@
     if(!base){ log('Please set FUNCTIONS_BASE in config.js'); return; }
     state.functionsBase = base;
     try{
-      const r=await fetch(base+'/config'); const text=await r.text(); let cfg; try{ cfg=JSON.parse(text);}catch(e){cfg={};}
+      const r=await fetch(base+'/config'); const text=await r.text(); let cfg; try{ cfg=JSON.parse(text);}catch{cfg={};}
       const url=cfg.supabase_url||cfg.public_supabase_url||cfg.url||(window.CONFIG&&window.CONFIG.FALLBACK_SUPABASE_URL);
       const anon=cfg.supabase_anon_key||cfg.public_supabase_anon_key||cfg.anon||(window.CONFIG&&window.CONFIG.FALLBACK_SUPABASE_ANON_KEY);
       if(!url||!anon) throw new Error('Missing supabase url/anon');
@@ -253,28 +253,40 @@
       // keep header in sync with auth
       if (state.supa && state.supa.auth){
         state.supa.auth.onAuthStateChange((event, session)=>{ state.session = session || null; updateHeaderAuthUi(); });
-        initHeader();
         state.supa.auth.getSession().then(r=>{ state.session = r?.data?.session || null; updateHeaderAuthUi(); });
+      }
+      initHeader();
     }catch(e){ log('Config error: '+e.message); }
   }
   loadConfig();
 
-  // ===== Header Auth Controls
+  // ===== Header Auth Controls =====
+  function msProfileIconHtml(){
+    return '<span style="display:inline-grid;place-items:center;width:34px;height:34px;border-radius:9999px;border:1px solid rgba(255,255,255,.3);background:transparent;">'
+         +   '<svg width="18" height="18" viewBox="0 0 24 24" style="display:block;color:#16a34a;">'
+         +     '<path fill="currentColor" d="M12 12a4 4 0 1 0-0.001-8.001A4 4 0 0 0 12 12zm0 2c-4.42 0-8 1.79-8 4v2h16v-2c0-2.21-3.58-4-8-4z"/>'
+         +   '</svg>'
+         + '</span>';
+  }
   function updateHeaderAuthUi(){
-    try{
-      if (!els.loginLink || !els.accountLink) return;
-      const loggedIn = !!(state.session && state.session.access_token);
-      if (loggedIn){
-        els.loginLink.setAttribute('hidden','');
-        els.accountLink.removeAttribute('hidden');
-      } else {
-        els.accountLink.setAttribute('hidden','');
-        els.loginLink.removeAttribute('hidden');
-      }
-    }catch(e){ log('Header UI error: '+e.message); }
+    if (!els.btnAuth) return;
+    const session = state.session;
+    if (session && session.access_token){
+      els.btnAuth.className = '';
+      els.btnAuth.innerHTML = msProfileIconHtml();
+      els.btnAuth.title = 'Account';
+      els.btnAuth.onclick = function(){ location.hash = '/account/profile'; };
+    } else {
+      els.btnAuth.className = 'btn';
+      els.btnAuth.innerHTML = 'Login';
+      els.btnAuth.title = 'Login';
+      els.btnAuth.onclick = function(){
+        try{ sessionStorage.setItem('ms_return_to', location.hash || '#'); }catch(_e){}
+        location.hash = '/account/login';
+      };
+    }
   }
   function initHeader(){
-
     if (els.brandLink){
       els.brandLink.addEventListener('click', function(ev){
         ev.preventDefault();
