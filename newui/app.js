@@ -97,6 +97,8 @@
     gQuestionText: $('gQuestionText'), gQuestionClar: $('gQuestionClar'),
     joinLog: $('joinLog')
   };
+  try{ window.els = els; }catch(_){}
+
 
   // ===== Answer helpers (unchanged) =====
   function MS_qHostCard(){ try { return (els.questionText && els.questionText.closest && els.questionText.closest('.card')) || null; } catch(e){ return null; } }
@@ -226,9 +228,9 @@
   if (els.btnHome) els.btnHome.onclick = ()=>{ show(els.home); hide(els.host); hide(els.join); };
   if (els.hostBtn) els.hostBtn.onclick = ()=>{
   try{
-    var s = window.state || {}; var sess = s.session || null;
+    var sess = (state && (state.session || null));
     if (sess && (sess.access_token || (sess.user && sess.user.id))){ location.hash = '/host'; return; }
-    try{ sessionStorage.setItem('ms_return_to','/host'); }catch(_){}
+    try{ sessionStorage.setItem('ms_return_to','/host'); }catch(_e){}
     location.hash = '/account/login';
   }catch(_){ hide(els.home); show(els.host); hide(els.join); }
 };
@@ -638,123 +640,3 @@
   })();
 
 })(); 
-
-
-
-/*! === SPA bootstrap v49.final === */
-(function (global, d) {
-  'use strict';
-  var App = global.MatchSquareApp || (global.MatchSquareApp = {});
-  App.version_spa = 'v49.final';
-
-  function ensureRoot(){
-    var el = d.getElementById('spa-root');
-    if (!el){
-      el = d.createElement('div');
-      el.id = 'spa-root';
-      el.setAttribute('hidden','');
-      d.body.appendChild(el);
-    }
-    return el;
-  }
-  function loadScript(src){
-    return new Promise(function(resolve,reject){
-      var exists = Array.prototype.some.call(d.scripts, function(s){ return s.src && (s.src.endsWith(src) || s.src.indexOf(src)>=0); });
-      if (exists) return resolve();
-      var s = d.createElement('script');
-      s.src = src; s.async = true;
-      s.onload = function(){ resolve(); };
-      s.onerror = function(){ reject(new Error('Failed to load '+src)); };
-      d.body.appendChild(s);
-    });
-  }
-  function rawHash(){
-    var href = String(location.href);
-    var i = href.indexOf('#');
-    return i>=0 ? href.slice(i+1) : '';
-  }
-  function getPath(){
-    var raw = rawHash().replace(/^#/, '');
-    if (!raw) return '/';
-    return raw.startsWith('/') ? raw : '/' + raw;
-  }
-  var routeConfig = {
-    '/host':        { src: 'pages/hostlobby.js', fn: 'hostLobby', ns: null },
-    '/join':        { src: 'pages/joingame.js',  fn: 'joinGame',  ns: null },
-    '/game':        { src: 'pages/gameroom.js',  fn: 'gameRoom',  ns: null },
-    '/checkout':    { src: 'pages/checkout.js', fn: 'checkout',  ns: null },
-    '/account/login':        { src: 'account/account.js', fn: 'renderLogin',        ns: 'account' },
-    '/account/register':     { src: 'account/account.js', fn: 'renderRegister',     ns: 'account' },
-    '/account/profile':      { src: 'account/account.js', fn: 'renderProfile',      ns: 'account' },
-    '/account/subscription': { src: 'account/account.js', fn: 'renderSubscription', ns: 'account' }
-  };
-  var known = Object.keys(routeConfig);
-
-  function isKnown(p){ return p.indexOf('/game/')===0 || known.indexOf(p)>=0; }
-
-  var router=null, started=false;
-  function bindRoutes(r){
-    r.add('/', function(ctx){ if (ctx.el) ctx.el.setAttribute('hidden',''); });
-
-    known.forEach(function(p){
-      r.add(p, async function(ctx){
-        if (!ctx.el) return;
-        ctx.el.removeAttribute('hidden');
-        try { await loadScript(routeConfig[p].src); } catch(e){ try{ await loadScript('/newui/'+routeConfig[p].src); }catch(e2){} }
-        var screens = App.screens || {};
-        var cfg = routeConfig[p];
-        var fn = cfg.ns ? ((screens[cfg.ns]||{})[cfg.fn]) : screens[cfg.fn];
-        if (typeof fn === 'function'){ fn(ctx.el); }
-        else { ctx.el.innerHTML = '<div class="p-4 text-sm opacity-70">Screen not wired yet.</div>'; }
-      });
-    });
-
-    r.add('/game/*', async function(ctx){
-      if (!ctx.el) return;
-      ctx.el.removeAttribute('hidden');
-      try { await loadScript('pages/gameroom.js'); } catch(e){ try{ await loadScript('/newui/pages/gameroom.js'); }catch(e2){} }
-      var fn = (App.screens||{}).gameRoom;
-      if (typeof fn==='function'){ fn(ctx.el); }
-      else { ctx.el.innerHTML = '<div class="p-4 text-sm opacity-70">Game screen not wired yet.</div>'; }
-    });
-
-    r.setNotFound(function(ctx){ if (ctx.el) ctx.el.setAttribute('hidden',''); });
-  }
-
-  async function ensureRouter(){
-    if (router) return router;
-    if (!global.MatchSquareRouter){
-      try{ await loadScript('lib/router.js'); }catch(_){ try{ await loadScript('/newui/lib/router.js'); }catch(__){} }
-    }
-    if (!global.MatchSquareRouter) return null;
-    router = new global.MatchSquareRouter();
-    router.mount('#spa-root');
-    bindRoutes(router);
-    if (!started){ router.start(); started=true; }
-    return router;
-  }
-
-  async function boot(){
-    ensureRoot();
-    var path = getPath();
-    if (!isKnown(path)){
-      window.addEventListener('hashchange', async function(){
-        var p = getPath();
-        if (isKnown(p)) await ensureRouter();
-      });
-      return;
-    }
-    await ensureRouter();
-  }
-
-  if (d.readyState==='loading') d.addEventListener('DOMContentLoaded', boot);
-  else boot();
-
-  App.navigate = function(path){
-    var p = path.charAt(0)==='#' ? path.slice(1) : path;
-    location.hash = p.charAt(0)==='/' ? p : '/'+p;
-  };
-
-  console.log('[MatchSquare SPA]', App.version_spa, 'ready');
-})(window, document);
-/*! === End SPA bootstrap === */
