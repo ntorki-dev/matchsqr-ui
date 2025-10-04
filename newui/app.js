@@ -2,6 +2,7 @@
   // ===== Utilities =====
   const log = (...args)=>{ if (window.__DEBUG__) console.log("[MS]", ...args); };
   const $ = (sel, root=document)=> root.querySelector(sel);
+  const $$ = (sel, root=document)=> Array.from(root.querySelectorAll(sel));
   function toast(msg, ms=2200){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), ms); }
   function debug(obj){ const pre=$("#debug-pre"); if(!pre) return; const s=pre.textContent+"\n"+JSON.stringify(obj,null,2); pre.textContent=s.slice(-30000); }
   function setOfflineBanner(show){ const b=$(".offline-banner"); if(!b) return; b.classList.toggle("show", !!show); }
@@ -66,7 +67,7 @@
     startGame: (p)=>{ const code=p.game_code||p.code; return edge("/start_game",{ body:{...p, game_code:code, code} }); },
     nextQuestion: (p)=>{ const code=p.game_code||p.code; return edge("/next_question",{ body:{...p, game_code:code, code} }); },
     endAnalyze: (p)=>{ const code=p.game_code||p.code; return edge("/end_game_and_analyze",{ body:{...p, game_code:code, code} }); },
-    entitlementCheck: (p)=>{ const code=p.game_code||p.code; return edge("/entitlement_check",{ body:{...p, game_code:code, code} }); },
+    entitlementCheck: (p)=> edge("/entitlement_check",{ body:p }),
     getState: async (p)=>{
       const code = p.game_code||p.code||"";
       let url = joinPath(FUNCTIONS_BASE, "/get_state") + "?code=" + encodeURIComponent(code);
@@ -77,7 +78,18 @@
       const data = await res.json();
       debug({ edge_result:{ status:res.status, data } });
       if (!res.ok){ const err=new Error((data&&data.message)||"get_state failed"); err.status=res.status; err.data=data; throw err; }
-      return normState(data);
+      const __S = normState(data);
+      try{
+        if(__S && __S.phase==='lobby'){
+          const hasHost = Array.isArray(__S.players) && __S.players.some(p=>p.role==='host');
+          const hasPlayerId = !!(window.localStorage.getItem('player_id') || window.sessionStorage.getItem('player_id'));
+          const isHostFlag = JSON.parse(window.localStorage.getItem('is_host')||'null') || JSON.parse(window.sessionStorage.getItem('is_host')||'null');
+          if (hasHost && !hasPlayerId && (isHostFlag===null || isHostFlag===false)) {
+            (function(){ try{ window.localStorage.setItem('is_host', 'true'); }catch(e){} })();
+          }
+        }
+      }catch(e){}
+      return __S;
     }
   };
 
@@ -134,7 +146,7 @@
             <button class="btn ghost" id="copyLink">Copy invite</button>
           </div>
         </div>`;
-      $("#goRoom").onclick=()=>location.hash="#/game/"+state.game_code; // NO is_host side effects
+      $("#goRoom").onclick=()=>location.hash="#/game/"+state.game_code;
       $("#copyLink").onclick=()=>{ navigator.clipboard.writeText(location.origin + "/#/game/" + state.game_code); toast("Link copied"); };
     }else{
       el.innerHTML = `<div class="grid">
@@ -145,10 +157,12 @@
         try{
           const data=await API.createGame({});
           storage.set("active_room", data, true);
+          storage.set("is_host", true, true);
           location.hash="#/game/"+data.game_code;
         }catch(e){
           if (e && e.status===409 && e.data?.error==="host_has_active_game" && e.data.code){
             storage.set("active_room", { game_code: e.data.code }, true);
+            storage.set("is_host", true, true);
             location.hash="#/game/"+e.data.code;
             toast("You have an active game. Opening existing room.");
             return;
@@ -171,32 +185,22 @@
     $("#joinBtn").onclick=async()=>{
       const code=$("#gameId").value.trim(); const nickname=$("#nickname").value.trim()||undefined;
       if (!code) return toast("Enter game code");
-      try{ const data=await API.joinGuest({ game_code:code, nickname }); storage.set("active_room",{ game_code:code }, true); storage.set("player_id", data.player_id, true); location.hash="#/game/"+code; }
+      try{ const data=await API.joinGuest({ game_code:code, nickname }); storage.set("active_room",{ game_code:code }, true); storage.set("player_id", data.player_id, true); storage.set("is_host", false, true); location.hash="#/game/"+code; }
       catch(e){ toast(e.message||"Failed to join"); }
     };
   };
 
-  // ===== Game Room =====
   pages.game=(code)=>{ render(`<section class="container"><div id="gameRoot"></div></section>`); Game.mount(code); };
 
   const Game={
-    code:null, poller:null, role:null,
+    code:null, poller:null,
     state:{ phase:null, players:[], active_player_id:null, question:null, ends_at:null },
     async mount(code){
       this.code=code;
       $("#gameRoot").innerHTML = `<div class="card"><h2>Game ${code}</h2><div id="gameCard"></div></div>`;
-      this.render(); // loading
-      await this.refresh(); // pulls phase
-      await this.checkRole(); // sets role to host/guest if backend supports it
+      this.render();
+      await this.refresh();
       this.start();
-    },
-    async checkRole(){
-      try{ const r = await API.entitlementCheck({ game_code:this.code }); 
-        // Accept common shapes: {role:'host'} or {is_host:true} or {me:{role:'host'}}
-        this.role = (r && (r.role || (r.is_host? 'host': null) || (r.me && r.me.role))) || this.role;
-        debug({ entitlement:this.role });
-        this.render();
-      }catch(e){ /* On failure, leave role null; server will still enforce on Start. */ }
     },
     start(){ if(this.poller) clearInterval(this.poller); this.poller=setInterval(()=>this.refresh(), 3000); },
     isActive(){ const me=storage.get("player_id"); return me && me===this.state.active_player_id; },
@@ -215,17 +219,14 @@
     },
     renderLobby(root){
       const players=(this.state.players||[]).map(p=>`<li>${p.name || "Player"}</li>`).join("");
-      const canStart = (this.role === 'host');
+      const isHost = !!storage.get("is_host");
       root.innerHTML = `<div class="grid">
           <div>Share this code: <strong>${this.code}</strong></div>
-          ${canStart ? `<div style="margin:8px 0;"><button class="btn" id="startGame">Start</button></div>` : ``}
+          ${isHost ? `<div style="margin:8px 0;"><button class="btn secondary" id="startGame">Start</button></div>` : ``}
           <div class="card"><strong>Players</strong><ul>${players || "<li>No players yet</li>"}</ul></div>
         </div>`;
-      if (canStart){
-        $("#startGame").onclick=async()=>{
-          try{ await API.startGame({ game_code:this.code }); await this.refresh(); }
-          catch(e){ toast(e.message||"Start failed"); }
-        };
+      if (isHost){
+        $("#startGame").onclick=async()=>{ try{ await API.startGame({ game_code:this.code }); await this.refresh(); }catch(e){ toast(e.message||"Start failed"); } };
       }
     },
     renderRunning(root){
