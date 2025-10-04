@@ -32,14 +32,19 @@
   <script src="./config.js"></script>
 </head>
 <body>
-  <header class="topbar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+ <header class="topbar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
   <a id="brandLink" href="#" class="brand-link" style="display:flex;align-items:center;gap:8px;text-decoration:none;color:inherit">
     <img src="assets/logo.png" alt="Matchsqr logo" width="40" height="40" style="display:block"/>
     <span class="brand-text" style="font-weight:600">Matchsqr</span>
   </a>
   <div class="topbar-right" style="display:flex;align-items:center;gap:8px;">
-    <!-- IMPORTANT: no class, no background -->
-    <button id="btnAuth" aria-label="Account/Login"></button>
+    <!-- Two stable controls to avoid flicker -->
+    <a id="loginLink" class="btn ghost small" href="#/account/login">Login</a>
+    <a id="accountLink" class="ms-avatar" href="#/account/profile" hidden aria-label="Account">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor" d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-4.42 0-8 1.79-8 4v2h16v-2c0-2.21-3.58-4-8-4z"/>
+      </svg>
+    </a>
   </div>
 </header>
 
