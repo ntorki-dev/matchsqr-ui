@@ -1,113 +1,91 @@
 
-/*! pages/hostlobby.js — v49.h5 */
-(function (global, d) {
+/*! pages/hostlobby.js — v49.clean */
+(function (global) {
   'use strict';
   const App = global.MatchSquareApp || (global.MatchSquareApp = {});
   App.screens = App.screens || {};
 
-  function $(id){ return d.getElementById(id); }
-  function showById(id){ const n=$(id); if(n){ n.classList.remove('hidden'); n.style.display=''; } }
-  function hideById(id){ const n=$(id); if(n){ n.classList.add('hidden'); n.style.display='none'; } }
-
-  function ensureRoot(){
-    let el = $('spa-root');
-    if (!el) { el = d.createElement('div'); el.id='spa-root'; d.body.appendChild(el); }
-    el.removeAttribute('hidden');
-    return el;
-  }
-  function leavePageMode(){
-    const root = $('spa-root'); if (root) root.setAttribute('hidden','');
+  function $(id){ return document.getElementById(id); }
+  function hide(id){ const n=$(id); if(n){ n.style.display='none'; n.classList.add('hidden'); } }
+  function show(id){ const n=$(id); if(n){ n.style.display=''; n.classList.remove('hidden'); } }
+  function el(tag, attrs, html){
+    const x = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(k=> x.setAttribute(k, attrs[k]));
+    if (html!=null) x.innerHTML = html;
+    return x;
   }
 
-  function getState(){ return global.state || {}; }
+  function enterPageMode(){
+    hide('homeSection'); hide('hostSection'); hide('joinSection');
+    let root = $('spa-root'); if (!root){ root = el('div', { id:'spa-root' }); document.body.appendChild(root); }
+    root.removeAttribute('hidden'); window.scrollTo(0,0); return root;
+  }
+  function leavePageMode(){ const root=$('spa-root'); if(root) root.setAttribute('hidden',''); }
 
-  function isGameRunning(st){
-    if (!st) return false;
-    if (!st.gameId || !st.gameCode) return false;
-    const s = (st.status || '').toString().toLowerCase();
-    if (s === 'ended' || s === 'cancelled') return false;
-    try{
-      if (st.endsAt){
-        const ends = new Date(st.endsAt).getTime();
-        if (!isNaN(ends) && ends < Date.now()) return false;
-      }
-    }catch(_){}
-    return true;
-  }
+  function state(){ return global.state || {}; }
+  function session(){ return (state() && state().session) || null; }
+  function supa(){ return (state() && state().supa) || null; }
 
-  function triggerLegacyCreate(){
-    try{
-      const btn = d.getElementById('createGameBtn');
-      if (btn && typeof btn.click === 'function') { btn.click(); return true; }
-    }catch(_){}
-    return false;
-  }
-  function triggerLegacyEnterHost(){
-    try {
-      const hostBtn = (global.els && global.els.hostBtn) || d.getElementById('hostBtn');
-      if (hostBtn && typeof hostBtn.click === 'function') { hostBtn.click(); return true; }
-    } catch(_){}
-    showById('hostSection'); hideById('homeSection'); hideById('joinSection');
-    return false;
-  }
-  function triggerLegacyEndGame(){
-    try{
-      const endBtn = d.getElementById('endAnalyzeBtn');
-      if (endBtn && typeof endBtn.click === 'function') { endBtn.click(); return true; }
-    }catch(_){}
-    return false;
-  }
-
-  function copyToClipboard(text){
-    if (!text) return;
-    try{ navigator.clipboard && navigator.clipboard.writeText(text); }
-    catch(_){
-      const ta = d.createElement('textarea'); ta.value=text; d.body.appendChild(ta);
-      ta.select(); d.execCommand && d.execCommand('copy'); d.body.removeChild(ta);
+  function copy(text){
+    try{ navigator.clipboard.writeText(text); }catch(_){
+      const ta = document.createElement('textarea'); ta.value=text; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
     }
   }
 
-  function waitForStateGame(timeoutMs){
-    return new Promise((resolve)=>{
-      const t0 = Date.now();
-      (function tick(){
-        const st = getState();
-        if (st && st.gameCode){
-          resolve({ id: st.gameId || null, code: st.gameCode, status: st.status || null, endsAt: st.endsAt || null });
-          return;
-        }
-        if (Date.now() - t0 > timeoutMs) resolve(null);
-        else setTimeout(tick, 300);
-      })();
-    });
+  async function detectRunningForHost(){
+    try{
+      const s = session(); const sp = supa();
+      if (!s || !sp) return null;
+      // Use Supabase to ask for a game for this host that isn't ended
+      const uid = s.user && s.user.id;
+      if (!uid) return null;
+      const q = await sp.from('games')
+        .select('id, code, status, ends_at')
+        .eq('host_id', uid)
+        .in('status', ['created','running'])
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (q.error) return null;
+      const row = (q.data && q.data[0]) || null;
+      if (!row) return null;
+      return { id: row.id, code: row.code, status: row.status, ends_at: row.ends_at };
+    }catch(_){ return null; }
   }
 
-  function render(el){
-    el.innerHTML = [
+  function goToLegacyHostRoom(){
+    leavePageMode();
+    try{
+      const btn = (global.els && global.els.hostBtn) || document.getElementById('hostBtn');
+      if (btn && typeof btn.click === 'function') { btn.click(); return; }
+    }catch(_){}
+    show('hostSection'); hide('homeSection'); hide('joinSection');
+  }
+
+  function renderShell(root){
+    root.innerHTML = [
       '<section class="p-4 max-w-2xl mx-auto">',
       '  <h2 class="text-2xl" style="font-weight:700;margin:4px 0 16px 0;">Get Ready</h2>',
       '  <div id="hlRunning" class="card hidden" style="padding:12px;margin-bottom:12px">',
       '    <div>There is a game running.</div>',
       '    <div class="row" style="align-items:center;gap:8px;margin-top:8px">',
-      '      <strong>Game Code:</strong> <span id="hlGameCodeR" class="mono">—</span>',
+      '      <strong>Game Code:</strong> <span id="hlCodeR" class="mono">—</span>',
       '      <button id="hlCopyR" class="btn" title="Copy">📋</button>',
       '    </div>',
       '    <div class="row" style="gap:8px;margin-top:10px">',
-      '      <button id="hlGoRoomR" class="btn primary">Go to Game Room</button>',
+      '      <button id="hlGoR" class="btn primary">Go to Game Room</button>',
       '      <button id="hlEndR" class="btn">End Game</button>',
       '    </div>',
       '  </div>',
       '  <div id="hlCreateWrap">',
-      '    <div class="row" style="gap:8px;margin-bottom:12px">',
-      '      <button id="hlCreate" class="btn primary">Create Game</button>',
-      '    </div>',
-      '    <div id="hlInfo" class="card hidden" style="padding:12px">',
+      '    <button id="hlCreate" class="btn primary">Create Game</button>',
+      '    <div id="hlInfo" class="card hidden" style="padding:12px;margin-top:12px">',
       '      <div class="row" style="align-items:center;gap:8px">',
-      '        <strong>Game Code:</strong> <span id="hlGameCode" class="mono">—</span>',
+      '        <strong>Game Code:</strong> <span id="hlCode" class="mono">—</span>',
       '        <button id="hlCopy" class="btn" title="Copy">📋</button>',
       '      </div>',
       '      <div class="row" style="gap:8px;margin-top:10px">',
-      '        <button id="hlGoRoom" class="btn">Go to Game Room</button>',
+      '        <button id="hlGo" class="btn">Go to Game Room</button>',
       '      </div>',
       '    </div>',
       '  </div>',
@@ -115,101 +93,78 @@
     ].join('');
   }
 
-  function wire(el){
-    const runningBox = el.querySelector('#hlRunning');
-    const outCodeR = el.querySelector('#hlGameCodeR');
-    const copyR = el.querySelector('#hlCopyR');
-    const goR = el.querySelector('#hlGoRoomR');
-    const endR = el.querySelector('#hlEndR');
+  App.screens.hostLobby = async function(root){
+    root = enterPageMode();
+    renderShell(root);
 
-    const createBtn = el.querySelector('#hlCreate');
-    const info = el.querySelector('#hlInfo');
-    const outCode = el.querySelector('#hlGameCode');
-    const copyBtn = el.querySelector('#hlCopy');
-    const goBtn = el.querySelector('#hlGoRoom');
-
-    function showRunning(code){
-      outCodeR.textContent = code || '—';
-      runningBox.classList.remove('hidden');
-      const wrap = el.querySelector('#hlCreateWrap'); if (wrap) wrap.classList.add('hidden');
-    }
-    function goToLegacyRoom(){
-      leavePageMode();
-      triggerLegacyEnterHost();
-      try{ location.hash = 'host'; }catch(_){}
-      try{ $('hostSection')?.scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){}
-    }
-
-    // If a game is running, reflect it immediately
-    const stNow = getState();
-    if (isGameRunning(stNow)){
-      showRunning(stNow.gameCode);
-    }
-
-    // Handlers
-    copyR.addEventListener('click', function(){
-      const c = (outCodeR.textContent || '').trim();
-      if (c && c !== '—') copyToClipboard(c);
-    });
-    goR.addEventListener('click', goToLegacyRoom);
-    endR.addEventListener('click', function(){
-      if (!confirm('End the current game?')) return;
-      const ok = triggerLegacyEndGame();
-      if (!ok) alert('End action unavailable in this build.');
-    });
-
-    copyBtn.addEventListener('click', function(){
-      const c = (outCode.textContent || '').trim();
-      if (c && c !== '—') copyToClipboard(c);
-    });
-    goBtn.addEventListener('click', goToLegacyRoom);
-
-    createBtn.addEventListener('click', async function(){
-      // If a game already exists, do not attempt to create again
-      const cur = getState();
-      if (isGameRunning(cur)){
-        showRunning(cur.gameCode);
-        return;
-      }
-      createBtn.disabled = true; createBtn.textContent = 'Creating...';
-      const ok = triggerLegacyCreate();
-      if (!ok){
-        createBtn.disabled = false; createBtn.textContent = 'Create Game';
-        alert('Create action is unavailable in this build.');
-        return;
-      }
-      const res = await waitForStateGame(10000);
-      createBtn.disabled = false;
-
-      // If we got a code, show it. If not, but state shows a running game, treat it as running.
-      const latest = getState();
-      if ((res && res.code) || isGameRunning(latest)){
-        const code = (res && res.code) ? res.code : latest.gameCode;
-        outCode.textContent = code || '—';
-        info.classList.remove('hidden');
-        return;
-      }
-
-      // True failure
-      createBtn.textContent = 'Create Game';
-      alert('Could not confirm the new game. Please try again.');
-    }, false);
-  }
-
-  App.screens.hostLobby = function(el){
-    // Ensure container exists and is visible
-    const mount = el || ensureRoot();
-    // Do NOT return before rendering, even if not logged in, so we never show blank
-    // The account/login redirect will happen after the first paint
-    render(mount);
-    // Auth check after first paint
-    const s = getState();
-    const session = s && s.session;
-    if (!session || !(session.access_token || (session.user && session.user.id))){
-      try { sessionStorage.setItem('ms_return_to', '/host'); } catch(_){}
+    const sess = session();
+    if (!sess || !sess.access_token){
+      try{ sessionStorage.setItem('ms_return_to','/host'); }catch(_){}
       location.hash = '/account/login';
       return;
     }
-    wire(mount);
+
+    const codeOutR = root.querySelector('#hlCodeR');
+    const runBox = root.querySelector('#hlRunning');
+    const copyR = root.querySelector('#hlCopyR');
+    const goR = root.querySelector('#hlGoR');
+    const endR = root.querySelector('#hlEndR');
+
+    const createBtn = root.querySelector('#hlCreate');
+    const info = root.querySelector('#hlInfo');
+    const codeOut = root.querySelector('#hlCode');
+    const copyBtn = root.querySelector('#hlCopy');
+    const goBtn = root.querySelector('#hlGo');
+
+    function showRunning(code){
+      codeOutR.textContent = code || '—';
+      runBox.classList.remove('hidden'); runBox.style.display='';
+      const wrap = root.querySelector('#hlCreateWrap'); if (wrap) { wrap.classList.add('hidden'); wrap.style.display='none'; }
+    }
+
+    // Detect running game via state or DB
+    let st = state();
+    if (st && st.gameCode && st.status && st.status!=='ended'){
+      showRunning(st.gameCode);
+    } else {
+      const row = await detectRunningForHost();
+      if (row && row.code){
+        showRunning(row.code);
+        // Prepare host state for room
+        try{ await global.autoJoinAsHost(row.code); }catch(_){}
+      }
+    }
+
+    copyR.addEventListener('click', ()=>{ const t=(codeOutR.textContent||'').trim(); if(t && t!=='—') copy(t); });
+    goR.addEventListener('click', goToLegacyHostRoom);
+    endR.addEventListener('click', function(){
+      if(!confirm('End the current game?')) return;
+      try{
+        const endBtn = document.getElementById('endAnalyzeBtn');
+        if(endBtn && typeof endBtn.click==='function'){ endBtn.click(); }
+      }catch(_){}
+    });
+
+    copyBtn.addEventListener('click', ()=>{ const t=(codeOut.textContent||'').trim(); if(t && t!=='—') copy(t); });
+    goBtn.addEventListener('click', goToLegacyHostRoom);
+
+    createBtn.addEventListener('click', async function(){
+      // If running already, just go
+      const cur = state();
+      if (cur && cur.gameCode && cur.status && cur.status!=='ended'){ showRunning(cur.gameCode); return; }
+
+      createBtn.disabled = true; createBtn.textContent='Creating...';
+      // Reuse your existing handler to avoid diverging from backend logic
+      const btn = document.getElementById('createGameBtn');
+      if (btn && typeof btn.click==='function'){ btn.click(); }
+      // Poll for code for up to 10s
+      const t0 = Date.now();
+      (function wait(){
+        const s = state();
+        if (s && s.gameCode){ codeOut.textContent = s.gameCode; info.classList.remove('hidden'); info.style.display=''; createBtn.disabled=false; createBtn.textContent='Create Game'; return; }
+        if (Date.now()-t0>10000){ createBtn.disabled=false; createBtn.textContent='Create Game'; alert('Could not confirm the new game. If you already have an active game, use Go to Game Room.'); return; }
+        setTimeout(wait, 300);
+      })();
+    });
   };
-})(window, document);
+})(window);
