@@ -253,24 +253,25 @@
       // keep header in sync with auth
       if (state.supa && state.supa.auth){
         state.supa.auth.onAuthStateChange((event, session)=>{ state.session = session || null; updateHeaderAuthUi(); });
+        initHeader();
         state.supa.auth.getSession().then(r=>{ state.session = r?.data?.session || null; updateHeaderAuthUi(); });
-      }
-      initHeader();
     }catch(e){ log('Config error: '+e.message); }
   }
   loadConfig();
 
   // ===== Header Auth Controls
   function updateHeaderAuthUi(){
-    if (!els.loginLink || !els.accountLink) return;
-    const isLoggedIn = !!(state.session && state.session.access_token);
-    if (isLoggedIn){
-      els.loginLink.setAttribute('hidden','');
-      els.accountLink.removeAttribute('hidden');
-    } else {
-      els.accountLink.setAttribute('hidden','');
-      els.loginLink.removeAttribute('hidden');
-    }
+    try{
+      if (!els.loginLink || !els.accountLink) return;
+      const loggedIn = !!(state.session && state.session.access_token);
+      if (loggedIn){
+        els.loginLink.setAttribute('hidden','');
+        els.accountLink.removeAttribute('hidden');
+      } else {
+        els.accountLink.setAttribute('hidden','');
+        els.loginLink.removeAttribute('hidden');
+      }
+    }catch(e){ log('Header UI error: '+e.message); }
   }
   function initHeader(){
 
