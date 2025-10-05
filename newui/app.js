@@ -1,5 +1,5 @@
 
-/*! MatchSqr New UI — reuse existing Supabase client only; exact endpoints; robust create->room flow */
+/*! MatchSqr New UI — singleton Supabase client: reuse if present, else create via /config -> config.js */
 (function(){
   const $ = (sel, root=document) => root.querySelector(sel);
   function toast(msg, ms=2200){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), ms); }
@@ -11,16 +11,37 @@
   const CONFIG = window.CONFIG || {};
   const FUNCTIONS_BASE = (CONFIG.FUNCTIONS_BASE || "").replace(/\/+$/,"");
 
-  // ---------- Supabase client (REUSE ONLY) ----------
-  function sbClient(){
-    // Prefer exactly your existing instance names; do NOT create a new client here.
+  // ---------- Supabase client (singleton: reuse else create once) ----------
+  async function ensureClient(){
+    // reuse first
     if (window.__MS_CLIENT && window.__MS_CLIENT.auth && window.__MS_CLIENT.functions) return window.__MS_CLIENT;
-    if (window.supabase && window.supabase.auth && window.supabase.functions) return window.supabase;
-    if (window.SUPABASE && window.SUPABASE.auth && window.SUPABASE.functions) return window.SUPABASE;
-    if (window.sb && window.sb.auth && window.sb.functions) return window.sb;
-    throw new Error("[MS] Supabase client not found. Load your original client before app.js.");
+    if (window.supabaseClient && window.supabaseClient.auth && window.supabaseClient.functions) { window.__MS_CLIENT = window.supabaseClient; return window.__MS_CLIENT; }
+    if (window.supabase && window.supabase.auth && window.supabase.functions && window.supabase.from){ 
+      // This is *already a client instance* exposed globally (rare), reuse.
+      window.__MS_CLIENT = window.supabase; return window.__MS_CLIENT;
+    }
+    // create once
+    if (!window.supabase || !window.supabase.createClient){
+      throw new Error("[MS] Supabase UMD not loaded before app.js");
+    }
+    let url="", key="";
+    try{
+      const res = await fetch(FUNCTIONS_BASE + "/config");
+      if (res.ok){
+        const json = await res.json();
+        url = json.supabase_url || url;
+        key = json.supabase_anon_key || key;
+      }
+    }catch(_){/* ignore */}
+    url = url || CONFIG.SUPABASE_URL || CONFIG.FALLBACK_SUPABASE_URL || "";
+    key = key || CONFIG.SUPABASE_ANON_KEY || CONFIG.FALLBACK_SUPABASE_ANON_KEY || "";
+    if (!url || !key) throw new Error("[MS] Missing Supabase URL/Key. Ensure /config or config.js provides them.");
+    const client = window.supabase.createClient(url, key, { auth: { storageKey: "ms-auth" } });
+    window.__MS_CLIENT = client;
+    window.supabaseClient = client; // expose for any legacy code
+    return client;
   }
-  async function getSession(){ const { data } = await sbClient().auth.getSession(); return (data&&data.session)||null; }
+  async function getSession(){ const sb=await ensureClient(); const { data } = await sb.auth.getSession(); return (data&&data.session)||null; }
   function authHeader(session){ const token=session?.access_token||""; return token?{Authorization:`Bearer ${token}`}:{ }; }
 
   // ---------- storage & code resolution ----------
@@ -183,7 +204,8 @@
     await renderHeader(); ensureDebugTray();
     $("#loginBtn").onclick=async()=>{
       try{
-        const { error } = await sbClient().auth.signInWithPassword({ email:$("#email").value.trim(), password:$("#password").value });
+        const sb = await ensureClient();
+        const { error } = await sb.auth.signInWithPassword({ email:$("#email").value.trim(), password:$("#password").value });
         if (error) throw error;
         const remember = !!$("#remember").checked;
         (remember?localStorage:sessionStorage).setItem("remember_me", JSON.stringify(remember));
@@ -210,7 +232,7 @@
       </div>
     `;
     await renderHeader(); ensureDebugTray();
-    $("#logoutBtn").onclick=async()=>{ await sbClient().auth.signOut(); location.hash="#/"; };
+    $("#logoutBtn").onclick=async()=>{ const sb=await ensureClient(); await sb.auth.signOut(); location.hash="#/"; };
   };
 
   // ---------- Host ----------
