@@ -1,8 +1,8 @@
 
-/*! MatchSqr UI — reuse-only client, fixed Create→Lobby flow, deep code extraction */
+/*! MatchSqr UI (ASCII-safe) — reuse-only client, fixed Create->Lobby flow, deep code extraction */
 (function(){
   // ---------- utils ----------
-  const $ = function(sel, root){ return (root||document).querySelector(sel); };
+  var $ = function(sel, root){ return (root||document).querySelector(sel); };
   function toast(msg, ms){ ms = ms||2200; var t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(function(){ t.remove(); }, ms); }
   function debug(obj){ var pre=$("#debug-pre"); if(!pre) return; var s=pre.textContent + "\n" + JSON.stringify(obj,null,2); pre.textContent=s.slice(-30000); }
   function setOfflineBanner(show){ var b=$(".offline-banner"); if(!b) return; if(show){ b.classList.add("show"); } else { b.classList.remove("show"); } }
@@ -127,14 +127,14 @@
   // ---------- Header ----------
   async function renderHeader(){
     var app=document.getElementById("app");
-    var headerHTML = ''
-      + '<div class="header">'
-      + '  <a class="brand" href="#/"><img src="./assets/logo.png" alt="logo"/><span>MatchSqr</span></a>'
-      + '  <div class="right" id="hdrRight">'
-      + '    <a class="btn-login" href="#/login">Login</a>'
-      + '    <a class="btn-help" href="#/help">?</a>'
-      + '  </div>'
-      + '</div>';
+    var headerHTML = ""
+      + "<div class=\"header\">"
+      + "  <a class=\"brand\" href=\"#/\"><img src=\"./assets/logo.png\" alt=\"logo\"/><span>MatchSqr</span></a>"
+      + "  <div class=\"right\" id=\"hdrRight\">"
+      + "    <a class=\"btn-login\" href=\"#/login\">Login</a>"
+      + "    <a class=\"btn-help\" href=\"#/help\">?</a>"
+      + "  </div>"
+      + "</div>";
     app.innerHTML = headerHTML + app.innerHTML;
 
     try{
@@ -144,9 +144,9 @@
         var name = (user.user_metadata&&user.user_metadata.name) || (user.email? user.email.split("@")[0] : "Account");
         var right = $("#hdrRight");
         if (right){
-          right.innerHTML = ''
-            + '<a class="avatar-link" href="#/account" title="'+name+'"><img class="avatar" src="./assets/profile.png" alt="profile"/></a>'
-            + '<a class="btn-help" href="#/help">?</a>';
+          right.innerHTML = ""
+            + "<a class=\"avatar-link\" href=\"#/account\" title=\""+name+"\"><img class=\"avatar\" src=\"./assets/profile.png\" alt=\"profile\"/></a>"
+            + "<a class=\"btn-help\" href=\"#/help\">?</a>";
         }
       }
     }catch(e){}
@@ -154,7 +154,7 @@
   function ensureDebugTray(){
     var app = document.getElementById("app");
     if (!document.getElementById("debug-tray")){
-      app.insertAdjacentHTML("beforeend", '<div class="debug-tray" id="debug-tray"><pre id="debug-pre"></pre></div>');
+      app.insertAdjacentHTML("beforeend", "<div class=\"debug-tray\" id=\"debug-tray\"><pre id=\"debug-pre\"></pre></div>");
     }
     setOfflineBanner(!navigator.onLine);
   }
@@ -178,41 +178,41 @@
 
   pages.home=async function(){
     var app=document.getElementById("app");
-    app.innerHTML = ''
-      + '<div class="offline-banner">You are offline. Trying to reconnect…</div>'
-      + '<section class="home-hero">'
-      + '  <img class="globe" src="./assets/globe.png" alt="globe"/>'
-      + '  <h1>Safe space to build meaningful connections.</h1>'
-      + '  <p>Play with other people interactive games designed to uncover shared values, emotional style, interests, and personality.</p>'
-      + '  <div class="cta-row">'
-      + '    <a class="cta" id="ctaHost" href="#/host"><img src="./assets/crown.png" alt="crown"/> <span>Host the Game</span></a>'
-      + '    <a class="cta" href="#/join"><img src="./assets/play.png" alt="play"/> <span>Join the Game</span></a>'
-      + '  </div>'
-      + '</section>'
-      + '<a class="home-learn" href="#/terms">Learn more about MatchSqr</a>';
+    app.innerHTML = ""
+      + "<div class=\"offline-banner\">You are offline. Trying to reconnect...</div>"
+      + "<section class=\"home-hero\">"
+      + "  <img class=\"globe\" src=\"./assets/globe.png\" alt=\"globe\"/>"
+      + "  <h1>Safe space to build meaningful connections.</h1>"
+      + "  <p>Play with other people interactive games designed to uncover shared values, emotional style, interests, and personality.</p>"
+      + "  <div class=\"cta-row\">"
+      + "    <a class=\"cta\" id=\"ctaHost\" href=\"#/host\"><img src=\"./assets/crown.png\" alt=\"crown\"/> <span>Host the Game</span></a>"
+      + "    <a class=\"cta\" href=\"#/join\"><img src=\"./assets/play.png\" alt=\"play\"/> <span>Join the Game</span></a>"
+      + "  </div>"
+      + "</section>"
+      + "<a class=\"home-learn\" href=\"#/terms\">Learn more about MatchSqr</a>";
     await renderHeader(); ensureDebugTray();
   };
 
   pages.login=async function(){
     var app=document.getElementById("app");
     var redirectTo = sessionStorage.getItem("__redirect_after_login") || "#/";
-    app.innerHTML = ''
-      + '<div class="offline-banner">You are offline. Trying to reconnect…</div>'
-      + '<div class="container">'
-      + '  <div class="card" style="max-width:520px;margin:28px auto;">'
-      + '    <h2>Login</h2>'
-      + '    <div class="grid">'
-      + '      <input id="email" class="input" placeholder="Email" type="email">'
-      + '      <input id="password" class="input" placeholder="Password" type="password">'
-      + '      <label><input id="remember" type="checkbox"> Remember me</label>'
-      + '      <button id="loginBtn" class="btn">Login</button>'
-      + '      <div style="display:flex;gap:10px;justify-content:space-between;">'
-      + '        <a class="help" href="#/register">Create account</a>'
-      + '        <a class="help" href="#/forgot">Forgot password?</a>'
-      + '      </div>'
-      + '    </div>'
-      + '  </div>'
-      + '</div>';
+    app.innerHTML = ""
+      + "<div class=\"offline-banner\">You are offline. Trying to reconnect...</div>"
+      + "<div class=\"container\">"
+      + "  <div class=\"card\" style=\"max-width:520px;margin:28px auto;\">"
+      + "    <h2>Login</h2>"
+      + "    <div class=\"grid\">"
+      + "      <input id=\"email\" class=\"input\" placeholder=\"Email\" type=\"email\">"
+      + "      <input id=\"password\" class=\"input\" placeholder=\"Password\" type=\"password\">"
+      + "      <label><input id=\"remember\" type=\"checkbox\"> Remember me</label>"
+      + "      <button id=\"loginBtn\" class=\"btn\">Login</button>"
+      + "      <div style=\"display:flex;gap:10px;justify-content:space-between;\">"
+      + "        <a class=\"help\" href=\"#/register\">Create account</a>"
+      + "        <a class=\"help\" href=\"#/forgot\">Forgot password?</a>"
+      + "      </div>"
+      + "    </div>"
+      + "  </div>"
+      + "</div>";
     await renderHeader(); ensureDebugTray();
     $("#loginBtn").onclick=async function(){
       try{
@@ -231,16 +231,16 @@
     var session = await getSession();
     var user=session&&session.user||null;
     var name = (user&&user.user_metadata&&user.user_metadata.name) || (user&&user.email? user.email.split("@")[0] : "Account");
-    app.innerHTML = ''
-      + '<div class="offline-banner">You are offline. Trying to reconnect…</div>'
-      + '<div class="container">'
-      + '  <div class="card" style="max-width:720px;margin:28px auto;">'
-      + '    <h2>Welcome, '+name+'</h2>'
-      + '    <div class="grid" style="grid-template-columns:1fr 1fr; gap:12px">'
-      + '      <button id="logoutBtn" class="ghost">Logout</button>'
-      + '    </div>'
-      + '  </div>'
-      + '</div>';
+    app.innerHTML = ""
+      + "<div class=\"offline-banner\">You are offline. Trying to reconnect...</div>"
+      + "<div class=\"container\">"
+      + "  <div class=\"card\" style=\"max-width:720px;margin:28px auto;\">"
+      + "    <h2>Welcome, "+name+"</h2>"
+      + "    <div class=\"grid\" style=\"grid-template-columns:1fr 1fr; gap:12px\">"
+      + "      <button id=\"logoutBtn\" class=\"ghost\">Logout</button>"
+      + "    </div>"
+      + "  </div>"
+      + "</div>";
     await renderHeader(); ensureDebugTray();
     $("#logoutBtn").onclick=async function(){ await sbClient().auth.signOut(); location.hash="#/"; };
   };
@@ -254,26 +254,26 @@
     }
     var app=document.getElementById("app");
     var ar = storedRoom();
-    app.innerHTML = ''
-      + '<div class="offline-banner">You are offline. Trying to reconnect…</div>'
-      + '<div class="host-wrap">'
-      + '  <div class="card">'
-      + '    <div class="host-head"><h2>Host a game</h2></div>'
-      + '    <div id="hostControls"></div>'
-      + '  </div>'
-      + '</div>';
+    app.innerHTML = ""
+      + "<div class=\"offline-banner\">You are offline. Trying to reconnect...</div>"
+      + "<div class=\"host-wrap\">"
+      + "  <div class=\"card\">"
+      + "    <div class=\"host-head\"><h2>Host a game</h2></div>"
+      + "    <div id=\"hostControls\"></div>"
+      + "  </div>"
+      + "</div>";
     await renderHeader(); ensureDebugTray();
     var el=$("#hostControls");
 
     function renderHasRoom(code){
-      el.innerHTML = ''
-        + '<div class="grid">'
-        + '  <div class="inline-actions">'
-        + '    <button class="primary" id="goRoom">Go to room</button>'
-        + '    <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>'
-        + '    <span class="help">Code: <strong>'+code+'</strong></span>'
-        + '  </div>'
-        + '</div>';
+      el.innerHTML = ""
+        + "<div class=\"grid\">"
+        + "  <div class=\"inline-actions\">"
+        + "    <button class=\"primary\" id=\"goRoom\">Go to room</button>"
+        + "    <button class=\"icon-btn\" id=\"copyCode\" title=\"Copy code\"><img src=\"./assets/copy.png\" alt=\"copy\"/></button>"
+        + "    <span class=\"help\">Code: <strong>"+code+"</strong></span>"
+        + "  </div>"
+        + "</div>";
       $("#goRoom").onclick=function(){ location.hash="#/game/"+code; };
       $("#copyCode").onclick=function(){ navigator.clipboard.writeText(code); toast("Code copied"); };
     }
@@ -281,11 +281,11 @@
     var existingCode = extractCodeDeep(ar);
     if (existingCode){ renderHasRoom(existingCode); }
     else{
-      el.innerHTML = ''
-        + '<div class="grid">'
-        + '  <button class="primary" id="createGame">Create Game</button>'
-        + '  <p class="help">You will receive a game code and a room for players to join.</p>'
-        + '</div>';
+      el.innerHTML = ""
+        + "<div class=\"grid\">"
+        + "  <button class=\"primary\" id=\"createGame\">Create Game</button>"
+        + "  <p class=\"help\">You will receive a game code and a room for players to join.</p>"
+        + "</div>";
       $("#createGame").onclick=async function(){
         try{
           var data = await API.create_game();
@@ -312,18 +312,18 @@
   // ---------- Join ----------
   pages.join=async function(){
     var app=document.getElementById("app");
-    app.innerHTML = ''
-      + '<div class="offline-banner">You are offline. Trying to reconnect…</div>'
-      + '<div class="container">'
-      + '  <div class="card" style="max-width:520px;margin:28px auto;">'
-      + '    <h2>Join a game</h2>'
-      + '    <div class="grid">'
-      + '      <input id="gameId" class="input" placeholder="Game code">'
-      + '      <input id="nickname" class="input" placeholder="Nickname">'
-      + '      <button id="joinBtn" class="btn" style="margin-top:8px;">Join</button>'
-      + '    </div>'
-      + '  </div>'
-      + '</div>';
+    app.innerHTML = ""
+      + "<div class=\"offline-banner\">You are offline. Trying to reconnect...</div>"
+      + "<div class=\"container\">"
+      + "  <div class=\"card\" style=\"max-width:520px;margin:28px auto;\">"
+      + "    <h2>Join a game</h2>"
+      + "    <div class=\"grid\">"
+      + "      <input id=\"gameId\" class=\"input\" placeholder=\"Game code\">"
+      + "      <input id=\"nickname\" class=\"input\" placeholder=\"Nickname\">"
+      + "      <button id=\"joinBtn\" class=\"btn\" style=\"margin-top:8px;\">Join</button>"
+      + "    </div>"
+      + "  </div>"
+      + "</div>";
     await renderHeader(); ensureDebugTray();
     $("#joinBtn").onclick=async function(){
       var code=$("#gameId").value.trim();
@@ -390,14 +390,14 @@
           try{ await API.start_game({ gameId:Game.code }); await Game.refresh(); }catch(e){ toast(e.message||"Start failed"); debug({ start_error:e }); }
         };
         var help=document.createElement("div"); help.className="help";
-        help.textContent = !isHost ? "Waiting for the host…" : (!enoughPlayers ? "Need at least "+minPlayers+" players to start." : "Ready to start.");
+        help.textContent = !isHost ? "Waiting for the host..." : (!enoughPlayers ? "Need at least "+minPlayers+" players to start." : "Ready to start.");
         wrap.appendChild(startBtn); wrap.appendChild(help); main.appendChild(wrap);
         return;
       }
 
       if (s.phase==="running"){
         var hdr=document.createElement("div"); hdr.style.cssText="position:absolute; top:16px; right:16px; font-weight:800;";
-        hdr.innerHTML="⏱ <span id=\"roomTimer\">--:--</span>"; main.appendChild(hdr);
+        hdr.innerHTML="\\u23F1 <span id=\"roomTimer\">--:--</span>"; main.appendChild(hdr);
 
         var q=document.createElement("div"); q.style.cssText="text-align:center; max-width:640px; padding:8px";
         q.innerHTML = "<h3 style=\"margin:0 0 8px 0;\">"+(s.question&&s.question.title||"Question")+"</h3><p class=\"help\" style=\"margin:0;\">"+(s.question&&s.question.text||"")+"</p>";
@@ -454,7 +454,7 @@
   pages.game=async function(code){
     var app=document.getElementById("app");
     app.innerHTML=""
-      + "<div class=\"offline-banner\">You are offline. Trying to reconnect…</div>"
+      + "<div class=\"offline-banner\">You are offline. Trying to reconnect...</div>"
       + "<div class=\"room-wrap\">"
       + "  <div class=\"card main-card\" id=\"mainCard\"></div>"
       + "  <div class=\"controls-row\" id=\"controlsRow\"></div>"
@@ -465,7 +465,7 @@
 
   // ---------- Static ----------
   pages.billing=async function(){ var app=document.getElementById("app"); app.innerHTML=""
-    + "<div class=\"offline-banner\">You are offline. Trying to reconnect…</div>"
+    + "<div class=\"offline-banner\">You are offline. Trying to reconnect...</div>"
     + "<div class=\"container\"><div class=\"card\" style=\"max-width:720px;margin:28px auto;\">"
     + "<h2>Billing</h2><div class=\"grid\">"
     + "<button class=\"btn\" id=\"extend\">Extend game by 60 min</button>"
@@ -473,9 +473,9 @@
     + "<button class=\"btn warn\" id=\"sub\">Subscribe</button>"
     + "</div></div></div>"; await renderHeader(); ensureDebugTray();
     $("#extend").onclick=function(){ toast("Simulated: extended"); }; $("#extra").onclick=function(){ toast("Simulated: extra weekly game purchased"); }; $("#sub").onclick=function(){ toast("Simulated: subscription active"); }; };
-  pages.terms=async function(){ var app=document.getElementById("app"); app.innerHTML="<div class=\"container\"><div class=\"card\" style=\"margin:28px auto;max-width:840px;\"><h2>Terms</h2><p class=\"help\">…</p></div></div>"; await renderHeader(); ensureDebugTray(); };
-  pages.privacy=async function(){ var app=document.getElementById("app"); app.innerHTML="<div class=\"container\"><div class=\"card\" style=\"margin:28px auto;max-width:840px;\"><h2>Privacy</h2><p class=\"help\">…</p></div></div>"; await renderHeader(); ensureDebugTray(); };
-  pages.help=async function(){ var app=document.getElementById("app"); app.innerHTML="<div class=\"container\"><div class=\"card\" style=\"margin:28px auto;max-width:720px;\"><h2>Help</h2><p class=\"help\">…</p></div></div>"; await renderHeader(); ensureDebugTray(); };
+  pages.terms=async function(){ var app=document.getElementById("app"); app.innerHTML="<div class=\"container\"><div class=\"card\" style=\"margin:28px auto;max-width:840px;\"><h2>Terms</h2><p class=\"help\">...</p></div></div>"; await renderHeader(); ensureDebugTray(); };
+  pages.privacy=async function(){ var app=document.getElementById("app"); app.innerHTML="<div class=\"container\"><div class=\"card\" style=\"margin:28px auto;max-width:840px;\"><h2>Privacy</h2><p class=\"help\">...</p></div></div>"; await renderHeader(); ensureDebugTray(); };
+  pages.help=async function(){ var app=document.getElementById("app"); app.innerHTML="<div class=\"container\"><div class=\"card\" style=\"margin:28px auto;max-width:720px;\"><h2>Help</h2><p class=\"help\">...</p></div></div>"; await renderHeader(); ensureDebugTray(); };
 
   // ---------- Routes & boot ----------
   route("#/", pages.home);
