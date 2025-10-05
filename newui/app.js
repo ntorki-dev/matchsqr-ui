@@ -30,51 +30,51 @@
 
   // ---------- helpers to MATCH your original contract ----------
   function readStoredRoom(){
-    return JSON.parse(localStorage.getItem("active_room") || sessionStorage.getItem("active_room") || "null") || {};
+    try{ return JSON.parse(localStorage.getItem("active_room") || sessionStorage.getItem("active_room") || "null") || {}; }catch{return {}}
   }
   function resolveGameId(explicit){
-    // Try: explicit param → hash segment → stored active_room (game_code/id/code) → null
     if (explicit) return explicit;
     const m = (location.hash||"").match(/^#\/game\/([^?]+)/);
     if (m) return m[1];
     const ar = readStoredRoom();
     return ar.game_code || ar.code || ar.id || ar.gameId || ar.game_id || null;
   }
-  async function aliasPayload(extra){
-    // Build a payload that matches your original key names.
-    const session = await getSession();
-    const host_user_id = session?.user?.id || null;
-
+  async function hostIdentity(){
+    const s = await getSession();
+    return { host_user_id: s?.user?.id || null };
+  }
+  async function aliasPayload(extra, { requireGame=true } = {}){
+    const { host_user_id } = await hostIdentity();
     const incomingCode = extra?.game_code || extra?.code || extra?.gameId || extra?.game_id || extra?.room_id || extra?.roomId || null;
     const code = resolveGameId(incomingCode);
+    if (requireGame && !code) throw new Error("Missing game id");
 
-    // If still missing, fail loudly exactly as your backend would expect
-    if (!code) throw new Error("Missing game id");
-
+    // Build superset of keys your original code might send
     const p = {
-      // your original keys (populate all to be safe)
-      game_code: code,
-      code:      code,
-      gameId:    code,
-      game_id:   code,
-      roomId:    code,
-      room_id:   code,
-      // many of your functions pass host/actor identity
+      ...(requireGame ? {
+        game_code: code,
+        code:      code,
+        gameId:    code,
+        game_id:   code,
+        roomId:    code,
+        room_id:   code
+      } : {}),
       host_user_id,
       ...extra
     };
     return p;
   }
 
-  // ---------- Edge Functions with AUTH (uses supabase.functions.invoke) ----------
+  // ---------- Edge Functions with AUTH ----------
   async function invoke(name, body){
     const sb = await ensureSupabase();
+    // Prefer official invoke
     try{
       const { data, error } = await sb.functions.invoke(name, { body });
       if (error) throw error;
       return data || {};
     }catch(err){
-      // Fallback: manual fetch with Authorization header
+      // Fallback: manual fetch with Authorization header + expose status/body
       const session = await getSession();
       const token = session?.access_token || "";
       const url = `${sb.functions.url}/${encodeURIComponent(name)}`;
@@ -88,7 +88,10 @@
       });
       const text = await res.text();
       let data=null; try{ data = JSON.parse(text); }catch{}
-      if (!res.ok) throw new Error((data && (data.message||data.error)) || text || "Request failed");
+      if (!res.ok){
+        const e = new Error((data && (data.message||data.error)) || text || "Request failed");
+        e.status = res.status; e.data = data; throw e;
+      }
       return data || {};
     }
   }
@@ -99,13 +102,20 @@
     const res = await fetch(url, { headers: token ? { Authorization:`Bearer ${token}` } : {} });
     const text = await res.text();
     let data=null; try{ data = JSON.parse(text); }catch{}
-    if (!res.ok) throw new Error((data && (data.message||data.error)) || text || "Request failed");
+    if (!res.ok){
+      const e = new Error((data && (data.message||data.error)) || text || "Request failed");
+      e.status = res.status; e.data = data; throw e;
+    }
     return data || {};
   }
 
-  // ---------- API (now uses aliasPayload on every call) ----------
+  // ---------- API (create_game now sends host id; others include game id) ----------
   const API = {
-    createGame: async (opts)=> invoke("create_game", opts||{}),
+    createGame: async (opts)=> {
+      // mirror original: send host_user_id, do NOT require game id
+      const payload = await aliasPayload(opts||{}, { requireGame:false });
+      return invoke("create_game", payload);
+    },
     joinGuest:  async (p)=> invoke("join_game_guest", await aliasPayload(p)),
     startGame:  async (p)=> invoke("start_game",       await aliasPayload(p)),
     nextQuestion:async(p)=> invoke("next_question",    await aliasPayload(p)),
@@ -113,21 +123,19 @@
     entitlementCheck: async(p)=> invoke("entitlement_check", await aliasPayload(p)),
     getState:   async (p)=>{
       const payload = await aliasPayload(p);
-      // Try GET first if your existing get_state expects a query param (mirrors your code)
       if (FUNCTIONS_BASE){
-        const base = FUNCTIONS_BASE; // already trimmed
+        const base = FUNCTIONS_BASE;
         const qkeys = ["code","game_code","game_id","gameId","room_id","roomId"];
         for (const k of qkeys){
           const u = `${base}/get_state?${encodeURIComponent(k)}=${encodeURIComponent(payload[k])}`;
           try{ return await getWithAuth(u); }catch(e){ /* try next key */ }
         }
       }
-      // Fallback to invoke POST
       return invoke("get_state", payload);
     }
   };
 
-  // ---------- storage (unchanged) ----------
+  // ---------- storage ----------
   const storage = {
     set(k,v,remember=false){ (remember?localStorage:sessionStorage).setItem(k, JSON.stringify(v)); },
     get(k){ try{ const v=localStorage.getItem(k) ?? sessionStorage.getItem(k); return v?JSON.parse(v):null; }catch{ return null; } },
@@ -365,10 +373,31 @@
       $("#createGame").onclick=async()=>{
         try{
           const data=await API.createGame({});
-          // Store as-is so we preserve your original shape
-          localStorage.setItem("active_room", JSON.stringify(data));
+          // If backend returns a room/code, store it verbatim
+          if (data){
+            const code = data.game_code || data.code || data.id || data.room_id || data.roomId;
+            if (code){
+              localStorage.setItem("active_room", JSON.stringify({ ...data, game_code: code, code }));
+              location.hash="#/host";
+              return;
+            }
+          }
+          toast("Game created");
           location.hash="#/host";
-        }catch(e){ toast(e.message||"Failed to create"); }
+        }catch(e){
+          // Robust 409 handling: many backends return the existing code in the error body
+          if (e.status === 409 && e.data){
+            const code = e.data.game_code || e.data.code || e.data.id || e.data.room_id || e.data.roomId;
+            if (code){
+              localStorage.setItem("active_room", JSON.stringify({ ...e.data, game_code: code, code }));
+              toast("You already have an active room. Redirecting.");
+              location.hash="#/host";
+              return;
+            }
+          }
+          toast(e.message || "Failed to create");
+          debug({ create_game_error: { status:e.status, data:e.data, message:e.message }});
+        }
       };
     }
   };
@@ -396,12 +425,11 @@
       if (!nickname) return toast("Enter nickname");
       try{
         const data=await API.joinGuest({ code, nickname });
-        // Keep your original shapes:
         const stored = { ...(readStoredRoom()||{}), code, game_code: code, id: data?.room_id || data?.id || code };
         localStorage.setItem("active_room", JSON.stringify(stored));
         localStorage.setItem("player_id", JSON.stringify(data.player_id || data.id || null));
         location.hash="#/game/"+code;
-      }catch(e){ toast(e.message||"Failed to join"); }
+      }catch(e){ toast(e.message||"Failed to join"); debug({ join_error:e }); }
     };
   };
 
@@ -465,7 +493,7 @@
         startBtn.textContent="Start";
         startBtn.onclick=async()=>{
           try{ await API.startGame({ code:this.code }); await this.refresh(); }
-          catch(e){ toast(e.message||"Start failed"); }
+          catch(e){ toast(e.message||"Start failed"); debug({ start_error:e }); }
         };
         main.appendChild(startBtn);
         return;
@@ -502,7 +530,7 @@
         $("#submitBtn").onclick=async()=>{
           if (!this.isActivePlayer()) return;
           const text=$("#answerInput").value.trim(); if (!text) return;
-          try{ await API.nextQuestion({ code:this.code, answer:text }); $("#answerInput").value=""; await this.refresh(); }catch(e){ toast(e.message||"Submit failed"); }
+          try{ await API.nextQuestion({ code:this.code, answer:text }); $("#answerInput").value=""; await this.refresh(); }catch(e){ toast(e.message||"Submit failed"); debug({ submit_error:e }); }
         };
 
         controls.innerHTML = `
@@ -510,9 +538,9 @@
           <button id="extendBtn" class="btn secondary" disabled>Extend</button>
           <button id="endAnalyze" class="btn danger">End and analyze</button>
         `;
-        $("#nextCard").onclick=async()=>{ try{ await API.nextQuestion({ code:this.code }); await this.refresh(); }catch(e){ toast(e.message||"Next failed"); } };
+        $("#nextCard").onclick=async()=>{ try{ await API.nextQuestion({ code:this.code }); await this.refresh(); }catch(e){ toast(e.message||"Next failed"); debug({ next_error:e }); } };
         $("#extendBtn").onclick=()=>{ location.hash="#/billing"; };
-        $("#endAnalyze").onclick=async()=>{ try{ await API.endAnalyze({ code:this.code }); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } };
+        $("#endAnalyze").onclick=async()=>{ try{ await API.endAnalyze({ code:this.code }); await this.refresh(); }catch(e){ toast(e.message||"End failed"); debug({ end_error:e }); } };
         this.renderTimer();
         return;
       }
