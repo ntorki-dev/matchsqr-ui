@@ -1,5 +1,5 @@
 
-/*! MatchSqr New UI (exact pattern) — creates client via /config then fallback, same endpoints & flows */
+/*! MatchSqr New UI — reuse existing Supabase client only; exact endpoints; robust create->room flow */
 (function(){
   const $ = (sel, root=document) => root.querySelector(sel);
   function toast(msg, ms=2200){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), ms); }
@@ -11,44 +11,26 @@
   const CONFIG = window.CONFIG || {};
   const FUNCTIONS_BASE = (CONFIG.FUNCTIONS_BASE || "").replace(/\/+$/,"");
 
-  const App = { state:{ supa:null, session:null, user:null } };
-
-  async function createClientExactlyOnce(){
-    if (App.state.supa) return App.state.supa;
-    if (window.__MS_CLIENT) { App.state.supa = window.__MS_CLIENT; return App.state.supa; }
-    if (!window.supabase || !window.supabase.createClient){
-      throw new Error("[MS] Supabase UMD not loaded before app.js");
-    }
-    let url = "", key = "";
-    try{
-      const res = await fetch(FUNCTIONS_BASE + "/config");
-      if (res.ok){
-        const json = await res.json();
-        url = json.supabase_url || url;
-        key = json.supabase_anon_key || key;
-      }
-    }catch(_){}
-    url = url || CONFIG.FALLBACK_SUPABASE_URL || CONFIG.SUPABASE_URL || "";
-    key = key || CONFIG.FALLBACK_SUPABASE_ANON_KEY || CONFIG.SUPABASE_ANON_KEY || "";
-    App.state.supa = window.supabase.createClient(url, key);
-    window.__MS_CLIENT = App.state.supa;
-    return App.state.supa;
+  // ---------- Supabase client (REUSE ONLY) ----------
+  function sbClient(){
+    // Prefer exactly your existing instance names; do NOT create a new client here.
+    if (window.__MS_CLIENT && window.__MS_CLIENT.auth && window.__MS_CLIENT.functions) return window.__MS_CLIENT;
+    if (window.supabase && window.supabase.auth && window.supabase.functions) return window.supabase;
+    if (window.SUPABASE && window.SUPABASE.auth && window.SUPABASE.functions) return window.SUPABASE;
+    if (window.sb && window.sb.auth && window.sb.functions) return window.sb;
+    throw new Error("[MS] Supabase client not found. Load your original client before app.js.");
   }
+  async function getSession(){ const { data } = await sbClient().auth.getSession(); return (data&&data.session)||null; }
+  function authHeader(session){ const token=session?.access_token||""; return token?{Authorization:`Bearer ${token}`}:{ }; }
 
-  async function refreshSession(){
-    const sb = await createClientExactlyOnce();
-    const { data } = await sb.auth.getSession();
-    App.state.session = data?.session || null;
-    App.state.user = App.state.session?.user || null;
-    return App.state.session;
-  }
-  function authHeader(){
-    const token = App.state.session?.access_token || "";
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  }
-
+  // ---------- storage & code resolution ----------
   function storedRoom(){
     try{ return JSON.parse(localStorage.getItem("active_room") || sessionStorage.getItem("active_room") || "null") || {}; }catch{return {}}
+  }
+  function saveActiveRoom(obj){
+    const code = obj?.game_code || obj?.code || obj?.id || obj?.room_id || obj?.roomId;
+    const toSave = { ...(storedRoom()||{}), ...obj, game_code: code, code };
+    localStorage.setItem("active_room", JSON.stringify(toSave));
   }
   function resolveCode(explicit){
     if (explicit) return explicit;
@@ -59,11 +41,12 @@
   }
   const pidKey = (code)=>`ms_pid_${code}`;
 
+  // ---------- HTTP helpers (Edge Functions) ----------
   async function jpost(path, body){
-    await refreshSession();
+    const session = await getSession();
     const res = await fetch(`${FUNCTIONS_BASE}/${path}`, {
       method:"POST",
-      headers:{ "Content-Type":"application/json", ...authHeader() },
+      headers:{ "Content-Type":"application/json", ...authHeader(session) },
       body: body ? JSON.stringify(body) : undefined
     });
     const text = await res.text();
@@ -72,14 +55,15 @@
     return json;
   }
   async function jget(pathWithQuery){
-    await refreshSession();
-    const res = await fetch(`${FUNCTIONS_BASE}/${pathWithQuery}`, { headers: { ...authHeader() } });
+    const session = await getSession();
+    const res = await fetch(`${FUNCTIONS_BASE}/${pathWithQuery}`, { headers: { ...authHeader(session) } });
     const text=await res.text();
     let json=null; try{ json=text?JSON.parse(text):null; }catch{}
     if(!res.ok){ const e=new Error((json&&(json.message||json.error))||text||"Request failed"); e.status=res.status; e.data=json; throw e; }
     return json;
   }
 
+  // ---------- API (exact contracts) ----------
   const API = {
     create_game(){ return jpost("create_game", null); },
     get_state(p){ const code=resolveCode(p?.code); if(!code) throw new Error("Missing game id"); return jget(`get_state?code=${encodeURIComponent(code)}`); },
@@ -94,7 +78,7 @@
         const pid = data?.participant_id || data?.player_id || null;
         if (pid){ localStorage.setItem(pidKey(code), JSON.stringify(pid)); localStorage.setItem("player_id", JSON.stringify(pid)); }
         const roomId = data?.room_id || data?.id || code;
-        localStorage.setItem("active_room", JSON.stringify({ ...(storedRoom()||{}), code, game_code: code, id: roomId }));
+        saveActiveRoom({ ...data, id: roomId, code });
         return data;
       });
     },
@@ -106,6 +90,7 @@
     submit_answer(p){ const code=resolveCode(p?.gameId||p?.code); if(!code) throw new Error("Missing game id"); const pid=JSON.parse(localStorage.getItem(pidKey(code))||"null"); return jpost("submit_answer", { game_id: code, question_id: p?.question_id||p?.qid||null, text: p?.text||p?.answer||"", temp_player_id: pid, participant_id: pid, name: p?.name||p?.nickname||undefined }); }
   };
 
+  // ---------- Header ----------
   async function renderHeader(){
     const app=document.getElementById("app");
     const headerHTML = `
@@ -118,16 +103,19 @@
       </div>`;
     app.innerHTML = headerHTML + app.innerHTML;
 
-    await refreshSession();
-    if (App.state.user){
-      const name = App.state.user?.user_metadata?.name || (App.state.user?.email? App.state.user.email.split("@")[0] : "Account");
-      const right = $("#hdrRight");
-      if (right){
-        right.innerHTML = `
-          <a class="avatar-link" href="#/account" title="${name}"><img class="avatar" src="./assets/profile.png" alt="profile"/></a>
-          <a class="btn-help" href="#/help">?</a>`;
+    try{
+      const session = await getSession();
+      const user = session?.user || null;
+      if (user){
+        const name = user.user_metadata?.name || (user.email? user.email.split("@")[0] : "Account");
+        const right = $("#hdrRight");
+        if (right){
+          right.innerHTML = `
+            <a class="avatar-link" href="#/account" title="${name}"><img class="avatar" src="./assets/profile.png" alt="profile"/></a>
+            <a class="btn-help" href="#/help">?</a>`;
+        }
       }
-    }
+    }catch{}
   }
   function ensureDebugTray(){
     const app = document.getElementById("app");
@@ -137,6 +125,7 @@
     setOfflineBanner(!navigator.onLine);
   }
 
+  // ---------- Router ----------
   const routes={};
   function route(p,h){ routes[p]=h; }
   function parseHash(){ const h=location.hash||"#/"; const [p,q]=h.split("?"); return { path:p, query:Object.fromEntries(new URLSearchParams(q)) }; }
@@ -149,6 +138,7 @@
   }
   addEventListener("hashchange", navigate);
 
+  // ---------- Pages ----------
   const pages={};
 
   pages.home=async()=>{
@@ -193,8 +183,7 @@
     await renderHeader(); ensureDebugTray();
     $("#loginBtn").onclick=async()=>{
       try{
-        const sb = await createClientExactlyOnce();
-        const { error } = await sb.auth.signInWithPassword({ email:$("#email").value.trim(), password:$("#password").value });
+        const { error } = await sbClient().auth.signInWithPassword({ email:$("#email").value.trim(), password:$("#password").value });
         if (error) throw error;
         const remember = !!$("#remember").checked;
         (remember?localStorage:sessionStorage).setItem("remember_me", JSON.stringify(remember));
@@ -206,8 +195,9 @@
 
   pages.account=async()=>{
     const app=document.getElementById("app");
-    await refreshSession();
-    const name = App.state.user?.user_metadata?.name || (App.state.user?.email? App.state.user.email.split("@")[0] : "Account");
+    const session = await getSession();
+    const user=session?.user||null;
+    const name = user?.user_metadata?.name || (user?.email? user.email.split("@")[0] : "Account");
     app.innerHTML = `
       <div class="offline-banner">You are offline. Trying to reconnect…</div>
       <div class="container">
@@ -220,12 +210,13 @@
       </div>
     `;
     await renderHeader(); ensureDebugTray();
-    $("#logoutBtn").onclick=async()=>{ const sb=await createClientExactlyOnce(); await sb.auth.signOut(); location.hash="#/"; };
+    $("#logoutBtn").onclick=async()=>{ await sbClient().auth.signOut(); location.hash="#/"; };
   };
 
+  // ---------- Host ----------
   pages.host=async()=>{
-    await refreshSession();
-    if (!App.state.session){
+    const session = await getSession();
+    if (!session){
       sessionStorage.setItem("__redirect_after_login", "#/host");
       location.hash = "#/login"; return;
     }
@@ -263,15 +254,14 @@
         try{
           const data = await API.create_game();
           const code = data?.game_code || data?.code || data?.id || data?.room_id || data?.roomId;
-          if (code){
-            localStorage.setItem("active_room", JSON.stringify({ ...data, game_code: code, code }));
-          }
+          if (!code){ debug({ create_game_unexpected_response:data }); toast("Created, but no code returned"); return; }
+          saveActiveRoom({ ...data, code });
           location.hash="#/host";
         }catch(e){
           if (e.status===409 && e.data){
             const code = e.data.game_code || e.data.code || e.data.id || e.data.room_id || e.data.roomId;
             if (code){
-              localStorage.setItem("active_room", JSON.stringify({ ...e.data, game_code: code, code }));
+              saveActiveRoom({ ...e.data, code });
               toast("You already have an active room.");
               location.hash="#/host"; return;
             }
@@ -282,6 +272,7 @@
     }
   };
 
+  // ---------- Join ----------
   pages.join=async()=>{
     const app=document.getElementById("app");
     app.innerHTML = `
@@ -308,6 +299,7 @@
     };
   };
 
+  // ---------- Game Room ----------
   const Game={
     code:null, poll:null, tick:null, hbH:null, hbG:null,
     state:{ phase:"lobby", ends_at:null, players:[], active_player_id:null, question:null, host_user_id:null, min_players_required:2 },
@@ -321,8 +313,9 @@
     startPolling(){ if(this.poll) clearInterval(this.poll); this.poll=setInterval(()=>this.refresh(), 3000); },
     startTick(){ if(this.tick) clearInterval(this.tick); this.tick=setInterval(()=>this.renderTimer(), 1000); },
     async startHeartbeats(){
-      await refreshSession();
-      const isHost = (App.state.user?.id && App.state.user.id === this.state.host_user_id);
+      const session = await getSession();
+      const user = session?.user || null;
+      const isHost = (user?.id && user.id === this.state.host_user_id);
       if (isHost){
         if (this.hbH) clearInterval(this.hbH);
         this.hbH = setInterval(()=>API.heartbeat({ gameId:this.code }).catch(()=>{}), 10000);
@@ -345,8 +338,8 @@
     async render(){
       const s=this.state; const main=$("#mainCard"); const controls=$("#controlsRow");
       main.innerHTML=""; controls.innerHTML="";
-      await refreshSession();
-      const isHost = !!(App.state.user?.id && s.host_user_id && App.state.user.id===s.host_user_id);
+      const session = await getSession(); const user=session?.user||null;
+      const isHost = !!(user?.id && s.host_user_id && user.id===s.host_user_id);
       const minPlayers = s.min_players_required || 2;
       const enoughPlayers = Array.isArray(s.players) ? s.players.length >= minPlayers : false;
 
@@ -433,6 +426,7 @@
     Game.mount(code);
   };
 
+  // ---------- Static ----------
   pages.billing=async()=>{ const app=document.getElementById("app"); app.innerHTML=`
     <div class="offline-banner">You are offline. Trying to reconnect…</div>
     <div class="container"><div class="card" style="max-width:720px;margin:28px auto;">
@@ -446,6 +440,7 @@
   pages.privacy=async()=>{ const app=document.getElementById("app"); app.innerHTML=`<div class="container"><div class="card" style="margin:28px auto;max-width:840px;"><h2>Privacy</h2><p class="help">…</p></div></div>`; await renderHeader(); ensureDebugTray(); };
   pages.help=async()=>{ const app=document.getElementById("app"); app.innerHTML=`<div class="container"><div class="card" style="margin:28px auto;max-width:720px;"><h2>Help</h2><p class="help">…</p></div></div>`; await renderHeader(); ensureDebugTray(); };
 
+  // ---------- Routes & boot ----------
   route("#/", pages.home);
   route("#/host", pages.host);
   route("#/join", pages.join);
