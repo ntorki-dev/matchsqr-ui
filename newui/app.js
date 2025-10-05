@@ -1,29 +1,22 @@
 
-/*! MatchSqr New UI — singleton Supabase client: reuse if present, else create via /config -> config.js */
+/*! MatchSqr UI — robust Create→Lobby flow, deep code extraction, singleton Supabase client */
 (function(){
   const $ = (sel, root=document) => root.querySelector(sel);
   function toast(msg, ms=2200){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), ms); }
-  function debug(obj){ const pre=$("#debug-pre"); if(!pre) return; const s=pre.textContent + "\n" + JSON.stringify(obj,null,2); pre.textContent=s.slice(-30000); }
+  function debug(obj){ const pre=$("#debug-pre"); if(!pre) return; const s=pre.textContent + "\\n" + JSON.stringify(obj,null,2); pre.textContent=s.slice(-30000); }
   function setOfflineBanner(show){ const b=$(".offline-banner"); if(!b) return; b.classList.toggle("show", !!show); }
   addEventListener("offline",()=>setOfflineBanner(true));
   addEventListener("online",()=>setOfflineBanner(false));
 
   const CONFIG = window.CONFIG || {};
-  const FUNCTIONS_BASE = (CONFIG.FUNCTIONS_BASE || "").replace(/\/+$/,"");
+  const FUNCTIONS_BASE = (CONFIG.FUNCTIONS_BASE || "").replace(/\\/+$/,"");
 
   // ---------- Supabase client (singleton: reuse else create once) ----------
   async function ensureClient(){
-    // reuse first
     if (window.__MS_CLIENT && window.__MS_CLIENT.auth && window.__MS_CLIENT.functions) return window.__MS_CLIENT;
     if (window.supabaseClient && window.supabaseClient.auth && window.supabaseClient.functions) { window.__MS_CLIENT = window.supabaseClient; return window.__MS_CLIENT; }
-    if (window.supabase && window.supabase.auth && window.supabase.functions && window.supabase.from){ 
-      // This is *already a client instance* exposed globally (rare), reuse.
-      window.__MS_CLIENT = window.supabase; return window.__MS_CLIENT;
-    }
-    // create once
-    if (!window.supabase || !window.supabase.createClient){
-      throw new Error("[MS] Supabase UMD not loaded before app.js");
-    }
+    if (window.supabase && window.supabase.auth && window.supabase.functions && window.supabase.from){ window.__MS_CLIENT = window.supabase; return window.__MS_CLIENT; }
+    if (!window.supabase || !window.supabase.createClient){ throw new Error("[MS] Supabase UMD not loaded before app.js"); }
     let url="", key="";
     try{
       const res = await fetch(FUNCTIONS_BASE + "/config");
@@ -32,13 +25,13 @@
         url = json.supabase_url || url;
         key = json.supabase_anon_key || key;
       }
-    }catch(_){/* ignore */}
+    }catch(_){}
     url = url || CONFIG.SUPABASE_URL || CONFIG.FALLBACK_SUPABASE_URL || "";
     key = key || CONFIG.SUPABASE_ANON_KEY || CONFIG.FALLBACK_SUPABASE_ANON_KEY || "";
     if (!url || !key) throw new Error("[MS] Missing Supabase URL/Key. Ensure /config or config.js provides them.");
     const client = window.supabase.createClient(url, key, { auth: { storageKey: "ms-auth" } });
     window.__MS_CLIENT = client;
-    window.supabaseClient = client; // expose for any legacy code
+    window.supabaseClient = client;
     return client;
   }
   async function getSession(){ const sb=await ensureClient(); const { data } = await sb.auth.getSession(); return (data&&data.session)||null; }
@@ -49,18 +42,41 @@
     try{ return JSON.parse(localStorage.getItem("active_room") || sessionStorage.getItem("active_room") || "null") || {}; }catch{return {}}
   }
   function saveActiveRoom(obj){
-    const code = obj?.game_code || obj?.code || obj?.id || obj?.room_id || obj?.roomId;
-    const toSave = { ...(storedRoom()||{}), ...obj, game_code: code, code };
+    const code = extractCodeDeep(obj);
+    const toSave = { ...(storedRoom()||{}), ...obj };
+    if (code) { toSave.game_code = code; toSave.code = code; }
     localStorage.setItem("active_room", JSON.stringify(toSave));
   }
   function resolveCode(explicit){
     if (explicit) return explicit;
-    const m = (location.hash||"").match(/^#\/game\/([^?]+)/);
+    const m = (location.hash||"").match(/^#\\/game\\/([^?]+)/);
     if (m) return m[1];
     const ar = storedRoom();
-    return ar.game_code || ar.code || ar.id || ar.room_id || ar.roomId || ar.game_id || ar.gameId || null;
+    return extractCodeDeep(ar) || null;
   }
   const pidKey = (code)=>`ms_pid_${code}`;
+
+  // ---------- deep code extraction ----------
+  function extractCodeDeep(obj){
+    if (!obj || typeof obj !== "object") return null;
+    const Q = [{o:obj, depth:0}];
+    const seen = new Set();
+    const keyRe = /(game.*code|^code$|room.*id$|game.*id$|^id$)/i;
+    while (Q.length){
+      const {o, depth} = Q.shift();
+      if (!o || typeof o !== "object" || seen.has(o) || depth>5) continue;
+      seen.add(o);
+      for (const k of Object.keys(o)){
+        const v = o[k];
+        if (keyRe.test(k) && (typeof v === "string" || typeof v === "number")){
+          const s = String(v).trim();
+          if (s) return s;
+        }
+        if (v && typeof v === "object") Q.push({o:v, depth:depth+1});
+      }
+    }
+    return null;
+  }
 
   // ---------- HTTP helpers (Edge Functions) ----------
   async function jpost(path, body){
@@ -98,8 +114,7 @@
       return jpost("join_game_guest", body).then(data=>{
         const pid = data?.participant_id || data?.player_id || null;
         if (pid){ localStorage.setItem(pidKey(code), JSON.stringify(pid)); localStorage.setItem("player_id", JSON.stringify(pid)); }
-        const roomId = data?.room_id || data?.id || code;
-        saveActiveRoom({ ...data, id: roomId, code });
+        saveActiveRoom(data);
         return data;
       });
     },
@@ -152,7 +167,7 @@
   function parseHash(){ const h=location.hash||"#/"; const [p,q]=h.split("?"); return { path:p, query:Object.fromEntries(new URLSearchParams(q)) }; }
   async function navigate(){
     const {path}=parseHash();
-    const gm = path.match(/^#\/game\/(.+)$/);
+    const gm = path.match(/^#\\/game\\/(.+)$/);
     if (routes[path]) return routes[path]();
     if (gm) return pages.game(gm[1]);
     return pages.home();
@@ -254,8 +269,8 @@
       </div>`;
     await renderHeader(); ensureDebugTray();
     const el=$("#hostControls");
-    if (ar && (ar.game_code || ar.code || ar.id)){
-      const code = ar.game_code || ar.code || ar.id;
+
+    function renderHasRoom(code){
       el.innerHTML = `
         <div class="grid">
           <div class="inline-actions">
@@ -266,7 +281,11 @@
         </div>`;
       $("#goRoom").onclick=()=>location.hash="#/game/"+code;
       $("#copyCode").onclick=()=>{ navigator.clipboard.writeText(code); toast("Code copied"); };
-    }else{
+    }
+
+    const existingCode = extractCodeDeep(ar);
+    if (existingCode){ renderHasRoom(existingCode); }
+    else{
       el.innerHTML = `
         <div class="grid">
           <button class="primary" id="createGame">Create Game</button>
@@ -275,17 +294,18 @@
       $("#createGame").onclick=async()=>{
         try{
           const data = await API.create_game();
-          const code = data?.game_code || data?.code || data?.id || data?.room_id || data?.roomId;
+          const code = extractCodeDeep(data);
           if (!code){ debug({ create_game_unexpected_response:data }); toast("Created, but no code returned"); return; }
-          saveActiveRoom({ ...data, code });
-          location.hash="#/host";
+          saveActiveRoom(data);
+          // Update the UI immediately without navigation
+          renderHasRoom(code);
         }catch(e){
           if (e.status===409 && e.data){
-            const code = e.data.game_code || e.data.code || e.data.id || e.data.room_id || e.data.roomId;
+            const code = extractCodeDeep(e.data);
             if (code){
-              saveActiveRoom({ ...e.data, code });
+              saveActiveRoom(e.data);
               toast("You already have an active room.");
-              location.hash="#/host"; return;
+              renderHasRoom(code); return;
             }
           }
           toast(e.message||"Failed to create"); debug({ create_game_error:e });
