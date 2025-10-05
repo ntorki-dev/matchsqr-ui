@@ -28,10 +28,47 @@
   async function getProfileName(){ const sb=await ensureSupabase(); const { data } = await sb.auth.getUser(); return data?.user?.user_metadata?.name || (data?.user?.email?data.user.email.split("@")[0]:"Profile"); }
   async function signOut(){ const sb=await ensureSupabase(); await sb.auth.signOut(); }
 
-  // ---------- Edge Functions helper (AUTH FIX) ----------
+  // ---------- helpers to MATCH your original contract ----------
+  function readStoredRoom(){
+    return JSON.parse(localStorage.getItem("active_room") || sessionStorage.getItem("active_room") || "null") || {};
+  }
+  function resolveGameId(explicit){
+    // Try: explicit param → hash segment → stored active_room (game_code/id/code) → null
+    if (explicit) return explicit;
+    const m = (location.hash||"").match(/^#\/game\/([^?]+)/);
+    if (m) return m[1];
+    const ar = readStoredRoom();
+    return ar.game_code || ar.code || ar.id || ar.gameId || ar.game_id || null;
+  }
+  async function aliasPayload(extra){
+    // Build a payload that matches your original key names.
+    const session = await getSession();
+    const host_user_id = session?.user?.id || null;
+
+    const incomingCode = extra?.game_code || extra?.code || extra?.gameId || extra?.game_id || extra?.room_id || extra?.roomId || null;
+    const code = resolveGameId(incomingCode);
+
+    // If still missing, fail loudly exactly as your backend would expect
+    if (!code) throw new Error("Missing game id");
+
+    const p = {
+      // your original keys (populate all to be safe)
+      game_code: code,
+      code:      code,
+      gameId:    code,
+      game_id:   code,
+      roomId:    code,
+      room_id:   code,
+      // many of your functions pass host/actor identity
+      host_user_id,
+      ...extra
+    };
+    return p;
+  }
+
+  // ---------- Edge Functions with AUTH (uses supabase.functions.invoke) ----------
   async function invoke(name, body){
     const sb = await ensureSupabase();
-    // Prefer official invoke (it forwards Authorization automatically)
     try{
       const { data, error } = await sb.functions.invoke(name, { body });
       if (error) throw error;
@@ -56,9 +93,7 @@
     }
   }
 
-  // GET helper (used only for get_state if your function expects GET)
   async function getWithAuth(url){
-    const sb = await ensureSupabase();
     const session = await getSession();
     const token = session?.access_token || "";
     const res = await fetch(url, { headers: token ? { Authorization:`Bearer ${token}` } : {} });
@@ -68,26 +103,31 @@
     return data || {};
   }
 
+  // ---------- API (now uses aliasPayload on every call) ----------
   const API = {
-    createGame: (opts)=> invoke("create_game", opts||{}),
-    joinGuest: (p)=> invoke("join_game_guest", p),
-    startGame: (p)=> invoke("start_game", p),
-    nextQuestion: (p)=> invoke("next_question", p),
-    endAnalyze: (p)=> invoke("end_game_and_analyze", p),
-    entitlementCheck: (p)=> invoke("entitlement_check", p),
-    getState: async (p)=>{
-      // If your get_state supports GET:
+    createGame: async (opts)=> invoke("create_game", opts||{}),
+    joinGuest:  async (p)=> invoke("join_game_guest", await aliasPayload(p)),
+    startGame:  async (p)=> invoke("start_game",       await aliasPayload(p)),
+    nextQuestion:async(p)=> invoke("next_question",    await aliasPayload(p)),
+    endAnalyze: async (p)=> invoke("end_game_and_analyze", await aliasPayload(p)),
+    entitlementCheck: async(p)=> invoke("entitlement_check", await aliasPayload(p)),
+    getState:   async (p)=>{
+      const payload = await aliasPayload(p);
+      // Try GET first if your existing get_state expects a query param (mirrors your code)
       if (FUNCTIONS_BASE){
-        const safeBase = FUNCTIONS_BASE; // already trimmed
-        const url = `${safeBase}/get_state?code=${encodeURIComponent(p.game_code || p.code || "")}`;
-        return getWithAuth(url);
+        const base = FUNCTIONS_BASE; // already trimmed
+        const qkeys = ["code","game_code","game_id","gameId","room_id","roomId"];
+        for (const k of qkeys){
+          const u = `${base}/get_state?${encodeURIComponent(k)}=${encodeURIComponent(payload[k])}`;
+          try{ return await getWithAuth(u); }catch(e){ /* try next key */ }
+        }
       }
-      // Otherwise use invoke:
-      return invoke("get_state", { code: p.game_code || p.code || "" });
+      // Fallback to invoke POST
+      return invoke("get_state", payload);
     }
   };
 
-  // ---------- storage ----------
+  // ---------- storage (unchanged) ----------
   const storage = {
     set(k,v,remember=false){ (remember?localStorage:sessionStorage).setItem(k, JSON.stringify(v)); },
     get(k){ try{ const v=localStorage.getItem(k) ?? sessionStorage.getItem(k); return v?JSON.parse(v):null; }catch{ return null; } },
@@ -293,7 +333,7 @@
       location.hash = "#/login"; return;
     }
     const app=document.getElementById("app");
-    const ar = storage.get("active_room");
+    const ar = readStoredRoom();
     app.innerHTML = `
       <div class="offline-banner">You are offline. Trying to reconnect…</div>
       <div class="host-wrap">
@@ -304,17 +344,18 @@
       </div>`;
     await renderHeader(); ensureDebugTray();
     const el=$("#hostControls");
-    if (ar && ar.game_code){
+    if (ar && (ar.game_code || ar.code || ar.id)){
+      const code = ar.game_code || ar.code || ar.id;
       el.innerHTML = `
         <div class="grid">
           <div class="inline-actions">
             <button class="primary" id="goRoom">Go to room</button>
             <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
-            <span class="help">Code: <strong>${ar.game_code}</strong></span>
+            <span class="help">Code: <strong>${code}</strong></span>
           </div>
         </div>`;
-      $("#goRoom").onclick=()=>location.hash="#/game/"+ar.game_code;
-      $("#copyCode").onclick=()=>{ navigator.clipboard.writeText(ar.game_code); toast("Code copied"); };
+      $("#goRoom").onclick=()=>location.hash="#/game/"+code;
+      $("#copyCode").onclick=()=>{ navigator.clipboard.writeText(code); toast("Code copied"); };
     }else{
       el.innerHTML = `
         <div class="grid">
@@ -322,8 +363,12 @@
           <p class="help">You will receive a game code and a room for players to join.</p>
         </div>`;
       $("#createGame").onclick=async()=>{
-        try{ const data=await API.createGame({}); storage.set("active_room", data, true); location.hash="#/host"; }
-        catch(e){ toast(e.message||"Failed to create"); }
+        try{
+          const data=await API.createGame({});
+          // Store as-is so we preserve your original shape
+          localStorage.setItem("active_room", JSON.stringify(data));
+          location.hash="#/host";
+        }catch(e){ toast(e.message||"Failed to create"); }
       };
     }
   };
@@ -345,15 +390,17 @@
     `;
     await renderHeader(); ensureDebugTray();
     $("#joinBtn").onclick=async()=>{
-      const game_code=$("#gameId").value.trim();
+      const code=$("#gameId").value.trim();
       const nickname=$("#nickname").value.trim();
-      if (!game_code) return toast("Enter game code");
+      if (!code) return toast("Enter game code");
       if (!nickname) return toast("Enter nickname");
       try{
-        const data=await API.joinGuest({ game_code, nickname }); // nickname required
-        storage.set("active_room",{ game_code },true);
-        storage.set("player_id", data.player_id, true);
-        location.hash="#/game/"+game_code;
+        const data=await API.joinGuest({ code, nickname });
+        // Keep your original shapes:
+        const stored = { ...(readStoredRoom()||{}), code, game_code: code, id: data?.room_id || data?.id || code };
+        localStorage.setItem("active_room", JSON.stringify(stored));
+        localStorage.setItem("player_id", JSON.stringify(data.player_id || data.id || null));
+        location.hash="#/game/"+code;
       }catch(e){ toast(e.message||"Failed to join"); }
     };
   };
@@ -385,12 +432,12 @@
     stop(){ if(this.poller) clearInterval(this.poller); if(this.tick) clearInterval(this.tick); },
     async refresh(){
       try{
-        const data=await API.getState({ game_code:this.code });
+        const data=await API.getState({ code:this.code });
         this.state = Object.assign({}, this.state, data);
         this.render();
       }catch(e){ debug({ refresh_error:e.message }); }
     },
-    isActivePlayer(){ const me=storage.get("player_id"); return me && me===this.state.active_player_id; },
+    isActivePlayer(){ try{ const me=JSON.parse(localStorage.getItem("player_id")||sessionStorage.getItem("player_id")||"null"); return me && me===this.state.active_player_id; }catch{return false;} },
     remainingSeconds(){
       if (!this.state.ends_at) return null;
       const diff = Math.floor((new Date(this.state.ends_at).getTime() - Date.now())/1000);
@@ -412,30 +459,28 @@
       const main=$("#mainCard"); const controls=$("#controlsRow");
       main.innerHTML=""; controls.innerHTML="";
       if (s.phase==="lobby"){
-        // in-room lobby: centered round Start; no copy invite here
         const startBtn = document.createElement("button");
         startBtn.className="start-round";
         startBtn.id="startGame";
         startBtn.textContent="Start";
         startBtn.onclick=async()=>{
-          try{ await API.startGame({ game_code:this.code }); await this.refresh(); }
+          try{ await API.startGame({ code:this.code }); await this.refresh(); }
           catch(e){ toast(e.message||"Start failed"); }
         };
         main.appendChild(startBtn);
         return;
       }
       if (s.phase==="running"){
-        // timer
         const hdr = document.createElement("div");
         hdr.style.cssText = "position:absolute; top:16px; right:16px; font-weight:800;";
         hdr.innerHTML = `⏱ <span id="roomTimer">--:--</span>`;
         main.appendChild(hdr);
-        // question
+
         const q = document.createElement("div");
         q.style.cssText = "text-align:center; max-width:640px; padding:8px";
         q.innerHTML = `<h3 style="margin:0 0 8px 0;">${s.question?.title || "Question"}</h3><p class="help" style="margin:0;">${s.question?.text || ""}</p>`;
         main.appendChild(q);
-        // mic/keyboard
+
         const km = document.createElement("div");
         km.className="kb-mic-row";
         km.innerHTML = `
@@ -443,7 +488,7 @@
           <button id="kbBtn" class="kb-mic-btn" ${this.isActivePlayer()?"":"disabled"}><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>
         `;
         main.appendChild(km);
-        // answer (hidden until mic/keyboard)
+
         const ans = document.createElement("div");
         ans.className="answer-row hidden";
         ans.id="answerRow";
@@ -457,17 +502,17 @@
         $("#submitBtn").onclick=async()=>{
           if (!this.isActivePlayer()) return;
           const text=$("#answerInput").value.trim(); if (!text) return;
-          try{ await API.nextQuestion({ game_code:this.code, answer:text }); $("#answerInput").value=""; await this.refresh(); }catch(e){ toast(e.message||"Submit failed"); }
+          try{ await API.nextQuestion({ code:this.code, answer:text }); $("#answerInput").value=""; await this.refresh(); }catch(e){ toast(e.message||"Submit failed"); }
         };
-        // controls
+
         controls.innerHTML = `
           <button id="nextCard" class="btn">Reveal next card</button>
           <button id="extendBtn" class="btn secondary" disabled>Extend</button>
           <button id="endAnalyze" class="btn danger">End and analyze</button>
         `;
-        $("#nextCard").onclick=async()=>{ try{ await API.nextQuestion({ game_code:this.code }); await this.refresh(); }catch(e){ toast(e.message||"Next failed"); } };
+        $("#nextCard").onclick=async()=>{ try{ await API.nextQuestion({ code:this.code }); await this.refresh(); }catch(e){ toast(e.message||"Next failed"); } };
         $("#extendBtn").onclick=()=>{ location.hash="#/billing"; };
-        $("#endAnalyze").onclick=async()=>{ try{ await API.endAnalyze({ game_code:this.code }); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } };
+        $("#endAnalyze").onclick=async()=>{ try{ await API.endAnalyze({ code:this.code }); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } };
         this.renderTimer();
         return;
       }
