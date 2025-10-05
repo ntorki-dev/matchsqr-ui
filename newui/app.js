@@ -1,14 +1,15 @@
 (function(){
+  // ---------- utilities ----------
   const $ = (sel, root=document) => root.querySelector(sel);
-  const sleep = (ms)=>new Promise(r=>setTimeout(r, ms));
   function toast(msg, ms=2200){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), ms); }
   function debug(obj){ const pre=$("#debug-pre"); if(!pre) return; const s = pre.textContent + "\n" + JSON.stringify(obj,null,2); pre.textContent = s.slice(-30000); }
   function setOfflineBanner(show){ const b=$(".offline-banner"); if(!b) return; b.classList.toggle("show", !!show); }
   window.addEventListener("offline",()=>setOfflineBanner(true));
   window.addEventListener("online",()=>setOfflineBanner(false));
 
+  // ---------- config / supabase (uses your existing config.js and UMD) ----------
   const CONFIG = window.CONFIG || {};
-  const FUNCTIONS_BASE = CONFIG.FUNCTIONS_BASE || "";
+  const FUNCTIONS_BASE = (CONFIG.FUNCTIONS_BASE || "").replace(/\/+$/,""); // trim trailing /
   let supabase = null;
   async function ensureSupabase(){
     if (supabase) return supabase;
@@ -27,39 +28,73 @@
   async function getProfileName(){ const sb=await ensureSupabase(); const { data } = await sb.auth.getUser(); return data?.user?.user_metadata?.name || (data?.user?.email?data.user.email.split("@")[0]:"Profile"); }
   async function signOut(){ const sb=await ensureSupabase(); await sb.auth.signOut(); }
 
-  async function edge(path, { method="POST", body }={}){
-    const url = FUNCTIONS_BASE + path;
-    debug({ edge:{ url, method, body } });
-    const res = await fetch(url, { method, headers:{"Content-Type":"application/json"}, body: body?JSON.stringify(body):undefined });
+  // ---------- Edge Functions helper (AUTH FIX) ----------
+  async function invoke(name, body){
+    const sb = await ensureSupabase();
+    // Prefer official invoke (it forwards Authorization automatically)
+    try{
+      const { data, error } = await sb.functions.invoke(name, { body });
+      if (error) throw error;
+      return data || {};
+    }catch(err){
+      // Fallback: manual fetch with Authorization header
+      const session = await getSession();
+      const token = session?.access_token || "";
+      const url = `${sb.functions.url}/${encodeURIComponent(name)}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type":"application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: body ? JSON.stringify(body) : undefined
+      });
+      const text = await res.text();
+      let data=null; try{ data = JSON.parse(text); }catch{}
+      if (!res.ok) throw new Error((data && (data.message||data.error)) || text || "Request failed");
+      return data || {};
+    }
+  }
+
+  // GET helper (used only for get_state if your function expects GET)
+  async function getWithAuth(url){
+    const sb = await ensureSupabase();
+    const session = await getSession();
+    const token = session?.access_token || "";
+    const res = await fetch(url, { headers: token ? { Authorization:`Bearer ${token}` } : {} });
     const text = await res.text();
     let data=null; try{ data = JSON.parse(text); }catch{}
-    debug({ edge_result:{ status:res.status, data, text:data?undefined:text } });
-    if (!res.ok) throw new Error((data && data.message) || text || "Request failed");
+    if (!res.ok) throw new Error((data && (data.message||data.error)) || text || "Request failed");
     return data || {};
   }
+
   const API = {
-    createGame: (opts)=> edge("/create_game",{ body: opts||{} }),
-    joinGuest: (p)=> edge("/join_game_guest",{ body:p }),
-    startGame: (p)=> edge("/start_game",{ body:p }),
-    nextQuestion: (p)=> edge("/next_question",{ body:p }),
-    endAnalyze: (p)=> edge("/end_game_and_analyze",{ body:p }),
-    entitlementCheck: (p)=> edge("/entitlement_check",{ body:p }),
+    createGame: (opts)=> invoke("create_game", opts||{}),
+    joinGuest: (p)=> invoke("join_game_guest", p),
+    startGame: (p)=> invoke("start_game", p),
+    nextQuestion: (p)=> invoke("next_question", p),
+    endAnalyze: (p)=> invoke("end_game_and_analyze", p),
+    entitlementCheck: (p)=> invoke("entitlement_check", p),
     getState: async (p)=>{
-      const url = FUNCTIONS_BASE + "/get_state?code=" + encodeURIComponent(p.game_code || p.code || "");
-      debug({ edge:{ url, method:"GET" } });
-      const res = await fetch(url); const data = await res.json();
-      debug({ edge_result:{ status:res.status, data } });
-      if (!res.ok) throw new Error((data&&data.message)||"get_state failed");
-      return data;
+      // If your get_state supports GET:
+      if (FUNCTIONS_BASE){
+        const safeBase = FUNCTIONS_BASE; // already trimmed
+        const url = `${safeBase}/get_state?code=${encodeURIComponent(p.game_code || p.code || "")}`;
+        return getWithAuth(url);
+      }
+      // Otherwise use invoke:
+      return invoke("get_state", { code: p.game_code || p.code || "" });
     }
   };
 
+  // ---------- storage ----------
   const storage = {
     set(k,v,remember=false){ (remember?localStorage:sessionStorage).setItem(k, JSON.stringify(v)); },
     get(k){ try{ const v=localStorage.getItem(k) ?? sessionStorage.getItem(k); return v?JSON.parse(v):null; }catch{ return null; } },
     del(k){ localStorage.removeItem(k); sessionStorage.removeItem(k); }
   };
 
+  // ---------- router ----------
   const routes={};
   function route(p,h){ routes[p]=h; }
   function parseHash(){ const h=location.hash||"#/"; const [p,q]=h.split("?"); return { path:p, query:Object.fromEntries(new URLSearchParams(q)) }; }
@@ -72,6 +107,7 @@
   }
   window.addEventListener("hashchange", navigate);
 
+  // ---------- layout ----------
   async function renderHeader(){
     const session = await getSession();
     const isAuthed = !!session;
@@ -96,6 +132,7 @@
     setOfflineBanner(!navigator.onLine);
   }
 
+  // ---------- pages ----------
   const pages={};
 
   pages.home=async()=>{
@@ -248,6 +285,7 @@
     $("#logoutBtn").onclick=async()=>{ await signOut(); location.hash="#/"; };
   };
 
+  // Host requires login
   pages.host=async()=>{
     const session = await getSession();
     if (!session){
@@ -312,7 +350,7 @@
       if (!game_code) return toast("Enter game code");
       if (!nickname) return toast("Enter nickname");
       try{
-        const data=await API.joinGuest({ game_code, nickname });
+        const data=await API.joinGuest({ game_code, nickname }); // nickname required
         storage.set("active_room",{ game_code },true);
         storage.set("player_id", data.player_id, true);
         location.hash="#/game/"+game_code;
@@ -320,6 +358,7 @@
     };
   };
 
+  // ---------- game ----------
   pages.game=async(code)=>{
     const app=document.getElementById("app");
     app.innerHTML = `
@@ -373,6 +412,7 @@
       const main=$("#mainCard"); const controls=$("#controlsRow");
       main.innerHTML=""; controls.innerHTML="";
       if (s.phase==="lobby"){
+        // in-room lobby: centered round Start; no copy invite here
         const startBtn = document.createElement("button");
         startBtn.className="start-round";
         startBtn.id="startGame";
@@ -385,15 +425,17 @@
         return;
       }
       if (s.phase==="running"){
+        // timer
         const hdr = document.createElement("div");
         hdr.style.cssText = "position:absolute; top:16px; right:16px; font-weight:800;";
         hdr.innerHTML = `⏱ <span id="roomTimer">--:--</span>`;
         main.appendChild(hdr);
+        // question
         const q = document.createElement("div");
         q.style.cssText = "text-align:center; max-width:640px; padding:8px";
         q.innerHTML = `<h3 style="margin:0 0 8px 0;">${s.question?.title || "Question"}</h3><p class="help" style="margin:0;">${s.question?.text || ""}</p>`;
         main.appendChild(q);
-
+        // mic/keyboard
         const km = document.createElement("div");
         km.className="kb-mic-row";
         km.innerHTML = `
@@ -401,7 +443,7 @@
           <button id="kbBtn" class="kb-mic-btn" ${this.isActivePlayer()?"":"disabled"}><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>
         `;
         main.appendChild(km);
-
+        // answer (hidden until mic/keyboard)
         const ans = document.createElement("div");
         ans.className="answer-row hidden";
         ans.id="answerRow";
@@ -410,7 +452,6 @@
           <button id="submitBtn" class="btn" ${this.isActivePlayer()?"":"disabled"}>Submit</button>
         `;
         main.appendChild(ans);
-
         $("#micBtn").onclick=()=>{ $("#answerRow").classList.remove("hidden"); };
         $("#kbBtn").onclick=()=>{ $("#answerRow").classList.remove("hidden"); };
         $("#submitBtn").onclick=async()=>{
@@ -418,7 +459,7 @@
           const text=$("#answerInput").value.trim(); if (!text) return;
           try{ await API.nextQuestion({ game_code:this.code, answer:text }); $("#answerInput").value=""; await this.refresh(); }catch(e){ toast(e.message||"Submit failed"); }
         };
-
+        // controls
         controls.innerHTML = `
           <button id="nextCard" class="btn">Reveal next card</button>
           <button id="extendBtn" class="btn secondary" disabled>Extend</button>
@@ -448,6 +489,7 @@
     }
   };
 
+  // ---------- Billing (simulated) ----------
   pages.billing=async()=>{
     const app=document.getElementById("app");
     app.innerHTML = `
@@ -469,10 +511,12 @@
     $("#sub").onclick=()=>toast("Simulated: subscription active");
   };
 
+  // ---------- basic pages ----------
   pages.terms=async()=>{ const app=document.getElementById("app"); app.innerHTML = `<div class="container"><div class="card" style="margin:28px auto;max-width:840px;"><h2>Terms</h2><p class="help">…</p></div></div>`; await renderHeader(); ensureDebugTray(); };
   pages.privacy=async()=>{ const app=document.getElementById("app"); app.innerHTML = `<div class="container"><div class="card" style="margin:28px auto;max-width:840px;"><h2>Privacy</h2><p class="help">…</p></div></div>`; await renderHeader(); ensureDebugTray(); };
   pages.help=async()=>{ const app=document.getElementById("app"); app.innerHTML = `<div class="container"><div class="card" style="margin:28px auto;max-width:720px;"><h2>Help</h2><p class="help">…</p></div></div>`; await renderHeader(); ensureDebugTray(); };
 
+  // ---------- routes ----------
   route("#/", pages.home);
   route("#/host", pages.host);
   route("#/join", pages.join);
@@ -486,8 +530,6 @@
   route("#/privacy", pages.privacy);
   route("#/help", pages.help);
 
-  (async function(){
-    if (!location.hash) location.hash="#/";
-    navigate();
-  })();
+  // ---------- boot ----------
+  (async function(){ if (!location.hash) location.hash="#/"; navigate(); })();
 })();
