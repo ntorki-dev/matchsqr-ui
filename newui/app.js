@@ -1,5 +1,5 @@
 
-/*! MatchSqr UI (ASCII-safe) — reuse-only client, fixed Create->Lobby flow, deep code extraction */
+/*! MatchSqr UI — rollback base, flow-only fix, reuse-only client */
 (function(){
   // ---------- utils ----------
   var $ = function(sel, root){ return (root||document).querySelector(sel); };
@@ -55,7 +55,7 @@
     var keyRe = /(game.*code|^code$|room.*id$|game.*id$|^id$)/i;
     while (queue.length){
       var item = queue.shift();
-      var o = item.o, depth = item.depth;
+      var o = item.o; var depth = item.depth;
       if (!o || typeof o!=="object" || seen.indexOf(o)>=0 || depth>5) continue;
       seen.push(o);
       for (var k in o){
@@ -292,7 +292,7 @@
           var code = extractCodeDeep(data);
           if (!code){ debug({ create_game_unexpected_response:data }); toast("Created, but no code returned"); return; }
           saveActiveRoom(data);
-          renderHasRoom(code); // update immediately
+          renderHasRoom(code);
         }catch(e){
           if (e.status===409 && e.data){
             var code2 = extractCodeDeep(e.data);
@@ -397,7 +397,7 @@
 
       if (s.phase==="running"){
         var hdr=document.createElement("div"); hdr.style.cssText="position:absolute; top:16px; right:16px; font-weight:800;";
-        hdr.innerHTML="\\u23F1 <span id=\"roomTimer\">--:--</span>"; main.appendChild(hdr);
+        hdr.innerHTML="Timer: <span id=\"roomTimer\">--:--</span>"; main.appendChild(hdr);
 
         var q=document.createElement("div"); q.style.cssText="text-align:center; max-width:640px; padding:8px";
         q.innerHTML = "<h3 style=\"margin:0 0 8px 0;\">"+(s.question&&s.question.title||"Question")+"</h3><p class=\"help\" style=\"margin:0;\">"+(s.question&&s.question.text||"")+"</p>";
