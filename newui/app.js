@@ -1,52 +1,77 @@
 (function(){
-  // ---------- tiny DOM/util ----------
+  // ================== minimal DOM helpers ==================
   const $ = (sel, root=document) => root.querySelector(sel);
-  function toast(msg, ms=2200){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), ms); }
-  function debug(obj){ const pre=$("#debug-pre"); if(!pre) return; const s = pre.textContent + "\n" + JSON.stringify(obj,null,2); pre.textContent = s.slice(-30000); }
+  const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+  function toast(msg, ms=2200){
+    const t=document.createElement("div"); t.className="toast";
+    t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), ms);
+  }
+  function debug(obj){
+    const pre=$("#debug-pre"); if(!pre) return;
+    const s = pre.textContent + "\n" + JSON.stringify(obj,null,2);
+    pre.textContent = s.slice(-30000);
+  }
   function setOfflineBanner(show){ const b=$(".offline-banner"); if(!b) return; b.classList.toggle("show", !!show); }
   addEventListener("offline",()=>setOfflineBanner(true));
   addEventListener("online",()=>setOfflineBanner(false));
 
-  // ---------- config/supabase (uses YOUR config.js & UMD) ----------
+  // ================== config & supabase client (mirror user's pattern) ==================
   const CONFIG = window.CONFIG || {};
-  let supabase = null;
-  async function ensureSupabase(){
-    if (supabase) return supabase;
-    const g = (typeof globalThis!=="undefined"?globalThis:window);
-    if (!g.supabase) throw new Error("Supabase UMD not loaded");
-    const url = CONFIG.SUPABASE_URL || g.SUPABASE_URL || g.__SUPABASE_URL || "";
-    const key = CONFIG.SUPABASE_ANON_KEY || g.SUPABASE_KEY || g.__SUPABASE_KEY || "";
-    supabase = g.supabase.createClient(url, key);
-    return supabase;
-  }
-  async function getSession(){ const sb=await ensureSupabase(); const { data } = await sb.auth.getSession(); return data?.session || null; }
-  async function getProfileName(){ const sb=await ensureSupabase(); const { data } = await sb.auth.getUser(); return data?.user?.user_metadata?.name || (data?.user?.email?data.user.email.split("@")[0]:"Profile"); }
-  async function signOut(){ const sb=await ensureSupabase(); await sb.auth.signOut(); }
+  const FUNCTIONS_BASE = (CONFIG.FUNCTIONS_BASE || "").replace(/\/+$/,""); // trim trailing slashes
+  const state = {
+    supa: null,
+    session: null,
+    user: null,
+    me: { isHost: false },
+    code: null,
+    poll: null,
+    hb: null,
+    ghb: null,
+    minPlayersRequired: 2
+  };
 
-  // ---------- USE YOUR LEGACY CLIENT if present ----------
-  // We probe common namespaces your existing project might expose:
-  //  - window.MS_API / window.msApi / window.api
-  //  - or top-level functions: create_game, join_game_guest, start_game, next_question, end_game_and_analyze, entitlement_check, get_state
-  function detectLegacy(){
-    const w = window;
-    const ns = w.MS_API || w.msApi || w.api || w.GameAPI || w.MatchSquare?.api;
-    if (ns && typeof ns === "object"){
-      const hasAll = ["create_game","join_game_guest","start_game","next_question","end_game_and_analyze","entitlement_check","get_state"].every(k => typeof ns[k] === "function");
-      if (hasAll) return ns;
+  async function ensureClient(){
+    if (state.supa) return state.supa;
+    if (!window.supabase || !window.supabase.createClient){
+      throw new Error("[MS] Supabase UMD not loaded before app.js");
     }
-    // Fall back to global functions if they exist
-    const fns = ["create_game","join_game_guest","start_game","next_question","end_game_and_analyze","entitlement_check","get_state"];
-    const globals = {};
-    let ok = true;
-    for (const n of fns){
-      const fn = window[n];
-      if (typeof fn !== "function"){ ok=false; break; }
-      globals[n] = fn;
-    }
-    return ok ? globals : null;
+    let url = "", key = "";
+    // fetch /config first (your original code path)
+    try{
+      const res = await fetch(FUNCTIONS_BASE + "/config");
+      if (res.ok){
+        const json = await res.json();
+        url = json.supabase_url || url;
+        key = json.supabase_anon_key || key;
+      }
+    }catch(e){ /* ignore and fall back */ }
+    // fallback to config.js values (exact field names from your bundle)
+    url = url || CONFIG.FALLBACK_SUPABASE_URL || CONFIG.SUPABASE_URL || window.SUPABASE_URL || window.__SUPABASE_URL || "";
+    key = key || CONFIG.FALLBACK_SUPABASE_ANON_KEY || CONFIG.SUPABASE_ANON_KEY || window.SUPABASE_ANON_KEY || window.__SUPABASE_KEY || "";
+    state.supa = window.supabase.createClient(url, key);
+    return state.supa;
   }
 
-  // ---------- helper to mirror your payload shapes ----------
+  async function refreshSession(){
+    const supa = await ensureClient();
+    const { data } = await supa.auth.getSession();
+    state.session = data?.session || null;
+    state.user = state.session?.user || null;
+    return state.session;
+  }
+
+  function authHeader(){
+    const token = state.session?.access_token || "";
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
+  // ================== storage helpers (preserve original keys) ==================
+  const storage = {
+    set(k,v,remember=false){ (remember?localStorage:sessionStorage).setItem(k, JSON.stringify(v)); },
+    get(k){ try{ const v=localStorage.getItem(k) ?? sessionStorage.getItem(k); return v?JSON.parse(v):null; }catch{ return null; } },
+    del(k){ localStorage.removeItem(k); sessionStorage.removeItem(k); }
+  };
+
   function storedRoom(){
     try{ return JSON.parse(localStorage.getItem("active_room") || sessionStorage.getItem("active_room") || "null") || {}; }catch{return {}}
   }
@@ -57,80 +82,149 @@
     const ar = storedRoom();
     return ar.game_code || ar.code || ar.id || ar.room_id || ar.roomId || ar.game_id || ar.gameId || null;
   }
-  async function aliasPayload(extra, { requireGame=true } = {}){
-    const session = await getSession();
-    const host_user_id = session?.user?.id || null;
-    const incoming = extra?.game_code || extra?.code || extra?.id || extra?.room_id || extra?.roomId || extra?.game_id || extra?.gameId || null;
-    const code = resolveCode(incoming);
-    if (requireGame && !code) throw new Error("Missing game id");
-    const p = {
-      ...(requireGame ? {
-        game_code: code, code, id: code, room_id: code, roomId: code, game_id: code, gameId: code
-      } : {}),
-      host_user_id,
-      ...extra
-    };
-    return p;
+
+  function pidKey(code){ return `ms_pid_${code}`; }
+
+  // ================== API calling (mirror endpoints & bodies) ==================
+  async function jpost(path, bodyObj, opts={}){
+    await refreshSession();
+    const res = await fetch(`${FUNCTIONS_BASE}/${path}`, {
+      method: "POST",
+      headers: { "Content-Type":"application/json", ...authHeader(), ...(opts.headers||{}) },
+      body: bodyObj ? JSON.stringify(bodyObj) : undefined
+    });
+    const text = await res.text();
+    let data = null; try{ data = text?JSON.parse(text):null; }catch{}
+    if (!res.ok){
+      const msg = (data && (data.message||data.error)) || text || "Request failed";
+      const err = new Error(msg); err.status=res.status; err.data=data; throw err;
+    }
+    return data;
+  }
+  async function jget(pathWithQuery){
+    await refreshSession();
+    const res = await fetch(`${FUNCTIONS_BASE}/${pathWithQuery}`, { headers: { ...authHeader() } });
+    const text = await res.text();
+    let data = null; try{ data = text?JSON.parse(text):null; }catch{}
+    if (!res.ok){
+      const msg = (data && (data.message||data.error)) || text || "Request failed";
+      const err = new Error(msg); err.status=res.status; err.data=data; throw err;
+    }
+    return data;
   }
 
-  // ---------- supabase.functions.invoke fallback (auth header attached) ----------
-  async function invokeSupabase(name, body){
-    const sb = await ensureSupabase();
-    const { data, error } = await sb.functions.invoke(name, { body });
-    if (error) { const e = new Error(error.message||"Request failed"); e.status = error.status || undefined; throw e; }
-    return data || {};
-  }
-
-  // ---------- Unified API that prefers YOUR client ----------
-  const Legacy = detectLegacy();
   const API = {
-    // create_game: **DO NOT** require code; pass host_user_id like your client
-    createGame: async (opts) => {
-      const payload = await aliasPayload(opts||{}, { requireGame:false });
-      if (Legacy) return Legacy.create_game(payload);
-      return invokeSupabase("create_game", payload);
+    // Exactly: POST /create_game (no body)
+    async create_game(){ return jpost("create_game", null); },
+    // Exactly: GET /get_state?code=<code>
+    async get_state(p){
+      const code = resolveCode(p?.code);
+      if (!code) throw new Error("Missing game id");
+      return jget(`get_state?code=${encodeURIComponent(code)}`);
     },
-    joinGuest: async (p) => {
-      const payload = await aliasPayload(p);
-      if (Legacy) return Legacy.join_game_guest(payload);
-      return invokeSupabase("join_game_guest", payload);
+    // Exactly: POST /join_game_guest with { code, participant_id?, nickname? }
+    async join_game_guest(p){
+      const code = resolveCode(p?.code);
+      const nickname = p?.nickname || p?.name || "";
+      if (!code) throw new Error("Missing game id");
+      const existingPid = localStorage.getItem(pidKey(code));
+      const body = { code };
+      if (existingPid) body.participant_id = JSON.parse(existingPid);
+      if (nickname) body.nickname = nickname;
+      const data = await jpost("join_game_guest", body);
+      if (data && (data.participant_id || data.player_id)){
+        const pid = data.participant_id || data.player_id;
+        localStorage.setItem(pidKey(code), JSON.stringify(pid));
+        localStorage.setItem("player_id", JSON.stringify(pid));
+      }
+      const roomId = data?.room_id || data?.id || code;
+      localStorage.setItem("active_room", JSON.stringify({ ...(storedRoom()||{}), code, game_code: code, id: roomId }));
+      return data;
     },
-    startGame: async (p) => {
-      const payload = await aliasPayload(p);
-      if (Legacy) return Legacy.start_game(payload);
-      return invokeSupabase("start_game", payload);
+    // Exactly: POST /start_game with { gameId }
+    async start_game(p){
+      const code = resolveCode(p?.gameId || p?.code);
+      if (!code) throw new Error("Missing game id");
+      return jpost("start_game", { gameId: code });
     },
-    nextQuestion: async (p) => {
-      const payload = await aliasPayload(p);
-      if (Legacy) return Legacy.next_question(payload);
-      return invokeSupabase("next_question", payload);
+    // Exactly: POST /next_question with { gameId } (tolerate empty)
+    async next_question(p){
+      const code = resolveCode(p?.gameId || p?.code);
+      if (!code) throw new Error("Missing game id");
+      try{ return await jpost("next_question", { gameId: code }); }
+      catch(e){ if (e.status===400 || e.status===422) throw e; return jpost("next_question", null); }
     },
-    endAnalyze: async (p) => {
-      const payload = await aliasPayload(p);
-      if (Legacy) return Legacy.end_game_and_analyze(payload);
-      return invokeSupabase("end_game_and_analyze", payload);
+    // Exactly: POST /end_game_and_analyze with { gameId }
+    async end_game_and_analyze(p){
+      const code = resolveCode(p?.gameId || p?.code);
+      if (!code) throw new Error("Missing game id");
+      return jpost("end_game_and_analyze", { gameId: code });
     },
-    entitlementCheck: async (p) => {
-      const payload = await aliasPayload(p);
-      if (Legacy) return Legacy.entitlement_check(payload);
-      return invokeSupabase("entitlement_check", payload);
+    // Heartbeats
+    async heartbeat(p){
+      const code = resolveCode(p?.gameId || p?.code);
+      if (!code) throw new Error("Missing game id");
+      return jpost("heartbeat", { gameId: code });
     },
-    getState: async (p) => {
-      const payload = await aliasPayload(p);
-      if (Legacy) return Legacy.get_state(payload);
-      // fallback
-      return invokeSupabase("get_state", payload);
+    async participant_heartbeat(p){
+      const code = resolveCode(p?.gameId || p?.code);
+      if (!code) throw new Error("Missing game id");
+      const pid = JSON.parse(localStorage.getItem(pidKey(code)) || "null");
+      return jpost("participant_heartbeat", { gameId: code, participant_id: pid });
+    },
+    // Submit answer — mirrors your original payload
+    async submit_answer(p){
+      const code = resolveCode(p?.gameId || p?.code);
+      if (!code) throw new Error("Missing game id");
+      const pid = JSON.parse(localStorage.getItem(pidKey(code)) || "null");
+      const body = {
+        game_id: code,
+        question_id: p?.question_id || p?.qid || null,
+        text: p?.text || p?.answer || "",
+        temp_player_id: pid,
+        participant_id: pid,
+        name: p?.name || p?.nickname || undefined
+      };
+      return jpost("submit_answer", body);
     }
   };
 
-  // ---------- storage helpers ----------
-  const storage = {
-    set(k,v,remember=false){ (remember?localStorage:sessionStorage).setItem(k, JSON.stringify(v)); },
-    get(k){ try{ const v=localStorage.getItem(k) ?? sessionStorage.getItem(k); return v?JSON.parse(v):null; }catch{ return null; } },
-    del(k){ localStorage.removeItem(k); sessionStorage.removeItem(k); }
-  };
+  // ================== Header ==================
+  async function renderHeader(){
+    const app=document.getElementById("app");
+    const headerHTML = `
+      <div class="header">
+        <a class="brand" href="#/"><img src="./assets/logo.png" alt="logo"/><span>MatchSqr</span></a>
+        <div class="right" id="hdrRight">
+          <a class="btn-login" href="#/login">Login</a>
+          <a class="btn-help" href="#/help">?</a>
+        </div>
+      </div>`;
+    app.innerHTML = headerHTML + app.innerHTML;
 
-  // ---------- router ----------
+    await refreshSession();
+    if (state.session){
+      const name = state.user?.user_metadata?.name || (state.user?.email? state.user.email.split("@")[0] : "Account");
+      const right = $("#hdrRight");
+      if (right){
+        right.innerHTML = `
+          <a class="avatar-link" href="#/account" title="${name}"><img class="avatar" src="./assets/profile.png" alt="profile"/></a>
+          <a class="btn-help" href="#/help">?</a>`;
+      }
+    }
+  }
+
+  function ensureDebugTray(){
+    const app = document.getElementById("app");
+    if (!document.getElementById("debug-tray")){
+      app.insertAdjacentHTML("beforeend", `<div class="debug-tray" id="debug-tray"><pre id="debug-pre"></pre></div>`);
+    }
+    const q = new URLSearchParams((location.hash.split("?")[1])||"");
+    if (q.get("debug")==="1") document.getElementById("debug-tray").style.display="block";
+    setOfflineBanner(!navigator.onLine);
+  }
+
+  // ================== Router ==================
   const routes={};
   function route(p,h){ routes[p]=h; }
   function parseHash(){ const h=location.hash||"#/"; const [p,q]=h.split("?"); return { path:p, query:Object.fromEntries(new URLSearchParams(q)) }; }
@@ -143,32 +237,7 @@
   }
   addEventListener("hashchange", navigate);
 
-  // ---------- header ----------
-  async function renderHeader(){
-    const session = await getSession();
-    const isAuthed = !!session;
-    const name = isAuthed ? await getProfileName() : null;
-    const app=document.getElementById("app");
-    const headerHTML = `
-      <div class="header">
-        <a class="brand" href="#/"><img src="./assets/logo.png" alt="logo"/><span>MatchSqr</span></a>
-        <div class="right">
-          ${isAuthed?`<a class="avatar-link" href="#/account" title="${name||"Account"}"><img class="avatar" src="./assets/profile.png" alt="profile"/></a>`:`<a class="btn-login" href="#/login">Login</a>`}
-          <a class="btn-help" href="#/help">?</a>
-        </div>
-      </div>`;
-    app.innerHTML = headerHTML + app.innerHTML;
-  }
-  function ensureDebugTray(){
-    const app = document.getElementById("app");
-    if (!document.getElementById("debug-tray")){
-      app.insertAdjacentHTML("beforeend", `<div class="debug-tray" id="debug-tray"><pre id="debug-pre"></pre></div>`);
-    }
-    if (parseHash().query.debug==="1") document.getElementById("debug-tray").style.display="block";
-    setOfflineBanner(!navigator.onLine);
-  }
-
-  // ---------- pages ----------
+  // ================== Pages ==================
   const pages={};
 
   pages.home=async()=>{
@@ -213,8 +282,8 @@
     await renderHeader(); ensureDebugTray();
     $("#loginBtn").onclick=async()=>{
       try{
-        const sb=await ensureSupabase();
-        const { error } = await sb.auth.signInWithPassword({ email:$("#email").value.trim(), password:$("#password").value });
+        const supa = await ensureClient();
+        const { error } = await supa.auth.signInWithPassword({ email:$("#email").value.trim(), password:$("#password").value });
         if (error) throw error;
         const remember = !!$("#remember").checked;
         storage.set("remember_me", remember, remember);
@@ -248,8 +317,9 @@
     $("#registerBtn").onclick=async()=>{
       if (!$("#consent").checked) return toast("Please accept Terms and Privacy");
       try{
-        const sb=await ensureSupabase();
-        const { error } = await sb.auth.signUp({ email:$("#email").value.trim(), password:$("#password").value, options:{ data:{ name:$("#name").value.trim(), dob:$("#dob").value, gender:$("#gender").value } } });
+        const supa = await ensureClient();
+        const payload={ name:$("#name").value.trim(), dob:$("#dob").value, gender:$("#gender").value, email:$("#email").value.trim(), password:$("#password").value };
+        const { error } = await supa.auth.signUp({ email:payload.email, password:payload.password, options:{ data:{ name:payload.name, dob:payload.dob, gender:payload.gender } } });
         if (error) throw error;
         toast("Check your email to verify"); location.hash="#/login";
       }catch(e){ toast(e.message||"Registration failed"); }
@@ -271,8 +341,8 @@
     await renderHeader(); ensureDebugTray();
     $("#forgotBtn").onclick=async()=>{
       try{
-        const sb=await ensureSupabase();
-        const { error } = await sb.auth.resetPasswordForEmail($("#email").value.trim(), { redirectTo: location.origin + "/#/reset" });
+        const supa = await ensureClient();
+        const { error } = await supa.auth.resetPasswordForEmail($("#email").value.trim(), { redirectTo: location.origin + "/#/reset" });
         if (error) throw error;
         toast("Reset email sent");
       }catch(e){ toast(e.message||"Failed to send"); }
@@ -294,8 +364,8 @@
     await renderHeader(); ensureDebugTray();
     $("#resetBtn").onclick=async()=>{
       try{
-        const sb=await ensureSupabase();
-        const { error } = await sb.auth.updateUser({ password: $("#password").value });
+        const supa = await ensureClient();
+        const { error } = await supa.auth.updateUser({ password: $("#password").value });
         if (error) throw error;
         toast("Password updated"); location.hash="#/login";
       }catch(e){ toast(e.message||"Failed to update"); }
@@ -304,7 +374,8 @@
 
   pages.account=async()=>{
     const app=document.getElementById("app");
-    const name = await getProfileName();
+    await refreshSession();
+    const name = state.user?.user_metadata?.name || (state.user?.email? state.user.email.split("@")[0] : "Account");
     app.innerHTML = `
       <div class="offline-banner">You are offline. Trying to reconnect…</div>
       <div class="container">
@@ -317,13 +388,13 @@
       </div>
     `;
     await renderHeader(); ensureDebugTray();
-    $("#logoutBtn").onclick=async()=>{ await signOut(); location.hash="#/"; };
+    $("#logoutBtn").onclick=async()=>{ const supa=await ensureClient(); await supa.auth.signOut(); location.hash="#/"; };
   };
 
-  // ---------- Host ----------
+  // ============ Host ============
   pages.host=async()=>{
-    const session = await getSession();
-    if (!session){
+    await refreshSession();
+    if (!state.session){
       sessionStorage.setItem("__redirect_after_login", "#/host");
       location.hash = "#/login"; return;
     }
@@ -359,12 +430,13 @@
         </div>`;
       $("#createGame").onclick=async()=>{
         try{
-          const data=await API.createGame({});
-          const code = data.game_code || data.code || data.id || data.room_id || data.roomId;
-          if (code) localStorage.setItem("active_room", JSON.stringify({ ...data, game_code: code, code }));
+          const data = await API.create_game();
+          const code = data?.game_code || data?.code || data?.id || data?.room_id || data?.roomId;
+          if (code){
+            localStorage.setItem("active_room", JSON.stringify({ ...data, game_code: code, code }));
+          }
           location.hash="#/host";
         }catch(e){
-          // if backend signals existing room (409) and returns info in body, store & continue
           if (e.status===409 && e.data){
             const code = e.data.game_code || e.data.code || e.data.id || e.data.room_id || e.data.roomId;
             if (code){
@@ -379,7 +451,7 @@
     }
   };
 
-  // ---------- Join ----------
+  // ============ Join ============
   pages.join=async()=>{
     const app=document.getElementById("app");
     app.innerHTML = `
@@ -402,53 +474,50 @@
       if (!code) return toast("Enter game code");
       if (!nickname) return toast("Enter nickname");
       try{
-        const data=await API.joinGuest({ code, nickname });
-        const stored = { ...(storedRoom()||{}), code, game_code: code, id: data?.room_id || data?.id || code };
-        localStorage.setItem("active_room", JSON.stringify(stored));
-        localStorage.setItem("player_id", JSON.stringify(data.player_id || data.id || null));
+        await API.join_game_guest({ code, nickname });
         location.hash="#/game/"+code;
       }catch(e){ toast(e.message||"Failed to join"); debug({ join_error:e }); }
     };
   };
 
-  // ---------- Game Room ----------
-  pages.game=async(code)=>{
-    const app=document.getElementById("app");
-    app.innerHTML = `
-      <div class="offline-banner">You are offline. Trying to reconnect…</div>
-      <div class="room-wrap">
-        <div class="card main-card" id="mainCard"></div>
-        <div class="controls-row" id="controlsRow"></div>
-      </div>`;
-    await renderHeader(); ensureDebugTray();
-    Game.mount(code);
-  };
-
+  // ============ Game Room ============
   const Game={
-    code:null, poller:null, tick:null,
+    code:null, poll:null, tick:null,
     state:{ phase:"lobby", ends_at:null, players:[], active_player_id:null, question:null, host_user_id:null, min_players_required:2 },
     async mount(code){
       this.code=code;
       await this.refresh();
       this.startPolling();
+      this.startHeartbeats();
       this.startTick();
     },
-    startPolling(){ if(this.poller) clearInterval(this.poller); this.poller=setInterval(()=>this.refresh(), 3000); },
+    startPolling(){ if(this.poll) clearInterval(this.poll); this.poll=setInterval(()=>this.refresh(), 3000); },
     startTick(){ if(this.tick) clearInterval(this.tick); this.tick=setInterval(()=>this.renderTimer(), 1000); },
-    stop(){ if(this.poller) clearInterval(this.poller); if(this.tick) clearInterval(this.tick); },
+    async startHeartbeats(){
+      await refreshSession();
+      // Host heartbeat
+      const isHost = (state.user?.id && state.user.id === this.state.host_user_id);
+      if (isHost){
+        if (state.hb) clearInterval(state.hb);
+        state.hb = setInterval(()=>API.heartbeat({ gameId:this.code }).catch(()=>{}), 10000);
+      }else{
+        // Participant heartbeat
+        if (state.ghb) clearInterval(state.ghb);
+        state.ghb = setInterval(()=>API.participant_heartbeat({ gameId:this.code }).catch(()=>{}), 10000);
+      }
+    },
+    stop(){ if(this.poll) clearInterval(this.poll); if(this.tick) clearInterval(this.tick); if(state.hb) clearInterval(state.hb); if(state.ghb) clearInterval(state.ghb); },
     async refresh(){
       try{
-        const data=await API.getState({ code:this.code });
+        const data=await API.get_state({ code:this.code });
         this.state = Object.assign({}, this.state, data);
+        state.minPlayersRequired = this.state.min_players_required || state.minPlayersRequired || 2;
         this.render();
       }catch(e){ debug({ refresh_error:e.message }); }
     },
-    meIsHost(session, s){
-      if (s?.me_is_host != null) return !!s.me_is_host;
-      if (!session || !s?.host_user_id) return false;
-      return session.user?.id === s.host_user_id;
+    isActivePlayer(){
+      try{ const me=JSON.parse(localStorage.getItem("player_id")||sessionStorage.getItem("player_id")||"null"); return me && me===this.state.active_player_id; }catch{return false;}
     },
-    isActivePlayer(){ try{ const me=JSON.parse(localStorage.getItem("player_id")||sessionStorage.getItem("player_id")||"null"); return me && me===this.state.active_player_id; }catch{return false;} },
     remainingSeconds(){
       if (!this.state.ends_at) return null;
       const diff = Math.floor((new Date(this.state.ends_at).getTime() - Date.now())/1000);
@@ -467,36 +536,29 @@
     },
     async render(){
       const s=this.state;
-      const main=$("#mainCard"); const controls=$("#controlsRow");
-      main.innerHTML=""; controls.innerHTML="";
-      const session = await getSession();
-      const isHost = this.meIsHost(session, s);
-      const minPlayers = s.min_players_required || 2;
+      const appMain=$("#mainCard"); const controls=$("#controlsRow");
+      appMain.innerHTML=""; controls.innerHTML="";
+      await refreshSession();
+      const isHost = !!(state.user?.id && s.host_user_id && state.user.id === s.host_user_id);
+      const minPlayers = s.min_players_required || state.minPlayersRequired || 2;
       const enoughPlayers = Array.isArray(s.players) ? s.players.length >= minPlayers : false;
 
       if (s.phase==="lobby"){
         const wrap = document.createElement("div");
         wrap.style.cssText="display:flex;flex-direction:column;align-items:center;gap:8px;";
-
         const startBtn = document.createElement("button");
-        startBtn.className="start-round";
-        startBtn.id="startGame";
-        startBtn.textContent="Start";
+        startBtn.className="start-round"; startBtn.id="startGame"; startBtn.textContent="Start";
         startBtn.disabled = !(isHost && enoughPlayers);
         startBtn.onclick=async()=>{
           if (!isHost) return toast("Only host can start");
           if (!enoughPlayers) return toast(`Need at least ${minPlayers} players`);
-          try{ await API.startGame({ code:this.code }); await this.refresh(); }
+          try{ await API.start_game({ gameId:this.code }); await this.refresh(); }
           catch(e){ toast(e.message||"Start failed"); debug({ start_error:e }); }
         };
-
         const help = document.createElement("div");
         help.className="help";
         help.textContent = !isHost ? "Waiting for the host…" : (!enoughPlayers ? `Need at least ${minPlayers} players to start.` : "Ready to start.");
-
-        wrap.appendChild(startBtn);
-        wrap.appendChild(help);
-        main.appendChild(wrap);
+        wrap.appendChild(startBtn); wrap.appendChild(help); appMain.appendChild(wrap);
         return;
       }
 
@@ -504,12 +566,12 @@
         const hdr = document.createElement("div");
         hdr.style.cssText = "position:absolute; top:16px; right:16px; font-weight:800;";
         hdr.innerHTML = `⏱ <span id="roomTimer">--:--</span>`;
-        main.appendChild(hdr);
+        appMain.appendChild(hdr);
 
         const q = document.createElement("div");
         q.style.cssText = "text-align:center; max-width:640px; padding:8px";
         q.innerHTML = `<h3 style="margin:0 0 8px 0;">${s.question?.title || "Question"}</h3><p class="help" style="margin:0;">${s.question?.text || ""}</p>`;
-        main.appendChild(q);
+        appMain.appendChild(q);
 
         const km = document.createElement("div");
         km.className="kb-mic-row";
@@ -517,22 +579,21 @@
           <button id="micBtn" class="kb-mic-btn" ${this.isActivePlayer()?"":"disabled"}><img src="./assets/mic.png" alt="mic"/> <span>Mic</span></button>
           <button id="kbBtn" class="kb-mic-btn" ${this.isActivePlayer()?"":"disabled"}><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>
         `;
-        main.appendChild(km);
+        appMain.appendChild(km);
 
         const ans = document.createElement("div");
-        ans.className="answer-row hidden";
-        ans.id="answerRow";
+        ans.className="answer-row hidden"; ans.id="answerRow";
         ans.innerHTML = `
           <input id="answerInput" class="input" placeholder="Type your answer..." ${this.isActivePlayer()?"":"disabled"}>
           <button id="submitBtn" class="btn" ${this.isActivePlayer()?"":"disabled"}>Submit</button>
         `;
-        main.appendChild(ans);
+        appMain.appendChild(ans);
         $("#micBtn").onclick=()=>{ $("#answerRow").classList.remove("hidden"); };
         $("#kbBtn").onclick=()=>{ $("#answerRow").classList.remove("hidden"); };
         $("#submitBtn").onclick=async()=>{
           if (!this.isActivePlayer()) return;
           const text=$("#answerInput").value.trim(); if (!text) return;
-          try{ await API.nextQuestion({ code:this.code, answer:text }); $("#answerInput").value=""; await this.refresh(); }catch(e){ toast(e.message||"Submit failed"); debug({ submit_error:e }); }
+          try{ await API.submit_answer({ gameId:this.code, text }); $("#answerInput").value=""; await this.refresh(); }catch(e){ toast(e.message||"Submit failed"); debug({ submit_error:e }); }
         };
 
         controls.innerHTML = `
@@ -540,15 +601,15 @@
           <button id="extendBtn" class="btn secondary" disabled>Extend</button>
           <button id="endAnalyze" class="btn danger" ${isHost?"":"disabled"}>End and analyze</button>
         `;
-        $("#nextCard").onclick=async()=>{ if(!isHost) return; try{ await API.nextQuestion({ code:this.code }); await this.refresh(); }catch(e){ toast(e.message||"Next failed"); debug({ next_error:e }); } };
+        $("#nextCard").onclick=async()=>{ if(!isHost) return; try{ await API.next_question({ gameId:this.code }); await this.refresh(); }catch(e){ toast(e.message||"Next failed"); debug({ next_error:e }); } };
         $("#extendBtn").onclick=()=>{ location.hash="#/billing"; };
-        $("#endAnalyze").onclick=async()=>{ if(!isHost) return; try{ await API.endAnalyze({ code:this.code }); await this.refresh(); }catch(e){ toast(e.message||"End failed"); debug({ end_error:e }); } };
+        $("#endAnalyze").onclick=async()=>{ if(!isHost) return; try{ await API.end_game_and_analyze({ gameId:this.code }); await this.refresh(); }catch(e){ toast(e.message||"End failed"); debug({ end_error:e }); } };
         this.renderTimer();
         return;
       }
 
       if (s.phase==="ended"){
-        main.innerHTML = `
+        appMain.innerHTML = `
           <div style="text-align:center; max-width:640px;">
             <h3>Summary</h3>
             <p class="help">A quick view of how the game went. Full report can be emailed.</p>
@@ -565,7 +626,20 @@
     }
   };
 
-  // ---------- Billing (simulated) ----------
+  pages.game=async(code)=>{
+    const app=document.getElementById("app");
+    state.code = code;
+    app.innerHTML = `
+      <div class="offline-banner">You are offline. Trying to reconnect…</div>
+      <div class="room-wrap">
+        <div class="card main-card" id="mainCard"></div>
+        <div class="controls-row" id="controlsRow"></div>
+      </div>`;
+    await renderHeader(); ensureDebugTray();
+    Game.mount(code);
+  };
+
+  // ============ Billing (simulated) ============
   pages.billing=async()=>{
     const app=document.getElementById("app");
     app.innerHTML = `
@@ -587,12 +661,12 @@
     $("#sub").onclick=()=>toast("Simulated: subscription active");
   };
 
-  // ---------- static pages ----------
+  // ============ Static pages ============
   pages.terms=async()=>{ const app=document.getElementById("app"); app.innerHTML = `<div class="container"><div class="card" style="margin:28px auto;max-width:840px;"><h2>Terms</h2><p class="help">…</p></div></div>`; await renderHeader(); ensureDebugTray(); };
   pages.privacy=async()=>{ const app=document.getElementById("app"); app.innerHTML = `<div class="container"><div class="card" style="margin:28px auto;max-width:840px;"><h2>Privacy</h2><p class="help">…</p></div></div>`; await renderHeader(); ensureDebugTray(); };
   pages.help=async()=>{ const app=document.getElementById("app"); app.innerHTML = `<div class="container"><div class="card" style="margin:28px auto;max-width:720px;"><h2>Help</h2><p class="help">…</p></div></div>`; await renderHeader(); ensureDebugTray(); };
 
-  // ---------- routes & boot ----------
+  // ============ Routes & boot ============
   route("#/", pages.home);
   route("#/host", pages.host);
   route("#/join", pages.join);
