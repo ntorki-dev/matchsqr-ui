@@ -1,11 +1,6 @@
 /*! MatchSqr New UI v3.0 — FULL FILE (replaces /newui/app.js)
-    Scope: restore original host/room behavior with new UI only.
-    - Start/Next/End always send numeric gameId (not code)
-    - Host lobby: after create => Code + Copy + Share + Go to room (+ participants). No extra Create button.
-    - Guest lobby: participants + “Waiting for the host to start” only.
-    - Join maps nickname -> {name,nickname}; preserves participant_id if present.
-    - Answer area: mic/keyboard reveal; draft preserved (no flicker).
-    - Derive and persist host role from backend host_user_id so Start always shows for host.
+    Scope: restore original host/room behavior with the new UI.
+    This build adds **robust host detection** so Start always appears for the real host in Lobby.
 */
 (function(){
   // ---------- tiny utils ----------
@@ -306,13 +301,8 @@
       const gid = state?.game_id || state?.id || null;
       if (gid) try{ localStorage.setItem(msGidKey(code), JSON.stringify(gid)); }catch{}
 
-      // persist role=host if backend says I'm the host
-      try{
-        const sess = await getSession();
-        const meId = sess?.user?.id || null;
-        const hostId = state?.host_user_id || state?.hostId || null;
-        if (meId && hostId && String(meId)===String(hostId)){ setRole(code, "host"); }
-      }catch{}
+      // Robust host inference
+      await inferAndPersistHostRole(code, state);
 
       // Host lobby UI: Code + Copy + Share + Go to room + Participants
       el.innerHTML = `
@@ -339,7 +329,7 @@
         const gid  = data?.id || data?.game_id;
         if (!code || !gid){ debug({ create_game_unexpected_response:data }); toast("Created, but missing code/id"); return; }
         saveActiveRoom({ code, id: gid, participant_id: data?.participant_id });
-        setRole(code, "host");
+        setRole(code, "host"); // ensure
         await renderExisting(code);
       }catch(e){
         toast(e.message||"Failed to create"); debug({ create_game_error:e });
@@ -412,16 +402,7 @@
     async refresh(){
       try{
         const out=await API.get_state({ code:this.code });
-
-        // If I am the backend-declared host, persist role=host
-        try {
-          const sess = await getSession();
-          const meId = sess?.user?.id || null;
-          const hostId = out?.host_user_id || out?.hostId || null;
-          if (meId && hostId && String(meId) === String(hostId)) {
-            setRole(this.code, "host");
-          }
-        } catch {}
+        await inferAndPersistHostRole(this.code, out);
 
         const status = out?.status || out?.phase || "lobby";
         const endsAt = out?.ends_at || out?.endsAt || null;
@@ -559,6 +540,30 @@
       }
     }
   };
+
+  // ---------- Robust host inference (shared) ----------
+  async function inferAndPersistHostRole(code, state){
+    try{
+      if (!code || !state) return;
+      const sess = await getSession();
+      const meId = sess?.user?.id || null;
+      // Direct flags
+      if (state.is_host === true) { setRole(code,"host"); return; }
+      // Known host fields
+      const hostId = state?.host_user_id || state?.hostId || state?.host?.id || null;
+      if (meId && hostId && String(meId)===String(hostId)) { setRole(code,"host"); return; }
+      // Try participants data
+      const ppl = Array.isArray(state.participants)? state.participants : (Array.isArray(state.players)? state.players : []);
+      if (ppl && ppl.length){
+        for (const p of ppl){
+          const isHost = p?.is_host || p?.role==="host";
+          const u1 = p?.user_id || p?.auth_user_id || p?.owner_id || p?.uid;
+          if (isHost && meId && u1 && String(meId)===String(u1)){ setRole(code,"host"); return; }
+        }
+      }
+      // If nothing matched and I created the game in this session, we already set role=host in create flow.
+    }catch{}
+  }
 
   pages.game=async(code)=>{
     const app=document.getElementById("app");
