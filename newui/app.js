@@ -1,76 +1,33 @@
+/*! MatchSqr New UI v3.0 — FULL FILE (replaces /newui/app.js)
+    Scope: restore original host/room behavior with new UI only.
+    - Start/Next/End always send numeric gameId (not code)
+    - Host lobby: after create => Code + Copy + Share + Go to room (+ participants). No extra Create button.
+    - Guest lobby: participants + “Waiting for the host to start” only.
+    - Join maps nickname -> {name,nickname}; preserves participant_id if present.
+    - Answer area: mic/keyboard reveal; draft preserved (no flicker).
+*/
 (function(){
-
-  // === Non-conflicting UI version ===
-  try{
-    if (!window.__MS_UI_VERSION) {
-      window.__MS_UI_VERSION = 'v48.3.2';
-      var _h = document.getElementById('hostLog');
-      if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
-
-      // v36: stamp gid/qid on every /get_state response (no code dependency)
-      (function(){
-        try{
-          if (window.__msStampFetch) return; window.__msStampFetch = true;
-          var OF = window.fetch;
-          window.fetch = async function(resource, init){
-            var res = await OF(resource, init);
-            try{
-              var url = (typeof resource === 'string') ? resource : (resource && resource.url) || '';
-              if (url.indexOf('/get_state') !== -1){
-                var ct = res.headers && res.headers.get('content-type') || '';
-                if (ct.indexOf('application/json') !== -1){
-                  var data = await res.clone().json().catch(function(){ return null; });
-                  if (data && typeof data === 'object'){
-                    try{ window.__ms_ctx = { gid: data.id || null, qid: (data.question && data.question.id) || null, host_user_id: data.host_user_id || null, participants: Array.isArray(data.participants)? data.participants : [] }; }catch(_){}
-                    var gid = data.id || null; var qid = (data.question && data.question.id) || null;
-                    var stamp = function(el){
-                      if (!el) return;
-                      try{ if (gid) el.setAttribute('data-gid', String(gid)); }catch(_){}
-                      try{ if (qid) el.setAttribute('data-qid', String(qid)); }catch(_){}
-                    };
-                    try{ stamp(document.getElementById('msAnsHost')); }catch(_){}
-                    try{ stamp(document.getElementById('msAnsGuest')); }catch(_){}
-                    try{ if (typeof els !== 'undefined'){ stamp(els.questionText); stamp(els.gQuestionText); } }catch(_){}
-                  }
-                }
-              }
-            }catch(_e){}
-            return res;
-          };
-        }catch(_e){}
-      })();
-      var _j = document.getElementById('joinLog');
-      if (_j) _j.textContent = (_j.textContent? _j.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
-    }
-  }catch(e){}
-
+  // ---------- tiny utils ----------
   const $ = (sel, root=document) => root.querySelector(sel);
   function toast(msg, ms=2200){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), ms); }
-  function debug(obj){ const pre=$("#debug-pre"); if(!pre) return; const s=pre.textContent + "\n" + JSON.stringify(obj,null,2); pre.textContent=s.slice(-30000); }
+  function debug(obj){ try{ const pre=$("#debug-pre"); if(!pre) return; const s=pre.textContent + "\n" + JSON.stringify(obj,null,2); pre.textContent=s.slice(-30000); }catch{} }
   function setOfflineBanner(show){ const b=$(".offline-banner"); if(!b) return; b.classList.toggle("show", !!show); }
   addEventListener("offline",()=>setOfflineBanner(true));
   addEventListener("online",()=>setOfflineBanner(false));
 
+  // ---------- config / client ----------
   const CONFIG = window.CONFIG || {};
   const FUNCTIONS_BASE = (CONFIG.FUNCTIONS_BASE || "").replace(/\/+$/,"");
 
-  // ---------- Supabase client (singleton: reuse else create once) ----------
   async function ensureClient(){
     if (window.__MS_CLIENT && window.__MS_CLIENT.auth && window.__MS_CLIENT.functions) return window.__MS_CLIENT;
-    if (window.supabaseClient && window.supabaseClient.auth && window.supabaseClient.functions) { window.__MS_CLIENT = window.supabaseClient; return window.__MS_CLIENT; }
+    if (window.supabaseClient && window.supabaseClient.auth && window.supabaseClient.functions){ window.__MS_CLIENT = window.supabaseClient; return window.__MS_CLIENT; }
     if (window.supabase && window.supabase.auth && window.supabase.functions && window.supabase.from){ window.__MS_CLIENT = window.supabase; return window.__MS_CLIENT; }
     if (!window.supabase || !window.supabase.createClient){ throw new Error("[MS] Supabase UMD not loaded before app.js"); }
     let url="", key="";
-    try{
-      const res = await fetch(FUNCTIONS_BASE + "/config");
-      if (res.ok){
-        const json = await res.json();
-        url = json.supabase_url || url;
-        key = json.supabase_anon_key || key;
-      }
-    }catch(_){}
-    url = url || CONFIG.SUPABASE_URL || CONFIG.FALLBACK_SUPABASE_URL || "";
-    key = key || CONFIG.SUPABASE_ANON_KEY || CONFIG.FALLBACK_SUPABASE_ANON_KEY || "";
+    try{ const res=await fetch(FUNCTIONS_BASE+"/config"); if(res.ok){ const j=await res.json(); url=j.supabase_url||url; key=j.supabase_anon_key||key; } }catch(_){}
+    url = url || CONFIG.SUPABASE_URL || "";
+    key = key || CONFIG.SUPABASE_ANON_KEY || "";
     if (!url || !key) throw new Error("[MS] Missing Supabase URL/Key. Ensure /config or config.js provides them.");
     const client = window.supabase.createClient(url, key, { auth: { storageKey: "ms-auth" } });
     window.__MS_CLIENT = client; window.supabaseClient = client; return client;
@@ -78,39 +35,50 @@
   async function getSession(){ const sb=await ensureClient(); const { data } = await sb.auth.getSession(); return (data&&data.session)||null; }
   function authHeader(session){ const token=session?.access_token||""; return token?{Authorization:`Bearer ${token}`}:{ }; }
 
-  // ---------- storage & helpers ----------
-  function storedRoom(){ try{ return JSON.parse(localStorage.getItem("active_room") || sessionStorage.getItem("active_room") || "null") || {}; }catch{return {}} }
+  // ---------- storage helpers ----------
+  const AR = "active_room";
+  function msPidKey(code){ return `ms_pid_${code}`; }
+  function msGidKey(code){ return `ms_gid_${code}`; }
+  function msRoleKey(code){ return `ms_role_${code}`; }
+  const draftKey = (code)=>`ms_draft_${code}`;
+
+  function storedRoom(){ try{ return JSON.parse(localStorage.getItem(AR) || sessionStorage.getItem(AR) || "null") || {}; }catch{return {};} }
   function saveActiveRoom(obj){
-    const code = obj?.game_code || obj?.code || obj?.id || obj?.room_id || obj?.roomId;
-    const toSave = { ...(storedRoom()||{}), ...obj, game_code: code, code };
-    localStorage.setItem("active_room", JSON.stringify(toSave));
+    const code = obj?.code || obj?.game_code || obj?.room_code || obj?.id;
+    const id = obj?.id || obj?.game_id || obj?.room_id;
+    const toSave = { ...(storedRoom()||{}), ...obj, code, id };
+    localStorage.setItem(AR, JSON.stringify(toSave));
+    if (code && id){ try{ localStorage.setItem(msGidKey(code), JSON.stringify(id)); }catch{} }
+    if (code && obj?.participant_id){ try{ localStorage.setItem(msPidKey(code), JSON.stringify(obj.participant_id)); }catch{} }
+  }
+  function clearRoomData(code){
+    const ar = storedRoom();
+    try{
+      if (!code || ar.code===code){ localStorage.removeItem(AR); sessionStorage.removeItem(AR); }
+      if (code){ localStorage.removeItem(msPidKey(code)); localStorage.removeItem(msGidKey(code)); localStorage.removeItem(msRoleKey(code)); localStorage.removeItem(draftKey(code)); }
+    }catch{}
   }
   function resolveCode(explicit){
     if (explicit) return explicit;
     const m = (location.hash||"").match(/^#\/game\/([^?]+)/);
     if (m) return m[1];
     const ar = storedRoom();
-    return ar.game_code || ar.code || ar.id || ar.room_id || ar.roomId || ar.game_id || ar.gameId || null;
+    return ar.code || ar.game_code || ar.room_code || null;
   }
-  const pidKey = (code)=>`ms_pid_${code}`;
-  const draftKey = (code)=>`ms_draft_${code}`;
-  function clearRoomData(code){
-    try{
-      const ar = storedRoom(); const curCode = ar && (ar.code||ar.game_code);
-      if (!code || code===curCode){ localStorage.removeItem("active_room"); sessionStorage.removeItem("active_room"); }
-      if (code){
-        localStorage.removeItem(pidKey(code));
-        localStorage.removeItem(draftKey(code));
-      }
-    }catch{}
+  function resolveGameId(explicit){
+    if (explicit) return explicit;
+    const code = resolveCode(null);
+    if (!code){ const ar=storedRoom(); return ar.id || ar.game_id || null; }
+    try{ return JSON.parse(localStorage.getItem(msGidKey(code))||"null") || storedRoom().id || storedRoom().game_id || null; }catch{return storedRoom().id||storedRoom().game_id||null;}
   }
+  function setRole(code, role){ if(code && role) try{ localStorage.setItem(msRoleKey(code), role); }catch{} }
+  function getRole(code){ try{ return localStorage.getItem(msRoleKey(code)) || ""; }catch{ return ""; } }
 
-  // ---------- HTTP helpers (Edge Functions) ----------
+  // ---------- HTTP helpers ----------
   async function jpost(path, body){
     const session = await getSession();
-    const res = await fetch(`${FUNCTIONS_BASE}/${path}`, { method:"POST", headers:{ "Content-Type":"application/json", ...authHeader(session) }, body: body ? JSON.stringify(body) : undefined });
-    const text = await res.text();
-    let json=null; try{ json=text?JSON.parse(text):null; }catch{}
+    const res = await fetch(`${FUNCTIONS_BASE}/${path}`, { method:"POST", headers:{ "Content-Type":"application/json", ...authHeader(session) }, body: body? JSON.stringify(body): undefined });
+    const text = await res.text(); let json=null; try{ json=text?JSON.parse(text):null; }catch{}
     if(!res.ok){ const e=new Error((json&&(json.message||json.error))||text||"Request failed"); e.status=res.status; e.data=json; throw e; }
     return json;
   }
@@ -122,39 +90,67 @@
     return json;
   }
 
-  // ---------- API (contracts preserved) ----------
+  // ---------- API wrappers (match Handover contracts) ----------
   const API = {
     create_game(){ return jpost("create_game", null); },
-    get_state(p){ const code=resolveCode(p?.code); if(!code) throw new Error("Missing game id"); return jget(`get_state?code=${encodeURIComponent(code)}`); },
+    get_state(p){ const code=resolveCode(p?.code); if(!code) throw new Error("Missing code"); return jget(`get_state?code=${encodeURIComponent(code)}`); },
     join_game_guest(p){
-      const code=resolveCode(p?.code); if(!code) throw new Error("Missing game id");
+      const code=resolveCode(p?.code)||p?.code; if(!code) throw new Error("Missing code");
       const nickname = p?.nickname || p?.name || "";
-      const existingPid = localStorage.getItem(pidKey(code));
-      const body = { code };
-      if (existingPid) body.participant_id = JSON.parse(existingPid);
-      if (nickname){ body.nickname = nickname; body.name = nickname; } // map to original
+      const existingPid = localStorage.getItem(msPidKey(code));
+      const body = existingPid ? { code, participant_id: JSON.parse(existingPid) } : { code };
+      if (nickname){ body.name = nickname; body.nickname = nickname; }
       return jpost("join_game_guest", body).then(data=>{
-        const pid = data?.participant_id || data?.player_id || null;
-        if (pid){ localStorage.setItem(pidKey(code), JSON.stringify(pid)); localStorage.setItem("player_id", JSON.stringify(pid)); }
-        const roomId = data?.room_id || data?.id || code;
-        saveActiveRoom({ ...data, id: roomId, code });
+        const gid = data?.game_id || null;
+        const pid = data?.participant_id || null;
+        if (gid) try{ localStorage.setItem(msGidKey(code), JSON.stringify(gid)); }catch{}
+        if (pid) try{ localStorage.setItem(msPidKey(code), JSON.stringify(pid)); }catch{}
+        saveActiveRoom({ code, id: gid, participant_id: pid });
+        if (data?.is_host) setRole(code,"host"); else setRole(code,"guest");
         return data;
       });
     },
-   start_game(){
-  const gid = resolveGameId(null);
-  if (!gid) throw new Error("Missing game id");
-  return jpost("start_game", { gameId: gid });
-},
-
+    start_game(){ const gid=resolveGameId(null); if(!gid) throw new Error("Missing game id"); return jpost("start_game", { gameId: gid }); },
     next_question(){ const gid=resolveGameId(null); if(!gid) throw new Error("Missing game id"); return jpost("next_question", { gameId: gid }); },
-end_game_and_analyze(){ const gid=resolveGameId(null); if(!gid) throw new Error("Missing game id"); return jpost("end_game_and_analyze", { gameId: gid }); },
-    heartbeat(p){ const code=resolveCode(p?.gameId||p?.code); if(!code) throw new Error("Missing game id"); return jpost("heartbeat", { gameId: code }); },
-    participant_heartbeat(p){ const code=resolveCode(p?.gameId||p?.code); if(!code) throw new Error("Missing game id"); const pid=JSON.parse(localStorage.getItem(pidKey(code))||"null"); return jpost("participant_heartbeat", { gameId: code, participant_id: pid }); },
-    submit_answer(p){ const code=resolveCode(p?.gameId||p?.code); if(!code) throw new Error("Missing game id"); const pid=JSON.parse(localStorage.getItem(pidKey(code))||"null"); return jpost("submit_answer", { game_id: code, question_id: p?.question_id||p?.qid||null, text: p?.text||p?.answer||"", temp_player_id: pid, participant_id: pid, name: p?.name||p?.nickname||undefined }); }
+    end_game_and_analyze(){ const gid=resolveGameId(null); if(!gid) throw new Error("Missing game id"); return jpost("end_game_and_analyze", { gameId: gid }); },
+    heartbeat(){ const gid=resolveGameId(null); if(!gid) return Promise.resolve({skipped:true}); return jpost("heartbeat", { gameId: gid }); },
+    participant_heartbeat(){
+      const code=resolveCode(null); const gid=resolveGameId(null);
+      if (!code || !gid) return Promise.resolve({skipped:true});
+      const pidRaw = localStorage.getItem(msPidKey(code)); if (!pidRaw) return Promise.resolve({skipped:true});
+      const pid = JSON.parse(pidRaw);
+      return jpost("participant_heartbeat", { gameId: gid, participant_id: pid });
+    },
+    submit_answer(p){
+      const code=resolveCode(null); const gid=resolveGameId(null);
+      const pidRaw = code ? localStorage.getItem(msPidKey(code)) : null;
+      const pid = pidRaw ? JSON.parse(pidRaw) : undefined;
+      const body = { game_id: gid, text: p?.text||p?.answer||"" , participant_id: pid };
+      return jpost("submit_answer", body);
+    }
   };
 
-  // ---------- Header ----------
+  // ---------- UI helpers ----------
+  async function shareRoom(code){
+    const shareUrl = location.origin + location.pathname + "#/join";
+    const text = "Join my MatchSqr game. Code: " + code;
+    try{ if (navigator.share){ await navigator.share({ title:"MatchSqr Room", text, url:shareUrl }); return; } }catch(_){}
+    try{ await navigator.clipboard.writeText(text + " " + shareUrl); toast("Invite copied"); }catch(_){ toast("Copy failed, share manually"); }
+  }
+  function participantsListHTML(ppl, curPid){
+    if (!Array.isArray(ppl) || ppl.length===0) return '<ul id="participantsList"><li class="meta">No one yet</li></ul>';
+    const li = ppl.map(p=>{
+      const pid = p?.participant_id || p?.id || "";
+      const name = p?.nickname || p?.name || "Guest";
+      const role = p?.role || "";
+      const bold = (curPid && String(curPid)===String(pid)) ? ' style="font-weight:700;"' : '';
+      const pidAttr = pid ? ` data-pid="${pid}"` : '';
+      return `<li${pidAttr}${bold}>${name}${role?` <span class="meta">(${role})</span>`:''}</li>`;
+    }).join('');
+    return `<ul id="participantsList">${li}</ul>`;
+  }
+
+  // ---------- header / shell ----------
   async function renderHeader(){
     const app=document.getElementById("app");
     const headerHTML = `
@@ -166,7 +162,6 @@ end_game_and_analyze(){ const gid=resolveGameId(null); if(!gid) throw new Error(
         </div>
       </div>`;
     app.innerHTML = headerHTML + app.innerHTML;
-
     try{
       const session = await getSession();
       const user = session?.user || null;
@@ -189,7 +184,7 @@ end_game_and_analyze(){ const gid=resolveGameId(null); if(!gid) throw new Error(
     setOfflineBanner(!navigator.onLine);
   }
 
-  // ---------- Router ----------
+  // ---------- router ----------
   const routes={};
   function route(p,h){ routes[p]=h; }
   function parseHash(){ const h=location.hash||"#/"; const [p,q]=h.split("?"); return { path:p, query:Object.fromEntries(new URLSearchParams(q)) }; }
@@ -202,7 +197,7 @@ end_game_and_analyze(){ const gid=resolveGameId(null); if(!gid) throw new Error(
   }
   addEventListener("hashchange", navigate);
 
-  // ---------- Pages ----------
+  // ---------- pages ----------
   const pages={};
 
   pages.home=async()=>{
@@ -218,8 +213,7 @@ end_game_and_analyze(){ const gid=resolveGameId(null); if(!gid) throw new Error(
           <a class="cta" href="#/join"><img src="./assets/play.png" alt="play"/> <span>Join the Game</span></a>
         </div>
       </section>
-      <a class="home-learn" href="#/terms">Learn more about MatchSqr</a>
-    `;
+      <a class="home-learn" href="#/terms">Learn more about MatchSqr</a>`;
     await renderHeader(); ensureDebugTray();
   };
 
@@ -242,8 +236,7 @@ end_game_and_analyze(){ const gid=resolveGameId(null); if(!gid) throw new Error(
             </div>
           </div>
         </div>
-      </div>
-    `;
+      </div>`;
     await renderHeader(); ensureDebugTray();
     $("#loginBtn").onclick=async()=>{
       try{
@@ -272,8 +265,7 @@ end_game_and_analyze(){ const gid=resolveGameId(null); if(!gid) throw new Error(
             <button id="logoutBtn" class="ghost">Logout</button>
           </div>
         </div>
-      </div>
-    `;
+      </div>`;
     await renderHeader(); ensureDebugTray();
     $("#logoutBtn").onclick=async()=>{ const sb=await ensureClient(); await sb.auth.signOut(); location.hash="#/"; };
   };
@@ -281,10 +273,7 @@ end_game_and_analyze(){ const gid=resolveGameId(null); if(!gid) throw new Error(
   // ---------- Host ----------
   pages.host=async()=>{
     const session = await getSession();
-    if (!session){
-      sessionStorage.setItem("__redirect_after_login", "#/host");
-      location.hash = "#/login"; return;
-    }
+    if (!session){ sessionStorage.setItem("__redirect_after_login", "#/host"); location.hash = "#/login"; return; }
     const app=document.getElementById("app");
     app.innerHTML = `
       <div class="offline-banner">You are offline. Trying to reconnect…</div>
@@ -297,84 +286,61 @@ end_game_and_analyze(){ const gid=resolveGameId(null); if(!gid) throw new Error(
     await renderHeader(); ensureDebugTray();
 
     const el=$("#hostControls");
-    const ar = storedRoom();
 
-    function showCreate(){
+    function renderCreateUI(){
       el.innerHTML = `
         <div class="grid">
           <button class="primary" id="createGame">Create Game</button>
           <p class="help">You will receive a game code and a room for players to join.</p>
         </div>`;
-      $("#createGame").onclick=createGame;
-    }
-
-    async function createGame(){
-      try{
-        const data = await API.create_game();
-        const code = data?.game_code || data?.code || data?.id || data?.room_id || data?.roomId;
-        if (!code){ debug({ create_game_unexpected_response:data }); toast("Created, but no code returned"); return; }
-        saveActiveRoom({ ...data, code });
-        await renderExisting(code);
-      }catch(e){
-        if (e.status===409 && e.data){
-          const code = e.data.game_code || e.data.code || e.data.id || e.data.room_id || e.data.roomId;
-          const phase = (e.data.status || e.data.phase || "").toLowerCase();
-          const ended = ["ended","completed","archived","cancelled","finished"].includes(phase);
-          if (code && !ended){
-            saveActiveRoom({ ...e.data, code });
-            toast("Resuming your active room.");
-            await renderExisting(code); return;
-          }
-          if (code && ended){
-            clearRoomData(code);
-          }
-        }
-        toast(e.message||"Failed to create"); debug({ create_game_error:e }); showCreate();
-      }
+      $("#createGame").onclick=btnCreateGame;
     }
 
     async function renderExisting(code){
-  let state = null;
-  try { state = await API.get_state({ code }); }
-  catch(e){ debug({ get_state_error:e.message }); }
+      let state=null;
+      try{ state = await API.get_state({ code }); }catch(e){ debug({ get_state_error:e.message }); }
+      const phase = (state?.status || state?.phase || "lobby");
+      const players = Array.isArray(state?.participants||state?.players) ? (state.participants||state.players) : [];
+      const curPid = state?.current_turn?.participant_id || null;
+      const gid = state?.game_id || state?.id || null;
+      if (gid) try{ localStorage.setItem(msGidKey(code), JSON.stringify(gid)); }catch{}
 
-  // FIX: define players (and phase/curPid) from the fetched state
-  const phase = (state?.status || state?.phase || "lobby");
-  const players = Array.isArray(state?.participants || state?.players)
-    ? (state.participants || state.players)
-    : [];
-  const curPid = state?.current_turn?.participant_id || null;
+      // Host lobby UI: Code + Copy + Share + Go to room + Participants
+      el.innerHTML = `
+        <div class="grid">
+          <div class="inline-actions">
+            <span class="help">Code: <strong class="code-value">${code}</strong></span>
+            <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
+            <button class="ghost" id="shareInvite">Share invite</button>
+            <button class="primary" id="goRoom">Go to room</button>
+          </div>
+          <div class="help">Status: <strong>${phase}</strong> • Players: ${players.length}</div>
+          <div>${participantsListHTML(players, curPid)}</div>
+        </div>`;
 
-  // Host lobby: code + Copy + Share + Go to room
-  el.innerHTML = `
-    <div class="grid">
-      <div class="inline-actions">
-        <span class="help">Code: <strong class="code-value">${code}</strong></span>
-        <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
-        <button class="ghost" id="shareInvite">Share invite</button>
-        <button class="primary" id="goRoom">Go to room</button>
-      </div>
-      <div class="help">Status: <strong>${phase}</strong> • Players: ${players.length}</div>
-      <div>${participantsListHTML(players, curPid)}</div>
-    </div>`;
-
-  // wire up actions
-  $("#goRoom").onclick = () => location.hash = "#/game/" + code;
-  $("#copyCode").onclick = () => {
-    navigator.clipboard.writeText(code)
-      .then(()=>toast("Code copied"))
-      .catch(()=>toast("Copy failed"));
-  };
-  $("#shareInvite").onclick = () => shareRoom(code);
-}
-
-
-    if (ar && (ar.game_code || ar.code || ar.id)){
-      const code = ar.game_code || ar.code || ar.id;
-      await renderExisting(code);
-    }else{
-      showCreate();
+      $("#goRoom").onclick=()=>location.hash="#/game/"+code;
+      $("#copyCode").onclick=()=>{ navigator.clipboard.writeText(code).then(()=>toast("Code copied")).catch(()=>toast("Copy failed")); };
+      $("#shareInvite").onclick=()=>shareRoom(code);
     }
+
+    async function btnCreateGame(){
+      try{
+        const data = await API.create_game();
+        const code = data?.code || data?.game_code;
+        const gid  = data?.id || data?.game_id;
+        if (!code || !gid){ debug({ create_game_unexpected_response:data }); toast("Created, but missing code/id"); return; }
+        saveActiveRoom({ code, id: gid, participant_id: data?.participant_id });
+        setRole(code, "host");
+        await renderExisting(code);
+      }catch(e){
+        toast(e.message||"Failed to create"); debug({ create_game_error:e });
+        renderCreateUI();
+      }
+    }
+
+    const ar = storedRoom();
+    if (ar && (ar.code || ar.game_code)){ await renderExisting(ar.code || ar.game_code); }
+    else { renderCreateUI(); }
   };
 
   // ---------- Join ----------
@@ -391,12 +357,10 @@ end_game_and_analyze(){ const gid=resolveGameId(null); if(!gid) throw new Error(
             <button id="joinBtn" class="btn" style="margin-top:8px;">Join</button>
           </div>
         </div>
-      </div>
-    `;
+      </div>`;
     await renderHeader(); ensureDebugTray();
     $("#joinBtn").onclick=async()=>{
-      const code=$("#gameId").value.trim();
-      const nickname=$("#nickname").value.trim();
+      const code=$("#gameId").value.trim(); const nickname=$("#nickname").value.trim();
       if (!code) return toast("Enter game code");
       if (!nickname) return toast("Enter nickname");
       try{ await API.join_game_guest({ code, nickname }); location.hash="#/game/"+code; }
@@ -407,109 +371,159 @@ end_game_and_analyze(){ const gid=resolveGameId(null); if(!gid) throw new Error(
   // ---------- Game Room ----------
   const Game={
     code:null, poll:null, tick:null, hbH:null, hbG:null,
-    state:{ phase:"lobby", ends_at:null, players:[], active_player_id:null, question:null, host_user_id:null, min_players_required:2 },
-    ui:{ ansVisible:false, draft:"" },
+    state:{ status:"lobby", endsAt:null, participants:[], question:null, current_turn:null },
+    ui:{ lastSig:"", ansVisible:false, draft:"" },
     async mount(code){
       this.code=code;
-      try{ this.ui.draft=localStorage.getItem(draftKey(code))||""; }catch{ this.ui.draft=""; }
+      try{ this.ui.draft = localStorage.getItem(draftKey(code)) || ""; }catch{ this.ui.draft=""; }
       await this.refresh();
       this.startPolling();
-      this.startHeartbeats();
       this.startTick();
+      this.startHeartbeats();
     },
     startPolling(){ if(this.poll) clearInterval(this.poll); this.poll=setInterval(()=>this.refresh(), 3000); },
     startTick(){ if(this.tick) clearInterval(this.tick); this.tick=setInterval(()=>this.renderTimer(), 1000); },
-    async startHeartbeats(){
-      const session = await getSession();
-      const user = session?.user || null;
-      const isHost = (user?.id && user.id === this.state.host_user_id);
-      if (isHost){
-        if (this.hbH) clearInterval(this.hbH);
-        this.hbH = setInterval(()=>API.heartbeat({ gameId:this.code }).catch(()=>{}), 20000);
-      }else{
-        if (this.hbG) clearInterval(this.hbG);
-        this.hbG = setInterval(()=>API.participant_heartbeat({ gameId:this.code }).catch(()=>{}), 25000);
+    startHeartbeats(){
+      const code=this.code; const gid=resolveGameId(null);
+      if (this.hbH) { clearInterval(this.hbH); this.hbH=null; }
+      if (this.hbG) { clearInterval(this.hbG); this.hbG=null; }
+      const role = getRole(code);
+      if (role === "host" && gid){
+        const beat=()=>API.heartbeat().catch(()=>{});
+        this.hbH = setInterval(beat, 20000); beat();
+      } else {
+        const pid = JSON.parse(localStorage.getItem(msPidKey(code))||"null");
+        if (pid && gid){
+          const beat=()=>API.participant_heartbeat().catch(()=>{});
+          this.hbG = setInterval(beat, 25000); beat();
+        }
       }
     },
     stop(){ if(this.poll) clearInterval(this.poll); if(this.tick) clearInterval(this.tick); if(this.hbH) clearInterval(this.hbH); if(this.hbG) clearInterval(this.hbG); },
-    async refresh(){ try{ const data=await API.get_state({ code:this.code }); this.state=Object.assign({}, this.state, data); this.render(); }catch(e){ debug({ refresh_error:e.message }); } },
-    isActivePlayer(){ try{ const me=JSON.parse(localStorage.getItem("player_id")||sessionStorage.getItem("player_id")||"null"); return me && me===this.state.active_player_id; }catch{return false;} },
-    remainingSeconds(){ if (!this.state.ends_at) return null; const diff=Math.floor((new Date(this.state.ends_at).getTime()-Date.now())/1000); return Math.max(0,diff); },
+    async refresh(){
+      try{
+        const out=await API.get_state({ code:this.code });
+        const status = out?.status || out?.phase || "lobby";
+        const endsAt = out?.ends_at || out?.endsAt || null;
+        const participants = Array.isArray(out?.participants)? out.participants : (Array.isArray(out?.players)? out.players : []);
+        const question = out?.question || null;
+        const current_turn = out?.current_turn || null;
+        const sig = [status, endsAt, question?.id||"", current_turn?.participant_id||"", participants.length].join("|");
+        const forceFull = (sig !== this.ui.lastSig);
+        this.state = { status, endsAt, participants, question, current_turn };
+        this.render(forceFull);
+        this.ui.lastSig = sig;
+        this.startHeartbeats();
+      }catch(e){ debug({ refresh_error:e.message }); }
+    },
+    remainingSeconds(){ if (!this.state.endsAt) return null; const diff=Math.floor((new Date(this.state.endsAt).getTime()-Date.now())/1000); return Math.max(0,diff); },
     renderTimer(){
       const t=this.remainingSeconds(), el=document.getElementById("roomTimer"); if(!el) return;
       if (t==null) { el.textContent="--:--"; return; }
       const m=String(Math.floor(t/60)).padStart(2,"0"), s=String(t%60).padStart(2,"0");
       el.textContent=`${m}:${s}`;
-      const extendBtn=$("#extendBtn"); if (extendBtn){ extendBtn.toggleAttribute("disabled", !(t<=600)); }
     },
-    async render(){
+    canAnswer(){
+      const code=this.code; const pid = JSON.parse(localStorage.getItem(msPidKey(code))||"null");
+      const cur = this.state.current_turn && this.state.current_turn.participant_id;
+      return pid && cur && String(pid)===String(cur);
+    },
+    render(forceFull){
       const s=this.state; const main=$("#mainCard"); const controls=$("#controlsRow");
-      main.innerHTML=""; controls.innerHTML="";
-      const session = await getSession(); const user=session?.user||null;
-      const isHost = !!(user?.id && s.host_user_id && user.id===s.host_user_id);
-      const minPlayers = s.min_players_required || 2;
-      const enoughPlayers = Array.isArray(s.players) ? s.players.length >= minPlayers : false;
+      if (!main || !controls) return;
+      if (forceFull){ main.innerHTML=""; controls.innerHTML=""; }
 
-      if (s.phase==="lobby"){
-        const wrap=document.createElement("div"); wrap.style.cssText="display:flex;flex-direction:column;align-items:center;gap:8px;";
-        const list=document.createElement("div"); list.innerHTML = (Array.isArray(s.players)&&s.players.length? `<ul>${s.players.map(p=>`<li>${p.nickname||p.name||'Guest'}${p.id===s.active_player_id?' <b>(turn)</b>':''}</li>`).join('')}</ul>` : '');
-        const startBtn=document.createElement("button"); startBtn.className="start-round"; startBtn.id="startGame"; startBtn.textContent="Start";
-        startBtn.disabled = !(isHost && enoughPlayers);
-        startBtn.onclick=async()=>{
-          if(!isHost) return toast("Only host can start");
-          if(!enoughPlayers) return toast(`Need at least ${minPlayers} players`);
-          try{ await API.start_game({ gameId:this.code }); await this.refresh(); }catch(e){ toast(e.message||"Start failed"); debug({ start_error:e }); }
-        };
-        const help=document.createElement("div"); help.className="help"; help.textContent = !isHost ? "Waiting for the host to start…" : (!enoughPlayers ? `Need at least ${minPlayers} players to start.` : "Ready to start.");
-        wrap.appendChild(list); wrap.appendChild(startBtn); wrap.appendChild(help); main.appendChild(wrap);
+      // Status (top-right) during running
+      let topRight=$("#msTopRight");
+      if (!topRight){ topRight=document.createElement("div"); topRight.id="msTopRight"; topRight.style.cssText="position:absolute; top:16px; right:16px; font-weight:800; display:flex; gap:12px; align-items:center;"; main.appendChild(topRight); }
+      topRight.innerHTML = (s.status==="running" ? `⏱ <span id="roomTimer">--:--</span>` : "");
+
+      if (s.status==="lobby"){
+        if (forceFull){
+          const wrap=document.createElement("div"); wrap.id="msLobby"; wrap.style.cssText="display:flex;flex-direction:column;align-items:center;gap:10px; text-align:center; max-width:640px;";
+          const plist=document.createElement("div"); plist.id="msPlist"; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); wrap.appendChild(plist);
+
+          const role=getRole(this.code);
+          if (role==="host"){
+            const startBtn=document.createElement("button"); startBtn.className="start-round"; startBtn.id="startGame"; startBtn.textContent="Start";
+            const enough = Array.isArray(s.participants) && s.participants.length>=2;
+            startBtn.disabled = !enough;
+            startBtn.onclick=async()=>{ try{ await API.start_game(); await this.refresh(); }catch(e){ toast(e.message||"Start failed"); debug({ start_error:e }); } };
+            const help=document.createElement("div"); help.className="help"; help.id="msLobbyHelp"; help.textContent = enough ? "Ready to start." : "Need at least 2 players to start.";
+            wrap.appendChild(startBtn); wrap.appendChild(help);
+          }else{
+            const wait=document.createElement("div"); wait.className="help"; wait.textContent="Waiting for the host to start";
+            wrap.appendChild(wait);
+          }
+          main.appendChild(wrap);
+        }else{
+          const plist=$("#msPlist"); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
+          const startBtn=$("#startGame"); if (startBtn){ const enough = Array.isArray(s.participants) && s.participants.length>=2; startBtn.disabled=!enough; }
+        }
         return;
       }
 
-      if (s.phase==="running"){
-        const hdr=document.createElement("div"); hdr.style.cssText="position:absolute; top:16px; right:16px; font-weight:800; display:flex; gap:12px; align-items:center;";
-        hdr.innerHTML=`⏱ <span id="roomTimer">--:--</span>`; main.appendChild(hdr);
+      if (s.status==="running"){
+        if (forceFull){
+          const q=document.createElement("div"); q.id="msQ"; q.style.cssText="text-align:center; max-width:640px; padding:8px; margin-top:8px;";
+          q.innerHTML = `<h3 style="margin:0 0 8px 0;">${s.question?.title || "Question"}</h3><p class="help" style="margin:0;">${s.question?.text || ""}</p>`;
+          main.appendChild(q);
 
-        const q=document.createElement("div"); q.style.cssText="text-align:center; max-width:640px; padding:8px";
-        q.innerHTML = `<h3 style="margin:0 0 8px 0;">${s.question?.title || "Question"}</h3><p class="help" style="margin:0;">${s.question?.text || ""}</p>`;
-        main.appendChild(q);
+          const plist=document.createElement("div"); plist.id="msPlistRun"; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); plist.style.marginTop="6px"; main.appendChild(plist);
 
-        const km=document.createElement("div"); km.className="kb-mic-row";
-        const can = this.isActivePlayer();
-        km.innerHTML=`
-          <button id="micBtn" class="kb-mic-btn" ${can?"":"disabled"}><img src="./assets/mic.png" alt="mic"/> <span>Mic</span></button>
-          <button id="kbBtn" class="kb-mic-btn" ${can?"":"disabled"}><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>`;
-        main.appendChild(km);
-
-        if (this.ui.ansVisible){
-          const ans=document.createElement("div"); ans.className="answer-row"; ans.id="answerRow";
-          ans.innerHTML = `<textarea id="answerInput" class="input" rows="3" placeholder="${can?'Type your answer…':'Wait for your turn'}" ${can?"":"disabled"}>${this.ui.draft||""}</textarea>
-                           <button id="submitBtn" class="btn" ${can?"":"disabled"}>Submit</button>`;
-          main.appendChild(ans);
-          const box=$("#answerInput"); if (box){ box.addEventListener("input", ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
-          $("#submitBtn").onclick=async()=>{
-            if (!can) return;
-            const text=$("#answerInput").value.trim(); if (!text) return;
-            try{ await API.submit_answer({ gameId:this.code, text }); $("#answerInput").value=""; this.ui.draft=""; try{ localStorage.removeItem(draftKey(this.code)); }catch{} await this.refresh(); }catch(e){ toast(e.message||"Submit failed"); debug({ submit_error:e }); }
-          };
+          const actRow=document.createElement("div"); actRow.id="msActRow"; actRow.className="kb-mic-row";
+          const can = this.canAnswer();
+          actRow.innerHTML=`
+            <button id="micBtn" class="kb-mic-btn" ${can?"":"disabled"}><img src="./assets/mic.png" alt="mic"/> <span>Mic</span></button>
+            <button id="kbBtn" class="kb-mic-btn" ${can?"":"disabled"}><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>`;
+          main.appendChild(actRow);
+          $("#micBtn").onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
+          $("#kbBtn").onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
+        }else{
+          const plist=$("#msPlistRun"); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
+          const can=this.canAnswer(); const mic=$("#micBtn"); const kb=$("#kbBtn");
+          if (mic) mic.toggleAttribute("disabled", !can); if (kb) kb.toggleAttribute("disabled", !can);
         }
 
-        $("#micBtn").onclick=()=>{ if (!can) return; this.ui.ansVisible=true; this.render(); };
-        $("#kbBtn").onclick=()=>{ if (!can) return; this.ui.ansVisible=true; this.render(); };
+        if (this.ui.ansVisible){
+          let ans=$("#msAns");
+          if (!ans){
+            ans=document.createElement("div"); ans.className="card"; ans.id="msAns"; ans.style.marginTop="8px";
+            ans.innerHTML = `
+              <div class="meta">Your answer</div>
+              <textarea id="msBox" class="input" rows="3" placeholder="${this.canAnswer()?'Type here…':'Wait for your turn'}"></textarea>
+              <div class="row" style="gap:8px;margin-top:6px;">
+                <button id="submitBtn" class="btn"${this.canAnswer()?"":" disabled"}>Submit</button>
+              </div>`;
+            main.appendChild(ans);
+            const box=$("#msBox"); if (box){ box.value = this.ui.draft||""; box.addEventListener("input", ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
+            const submit=$("#submitBtn"); if (submit) submit.onclick=async()=>{
+              const box=$("#msBox"); const text=(box.value||'').trim(); if(!text) return;
+              try{ submit.disabled=true; await API.submit_answer({ text }); box.value=""; this.ui.draft=""; try{ localStorage.removeItem(draftKey(this.code)); }catch{} await this.refresh(); }catch(e){ submit.disabled=false; toast(e.message||"Submit failed"); debug({ submit_error:e }); }
+            };
+          }else{
+            const box=$("#msBox"); if (box){ box.placeholder = this.canAnswer()? "Type here…" : "Wait for your turn"; box.toggleAttribute("disabled", !this.canAnswer()); }
+            const submit=$("#submitBtn"); if (submit){ submit.toggleAttribute("disabled", !this.canAnswer()); }
+          }
+        }
 
-        controls.innerHTML=`
-          <button id="nextCard" class="btn" ${isHost?"":"disabled"}>Reveal next card</button>
-          <button id="extendBtn" class="btn secondary" disabled>Extend</button>
-          <button id="endAnalyze" class="btn danger" ${isHost?"":"disabled"}>End and analyze</button>`;
-        $("#nextCard").onclick=async()=>{ if(!isHost) return; try{ await API.next_question({ gameId:this.code }); await this.refresh(); }catch(e){ toast(e.message||"Next failed"); debug({ next_error:e }); } };
-        $("#extendBtn").onclick=()=>{ location.hash="#/billing"; };
-        $("#endAnalyze").onclick=async()=>{ if(!isHost) return; try{ await API.end_game_and_analyze({ gameId:this.code }); await this.refresh(); }catch(e){ toast(e.message||"End failed"); debug({ end_error:e }); } };
+        const role=getRole(this.code); const isHost = role==="host";
+        if (isHost && forceFull){
+          controls.innerHTML=`
+            <button id="nextCard" class="btn">Reveal next card</button>
+            <button id="extendBtn" class="btn secondary" disabled>Extend</button>
+            <button id="endAnalyze" class="btn danger">End and analyze</button>`;
+          $("#nextCard").onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||"Next failed"); debug({ next_error:e }); } };
+          $("#extendBtn").onclick=()=>{ location.hash="#/billing"; };
+          $("#endAnalyze").onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); debug({ end_error:e }); } };
+        }else if (!isHost){ controls.innerHTML=""; }
+
         this.renderTimer();
         return;
       }
 
-      if (s.phase==="ended"){
-        // cleanup stale pointers so Host screen won't show ended codes
-        clearRoomData(this.code);
+      if (s.status==="ended"){
+        controls.innerHTML="";
         main.innerHTML = `
           <div style="text-align:center; max-width:640px;">
             <h3>Summary</h3>
