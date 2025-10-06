@@ -5,7 +5,7 @@
     - Guest lobby: participants + “Waiting for the host to start” only.
     - Join maps nickname -> {name,nickname}; preserves participant_id if present.
     - Answer area: mic/keyboard reveal; draft preserved (no flicker).
-    - NEW: Derive and persist host role from backend host_user_id so Start always shows for host.
+    - Derive and persist host role from backend host_user_id so Start always shows for host.
 */
 (function(){
   // ---------- tiny utils ----------
@@ -306,7 +306,7 @@
       const gid = state?.game_id || state?.id || null;
       if (gid) try{ localStorage.setItem(msGidKey(code), JSON.stringify(gid)); }catch{}
 
-      // ✅ NEW: persist role=host if backend says I'm the host
+      // persist role=host if backend says I'm the host
       try{
         const sess = await getSession();
         const meId = sess?.user?.id || null;
@@ -413,7 +413,7 @@
       try{
         const out=await API.get_state({ code:this.code });
 
-        // ✅ NEW: if I am the backend-declared host, persist role=host
+        // If I am the backend-declared host, persist role=host
         try {
           const sess = await getSession();
           const meId = sess?.user?.id || null;
@@ -464,7 +464,6 @@
           const wrap=document.createElement("div"); wrap.id="msLobby"; wrap.style.cssText="display:flex;flex-direction:column;align-items:center;gap:10px; text-align:center; max-width:640px;";
           const plist=document.createElement("div"); plist.id="msPlist"; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); wrap.appendChild(plist);
 
-          // derive role from storage (which is now kept in sync via refresh/host page)
           const role=getRole(this.code);
           if (role==="host"){
             const startBtn=document.createElement("button"); startBtn.className="start-round"; startBtn.id="startGame"; startBtn.textContent="Start";
@@ -491,7 +490,7 @@
           q.innerHTML = `<h3 style="margin:0 0 8px 0;">${s.question?.title || "Question"}</h3><p class="help" style="margin:0;">${s.question?.text || ""}</p>`;
           main.appendChild(q);
 
-          const plist=document.createElement("div"); plist.id="msPlistRun"; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); plist.style.marginTop="6px"; main.appendChild(plist);
+          const plist=document.createElement("div"); plist.id="msPlistRun"; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); plist.style	marginTop="6px"; main.appendChild(plist);
 
           const actRow=document.createElement("div"); actRow.id="msActRow"; actRow.className="kb-mic-row";
           const can = this.canAnswer();
@@ -587,9 +586,7 @@
   pages.privacy=async()=>{ const app=document.getElementById("app"); app.innerHTML=`<div class="container"><div class="card" style="margin:28px auto;max-width:840px;"><h2>Privacy</h2><p class="help">…</p></div></div>`; await renderHeader(); ensureDebugTray(); };
   pages.help=async()=>{ const app=document.getElementById("app"); app.innerHTML=`<div class="container"><div class="card" style="margin:28px auto;max-width:720px;"><h2>Help</h2><p class="help">…</p></div></div>`; await renderHeader(); ensureDebugTray(); };
 
-  // ---------- Routes & boot ----------
-  const route = (p,h)=>routes[p]=h;
-  const routes={};
+  // ---------- Routes & boot (NO re-declarations) ----------
   route("#/", pages.home);
   route("#/host", pages.host);
   route("#/join", pages.join);
