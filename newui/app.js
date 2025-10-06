@@ -334,28 +334,40 @@ end_game_and_analyze(){ const gid=resolveGameId(null); if(!gid) throw new Error(
     }
 
     async function renderExisting(code){
-      let state=null;
-      try{ state = await API.get_state({ code }); }catch(e){ debug({ get_state_error:e.message }); }
-      const phase = (state?.status || state?.phase || "lobby").toLowerCase();
-      const ended = ["ended","completed","archived","cancelled","finished"].includes(phase);
-      if (ended){ clearRoomData(code); showCreate(); return; }
+  let state = null;
+  try { state = await API.get_state({ code }); }
+  catch(e){ debug({ get_state_error:e.message }); }
 
-      el.innerHTML = `
-  <div class="grid">
-    <div class="inline-actions">
-      <span class="help">Code: <strong class="code-value">${code}</strong></span>
-      <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
-      <button class="ghost" id="shareInvite">Share invite</button>
-      <button class="primary" id="goRoom">Go to room</button>
-    </div>
-    <div class="help">Status: <strong>${phase}</strong> • Players: ${players.length}</div>
-    <div>${participantsListHTML(players, (state?.current_turn && state.current_turn.participant_id) || null)}</div>
-  </div>`;
-$("#copyCode").onclick = () => { navigator.clipboard.writeText(code).then(()=>toast("Code copied")).catch(()=>toast("Copy failed")); };
-$("#shareInvite").onclick = () => shareRoom(code);
-$("#goRoom").onclick = () => location.hash = "#/game/" + code;
+  // FIX: define players (and phase/curPid) from the fetched state
+  const phase = (state?.status || state?.phase || "lobby");
+  const players = Array.isArray(state?.participants || state?.players)
+    ? (state.participants || state.players)
+    : [];
+  const curPid = state?.current_turn?.participant_id || null;
 
-    }
+  // Host lobby: code + Copy + Share + Go to room
+  el.innerHTML = `
+    <div class="grid">
+      <div class="inline-actions">
+        <span class="help">Code: <strong class="code-value">${code}</strong></span>
+        <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
+        <button class="ghost" id="shareInvite">Share invite</button>
+        <button class="primary" id="goRoom">Go to room</button>
+      </div>
+      <div class="help">Status: <strong>${phase}</strong> • Players: ${players.length}</div>
+      <div>${participantsListHTML(players, curPid)}</div>
+    </div>`;
+
+  // wire up actions
+  $("#goRoom").onclick = () => location.hash = "#/game/" + code;
+  $("#copyCode").onclick = () => {
+    navigator.clipboard.writeText(code)
+      .then(()=>toast("Code copied"))
+      .catch(()=>toast("Copy failed"));
+  };
+  $("#shareInvite").onclick = () => shareRoom(code);
+}
+
 
     if (ar && (ar.game_code || ar.code || ar.id)){
       const code = ar.game_code || ar.code || ar.id;
