@@ -1,117 +1,159 @@
-
-/*! MatchSqr New UI — singleton Supabase client: reuse if present, else create via /config -> config.js */
+/*! MatchSqr New UI v3.0.8 — FULL FILE (replaces /newui/app.js)
+    Focus: Start reliability + lobby participants visible + strict mapping to original endpoints.
+*/
 (function(){
+  console.log("[MatchSqr] app.js v3.0.8 loaded");
+
+  // ---------- tiny utils ----------
   const $ = (sel, root=document) => root.querySelector(sel);
   function toast(msg, ms=2200){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), ms); }
-  function debug(obj){ const pre=$("#debug-pre"); if(!pre) return; const s=pre.textContent + "\n" + JSON.stringify(obj,null,2); pre.textContent=s.slice(-30000); }
+  function debug(obj){ try{ const pre=$("#debug-pre"); if(!pre) return; const s=pre.textContent + "\n" + JSON.stringify(obj,null,2); pre.textContent=s.slice(-30000); }catch{} }
   function setOfflineBanner(show){ const b=$(".offline-banner"); if(!b) return; b.classList.toggle("show", !!show); }
   addEventListener("offline",()=>setOfflineBanner(true));
   addEventListener("online",()=>setOfflineBanner(false));
 
+  // ---------- config / client ----------
   const CONFIG = window.CONFIG || {};
   const FUNCTIONS_BASE = (CONFIG.FUNCTIONS_BASE || "").replace(/\/+$/,"");
 
-  // ---------- Supabase client (singleton: reuse else create once) ----------
   async function ensureClient(){
-    // reuse first
     if (window.__MS_CLIENT && window.__MS_CLIENT.auth && window.__MS_CLIENT.functions) return window.__MS_CLIENT;
-    if (window.supabaseClient && window.supabaseClient.auth && window.supabaseClient.functions) { window.__MS_CLIENT = window.supabaseClient; return window.__MS_CLIENT; }
-    if (window.supabase && window.supabase.auth && window.supabase.functions && window.supabase.from){ 
-      // This is *already a client instance* exposed globally (rare), reuse.
-      window.__MS_CLIENT = window.supabase; return window.__MS_CLIENT;
-    }
-    // create once
-    if (!window.supabase || !window.supabase.createClient){
-      throw new Error("[MS] Supabase UMD not loaded before app.js");
-    }
+    if (window.supabaseClient && window.supabaseClient.auth && window.supabaseClient.functions){ window.__MS_CLIENT = window.supabaseClient; return window.__MS_CLIENT; }
+    if (window.supabase && window.supabase.auth && window.supabase.functions && window.supabase.from){ window.__MS_CLIENT = window.supabase; return window.__MS_CLIENT; }
+    if (!window.supabase || !window.supabase.createClient){ throw new Error("[MS] Supabase UMD not loaded before app.js"); }
     let url="", key="";
-    try{
-      const res = await fetch(FUNCTIONS_BASE + "/config");
-      if (res.ok){
-        const json = await res.json();
-        url = json.supabase_url || url;
-        key = json.supabase_anon_key || key;
-      }
-    }catch(_){/* ignore */}
-    url = url || CONFIG.SUPABASE_URL || CONFIG.FALLBACK_SUPABASE_URL || "";
-    key = key || CONFIG.SUPABASE_ANON_KEY || CONFIG.FALLBACK_SUPABASE_ANON_KEY || "";
+    try{ const res=await fetch(FUNCTIONS_BASE+"/config"); if(res.ok){ const j=await res.json(); url=j.supabase_url||url; key=j.supabase_anon_key||key; } }catch(_){}
+    url = url || CONFIG.SUPABASE_URL || "";
+    key = key || CONFIG.SUPABASE_ANON_KEY || "";
     if (!url || !key) throw new Error("[MS] Missing Supabase URL/Key. Ensure /config or config.js provides them.");
     const client = window.supabase.createClient(url, key, { auth: { storageKey: "ms-auth" } });
-    window.__MS_CLIENT = client;
-    window.supabaseClient = client; // expose for any legacy code
-    return client;
+    window.__MS_CLIENT = client; window.supabaseClient = client; return client;
   }
   async function getSession(){ const sb=await ensureClient(); const { data } = await sb.auth.getSession(); return (data&&data.session)||null; }
   function authHeader(session){ const token=session?.access_token||""; return token?{Authorization:`Bearer ${token}`}:{ }; }
 
-  // ---------- storage & code resolution ----------
-  function storedRoom(){
-    try{ return JSON.parse(localStorage.getItem("active_room") || sessionStorage.getItem("active_room") || "null") || {}; }catch{return {}}
-  }
+  // ---------- storage helpers ----------
+  const AR = "active_room";
+  function msPidKey(code){ return `ms_pid_${code}`; }
+  function msGidKey(code){ return `ms_gid_${code}`; }
+  function msRoleKey(code){ return `ms_role_${code}`; }
+  const draftKey = (code)=>`ms_draft_${code}`;
+  const hostMarkerKey = (code)=>`__host_for_code_${code}`;
+
+  function storedRoom(){ try{ return JSON.parse(localStorage.getItem(AR) || sessionStorage.getItem(AR) || "null") || {}; }catch{return {};} }
   function saveActiveRoom(obj){
-    const code = obj?.game_code || obj?.code || obj?.id || obj?.room_id || obj?.roomId;
-    const toSave = { ...(storedRoom()||{}), ...obj, game_code: code, code };
-    localStorage.setItem("active_room", JSON.stringify(toSave));
+    const code = obj?.code || obj?.game_code || obj?.room_code || obj?.id;
+    const id = obj?.id || obj?.game_id || obj?.room_id;
+    const toSave = { ...(storedRoom()||{}), ...obj, code, id };
+    localStorage.setItem(AR, JSON.stringify(toSave));
+    if (code && id){ try{ localStorage.setItem(msGidKey(code), JSON.stringify(id)); }catch{} }
+    if (code && obj?.participant_id){ try{ localStorage.setItem(msPidKey(code), JSON.stringify(obj.participant_id)); }catch{} }
   }
   function resolveCode(explicit){
     if (explicit) return explicit;
     const m = (location.hash||"").match(/^#\/game\/([^?]+)/);
     if (m) return m[1];
     const ar = storedRoom();
-    return ar.game_code || ar.code || ar.id || ar.room_id || ar.roomId || ar.game_id || ar.gameId || null;
+    return ar.code || ar.game_code || ar.room_code || null;
   }
-  const pidKey = (code)=>`ms_pid_${code}`;
+  function resolveGameId(explicit){
+    if (explicit) return explicit;
+    const code = resolveCode(null);
+    if (!code){ const ar=storedRoom(); return ar.id || ar.game_id || null; }
+    try{ return JSON.parse(localStorage.getItem(msGidKey(code))||"null") || storedRoom().id || storedRoom().game_id || null; }catch{return storedRoom().id||storedRoom().game_id||null;}
+  }
+  function setRole(code, role){ if(code && role) try{ localStorage.setItem(msRoleKey(code), role); }catch{} }
+  function getRole(code){ try{ return localStorage.getItem(msRoleKey(code)) || ""; }catch{ return ""; } }
 
-  // ---------- HTTP helpers (Edge Functions) ----------
+  // ---------- HTTP helpers ----------
   async function jpost(path, body){
     const session = await getSession();
-    const res = await fetch(`${FUNCTIONS_BASE}/${path}`, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json", ...authHeader(session) },
-      body: body ? JSON.stringify(body) : undefined
-    });
-    const text = await res.text();
-    let json=null; try{ json=text?JSON.parse(text):null; }catch{}
+    const res = await fetch(`${FUNCTIONS_BASE}/${path}`, { method:"POST", headers:{ "Content-Type":"application/json", ...authHeader(session) }, body: body? JSON.stringify(body): undefined });
+    const text = await res.text(); let json=null; try{ json=text?JSON.parse(text):null; }catch{}
     if(!res.ok){ const e=new Error((json&&(json.message||json.error))||text||"Request failed"); e.status=res.status; e.data=json; throw e; }
     return json;
   }
   async function jget(pathWithQuery){
     const session = await getSession();
     const res = await fetch(`${FUNCTIONS_BASE}/${pathWithQuery}`, { headers: { ...authHeader(session) } });
-    const text=await res.text();
-    let json=null; try{ json=text?JSON.parse(text):null; }catch{}
+    const text=await res.text(); let json=null; try{ json=text?JSON.parse(text):null; }catch{}
     if(!res.ok){ const e=new Error((json&&(json.message||json.error))||text||"Request failed"); e.status=res.status; e.data=json; throw e; }
     return json;
   }
 
-  // ---------- API (exact contracts) ----------
+  // ---------- API wrappers (keep both code & id for compatibility) ----------
   const API = {
     create_game(){ return jpost("create_game", null); },
-    get_state(p){ const code=resolveCode(p?.code); if(!code) throw new Error("Missing game id"); return jget(`get_state?code=${encodeURIComponent(code)}`); },
+    get_state(p){ const code=resolveCode(p?.code); if(!code) throw new Error("Missing code"); return jget(`get_state?code=${encodeURIComponent(code)}`); },
     join_game_guest(p){
-      const code=resolveCode(p?.code); if(!code) throw new Error("Missing game id");
+      const code=resolveCode(p?.code)||p?.code; if(!code) throw new Error("Missing code");
       const nickname = p?.nickname || p?.name || "";
-      const existingPid = localStorage.getItem(pidKey(code));
-      const body = { code };
-      if (existingPid) body.participant_id = JSON.parse(existingPid);
-      if (nickname) body.nickname = nickname;
+      const existingPid = localStorage.getItem(msPidKey(code));
+      const body = existingPid ? { code, participant_id: JSON.parse(existingPid) } : { code };
+      if (nickname){ body.name = nickname; body.nickname = nickname; }
       return jpost("join_game_guest", body).then(data=>{
-        const pid = data?.participant_id || data?.player_id || null;
-        if (pid){ localStorage.setItem(pidKey(code), JSON.stringify(pid)); localStorage.setItem("player_id", JSON.stringify(pid)); }
-        const roomId = data?.room_id || data?.id || code;
-        saveActiveRoom({ ...data, id: roomId, code });
+        const gid = data?.game_id || null;
+        const pid = data?.participant_id || null;
+        if (gid) try{ localStorage.setItem(msGidKey(code), JSON.stringify(gid)); }catch{}
+        if (pid) try{ localStorage.setItem(msPidKey(code), JSON.stringify(pid)); }catch{}
+        saveActiveRoom({ code, id: gid, participant_id: pid });
+        if (data?.is_host) setRole(code,"host"); else setRole(code,"guest");
         return data;
       });
     },
-    start_game(p){ const code=resolveCode(p?.gameId||p?.code); if(!code) throw new Error("Missing game id"); return jpost("start_game", { gameId: code }); },
-    next_question(p){ const code=resolveCode(p?.gameId||p?.code); if(!code) throw new Error("Missing game id"); return jpost("next_question", { gameId: code }).catch(e=>{ if(e.status===400||e.status===422) throw e; return jpost("next_question", null); }); },
-    end_game_and_analyze(p){ const code=resolveCode(p?.gameId||p?.code); if(!code) throw new Error("Missing game id"); return jpost("end_game_and_analyze", { gameId: code }); },
-    heartbeat(p){ const code=resolveCode(p?.gameId||p?.code); if(!code) throw new Error("Missing game id"); return jpost("heartbeat", { gameId: code }); },
-    participant_heartbeat(p){ const code=resolveCode(p?.gameId||p?.code); if(!code) throw new Error("Missing game id"); const pid=JSON.parse(localStorage.getItem(pidKey(code))||"null"); return jpost("participant_heartbeat", { gameId: code, participant_id: pid }); },
-    submit_answer(p){ const code=resolveCode(p?.gameId||p?.code); if(!code) throw new Error("Missing game id"); const pid=JSON.parse(localStorage.getItem(pidKey(code))||"null"); return jpost("submit_answer", { game_id: code, question_id: p?.question_id||p?.qid||null, text: p?.text||p?.answer||"", temp_player_id: pid, participant_id: pid, name: p?.name||p?.nickname||undefined }); }
+    start_game(){
+      const code=resolveCode(null); const gid=resolveGameId(null);
+      if(!code && !gid) throw new Error("Missing game id/code");
+      return jpost("start_game", { code, gameId: gid, id: gid });
+    },
+    next_question(){
+      const code=resolveCode(null); const gid=resolveGameId(null);
+      if(!code && !gid) throw new Error("Missing game id/code");
+      return jpost("next_question", { code, gameId: gid, id: gid });
+    },
+    end_game_and_analyze(){
+      const code=resolveCode(null); const gid=resolveGameId(null);
+      if(!code && !gid) throw new Error("Missing game id/code");
+      return jpost("end_game_and_analyze", { code, gameId: gid, id: gid });
+    },
+    heartbeat(){ const gid=resolveGameId(null); const code=resolveCode(null); if(!gid && !code) return Promise.resolve({skipped:true}); return jpost("heartbeat", { code, gameId: gid, id: gid }); },
+    participant_heartbeat(){
+      const code=resolveCode(null); const gid=resolveGameId(null);
+      if (!code || !gid) return Promise.resolve({skipped:true});
+      const pidRaw = localStorage.getItem(msPidKey(code)); if (!pidRaw) return Promise.resolve({skipped:true});
+      const pid = JSON.parse(pidRaw);
+      return jpost("participant_heartbeat", { code, gameId: gid, id: gid, participant_id: pid });
+    },
+    submit_answer(p){
+      const code=resolveCode(null); const gid=resolveGameId(null);
+      const pidRaw = code ? localStorage.getItem(msPidKey(code)) : null;
+      const pid = pidRaw ? JSON.parse(pidRaw) : undefined;
+      const body = { code, game_id: gid, id: gid, text: p?.text||p?.answer||"" , participant_id: pid };
+      return jpost("submit_answer", body);
+    }
   };
 
-  // ---------- Header ----------
+  // ---------- UI helpers ----------
+  async function shareRoom(code){
+    const shareUrl = location.origin + location.pathname + "#/join";
+    const text = "Join my MatchSqr game. Code: " + code;
+    try{ if (navigator.share){ await navigator.share({ title:"MatchSqr Room", text, url:shareUrl }); return; } }catch(_){}
+    try{ await navigator.clipboard.writeText(text + " " + shareUrl); toast("Invite copied"); }catch(_){ toast("Copy failed, share manually"); }
+  }
+  function participantsListHTML(ppl, curPid){
+    if (!Array.isArray(ppl) || ppl.length===0) return '<ul id="participantsList"><li class="meta">No one yet</li></ul>';
+    const li = ppl.map(p=>{
+      const pid = p?.participant_id || p?.id || "";
+      const name = p?.nickname || p?.name || "Guest";
+      const role = p?.role || (p?.is_host ? "host" : "");
+      const bold = (curPid && String(curPid)===String(pid)) ? ' style="font-weight:700;"' : '';
+      const pidAttr = pid ? ` data-pid="${pid}"` : '';
+      return `<li${pidAttr}${bold}>${name}${role?` <span class="meta">(${role})</span>`:''}</li>`;
+    }).join('');
+    return `<ul id="participantsList">${li}</ul>`;
+  }
+
+  // ---------- header / shell ----------
   async function renderHeader(){
     const app=document.getElementById("app");
     const headerHTML = `
@@ -123,7 +165,6 @@
         </div>
       </div>`;
     app.innerHTML = headerHTML + app.innerHTML;
-
     try{
       const session = await getSession();
       const user = session?.user || null;
@@ -146,7 +187,7 @@
     setOfflineBanner(!navigator.onLine);
   }
 
-  // ---------- Router ----------
+  // ---------- router ----------
   const routes={};
   function route(p,h){ routes[p]=h; }
   function parseHash(){ const h=location.hash||"#/"; const [p,q]=h.split("?"); return { path:p, query:Object.fromEntries(new URLSearchParams(q)) }; }
@@ -159,7 +200,7 @@
   }
   addEventListener("hashchange", navigate);
 
-  // ---------- Pages ----------
+  // ---------- pages ----------
   const pages={};
 
   pages.home=async()=>{
@@ -175,8 +216,7 @@
           <a class="cta" href="#/join"><img src="./assets/play.png" alt="play"/> <span>Join the Game</span></a>
         </div>
       </section>
-      <a class="home-learn" href="#/terms">Learn more about MatchSqr</a>
-    `;
+      <a class="home-learn" href="#/terms">Learn more about MatchSqr</a>`;
     await renderHeader(); ensureDebugTray();
   };
 
@@ -199,8 +239,7 @@
             </div>
           </div>
         </div>
-      </div>
-    `;
+      </div>`;
     await renderHeader(); ensureDebugTray();
     $("#loginBtn").onclick=async()=>{
       try{
@@ -229,8 +268,7 @@
             <button id="logoutBtn" class="ghost">Logout</button>
           </div>
         </div>
-      </div>
-    `;
+      </div>`;
     await renderHeader(); ensureDebugTray();
     $("#logoutBtn").onclick=async()=>{ const sb=await ensureClient(); await sb.auth.signOut(); location.hash="#/"; };
   };
@@ -238,12 +276,8 @@
   // ---------- Host ----------
   pages.host=async()=>{
     const session = await getSession();
-    if (!session){
-      sessionStorage.setItem("__redirect_after_login", "#/host");
-      location.hash = "#/login"; return;
-    }
+    if (!session){ sessionStorage.setItem("__redirect_after_login", "#/host"); location.hash = "#/login"; return; }
     const app=document.getElementById("app");
-    const ar = storedRoom();
     app.innerHTML = `
       <div class="offline-banner">You are offline. Trying to reconnect…</div>
       <div class="host-wrap">
@@ -253,45 +287,67 @@
         </div>
       </div>`;
     await renderHeader(); ensureDebugTray();
+
     const el=$("#hostControls");
-    if (ar && (ar.game_code || ar.code || ar.id)){
-      const code = ar.game_code || ar.code || ar.id;
-      el.innerHTML = `
-        <div class="grid">
-          <div class="inline-actions">
-            <button class="primary" id="goRoom">Go to room</button>
-            <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
-            <span class="help">Code: <strong>${code}</strong></span>
-          </div>
-        </div>`;
-      $("#goRoom").onclick=()=>location.hash="#/game/"+code;
-      $("#copyCode").onclick=()=>{ navigator.clipboard.writeText(code); toast("Code copied"); };
-    }else{
+
+    function renderCreateUI(){
       el.innerHTML = `
         <div class="grid">
           <button class="primary" id="createGame">Create Game</button>
           <p class="help">You will receive a game code and a room for players to join.</p>
         </div>`;
-      $("#createGame").onclick=async()=>{
-        try{
-          const data = await API.create_game();
-          const code = data?.game_code || data?.code || data?.id || data?.room_id || data?.roomId;
-          if (!code){ debug({ create_game_unexpected_response:data }); toast("Created, but no code returned"); return; }
-          saveActiveRoom({ ...data, code });
-          location.hash="#/host";
-        }catch(e){
-          if (e.status===409 && e.data){
-            const code = e.data.game_code || e.data.code || e.data.id || e.data.room_id || e.data.roomId;
-            if (code){
-              saveActiveRoom({ ...e.data, code });
-              toast("You already have an active room.");
-              location.hash="#/host"; return;
-            }
-          }
-          toast(e.message||"Failed to create"); debug({ create_game_error:e });
-        }
-      };
+      $("#createGame").onclick=btnCreateGame;
     }
+
+    async function renderExisting(code){
+      let state=null;
+      try{ state = await API.get_state({ code }); }catch(e){ debug({ get_state_error:e.message }); }
+      const phase = (state?.status || state?.phase || "lobby");
+      const players = Array.isArray(state?.participants||state?.players) ? (state.participants||state.players) : [];
+      const curPid = state?.current_turn?.participant_id || null;
+      const gid = state?.game_id || state?.id || null;
+      if (gid) try{ localStorage.setItem(msGidKey(code), JSON.stringify(gid)); }catch{}
+
+      // Persist role=host if backend indicates it
+      await inferAndPersistHostRole(code, state);
+
+      // Host lobby UI: Code + Copy + Share + Go to room + Participants
+      el.innerHTML = `
+        <div class="grid">
+          <div class="inline-actions">
+            <span class="help">Code: <strong class="code-value">${code}</strong></span>
+            <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
+            <button class="ghost" id="shareInvite">Share invite</button>
+            <button class="primary" id="goRoom">Go to room</button>
+          </div>
+          <div class="help">Status: <strong>${phase}</strong> • Players: ${players.length}</div>
+          <div>${participantsListHTML(players, curPid)}</div>
+        </div>`;
+
+      $("#goRoom").onclick=()=>{ try{ sessionStorage.setItem(hostMarkerKey(code), "1"); }catch{} location.hash="#/game/"+code; };
+      $("#copyCode").onclick=()=>{ navigator.clipboard.writeText(code).then(()=>toast("Code copied")).catch(()=>toast("Copy failed")); };
+      $("#shareInvite").onclick=()=>shareRoom(code);
+    }
+
+    async function btnCreateGame(){
+      try{
+        const data = await API.create_game();
+        const code = data?.code || data?.game_code;
+        const gid  = data?.id || data?.game_id;
+        if (!code || !gid){ debug({ create_game_unexpected_response:data }); toast("Created, but missing code/id"); return; }
+        saveActiveRoom({ code, id: gid, participant_id: data?.participant_id });
+        setRole(code, "host");
+        try{ sessionStorage.setItem(hostMarkerKey(code), "1"); }catch{}
+        await renderExisting(code);
+      }catch(e){
+        toast(e.message||"Failed to create"); debug({ create_game_error:e });
+        renderCreateUI();
+      }
+    }
+
+    const ar = storedRoom();
+    if (ar && (ar.code || ar.game_code)){ await renderExisting(ar.code || ar.game_code); }
+    else { renderCreateUI(); }
   };
 
   // ---------- Join ----------
@@ -308,12 +364,10 @@
             <button id="joinBtn" class="btn" style="margin-top:8px;">Join</button>
           </div>
         </div>
-      </div>
-    `;
+      </div>`;
     await renderHeader(); ensureDebugTray();
     $("#joinBtn").onclick=async()=>{
-      const code=$("#gameId").value.trim();
-      const nickname=$("#nickname").value.trim();
+      const code=$("#gameId").value.trim(); const nickname=$("#nickname").value.trim();
       if (!code) return toast("Enter game code");
       if (!nickname) return toast("Enter nickname");
       try{ await API.join_game_guest({ code, nickname }); location.hash="#/game/"+code; }
@@ -324,117 +378,211 @@
   // ---------- Game Room ----------
   const Game={
     code:null, poll:null, tick:null, hbH:null, hbG:null,
-    state:{ phase:"lobby", ends_at:null, players:[], active_player_id:null, question:null, host_user_id:null, min_players_required:2 },
+    state:{ status:"lobby", endsAt:null, participants:[], question:null, current_turn:null, host_user_id:null },
+    ui:{ lastSig:"", ansVisible:false, draft:"" },
     async mount(code){
       this.code=code;
+      try{ this.ui.draft = localStorage.getItem(draftKey(code)) || ""; }catch{ this.ui.draft=""; }
+      try{ if (sessionStorage.getItem(hostMarkerKey(code))==="1"){ setRole(code, "host"); sessionStorage.removeItem(hostMarkerKey(code)); } }catch{}
       await this.refresh();
       this.startPolling();
-      this.startHeartbeats();
       this.startTick();
+      this.startHeartbeats();
     },
     startPolling(){ if(this.poll) clearInterval(this.poll); this.poll=setInterval(()=>this.refresh(), 3000); },
     startTick(){ if(this.tick) clearInterval(this.tick); this.tick=setInterval(()=>this.renderTimer(), 1000); },
-    async startHeartbeats(){
-      const session = await getSession();
-      const user = session?.user || null;
-      const isHost = (user?.id && user.id === this.state.host_user_id);
-      if (isHost){
-        if (this.hbH) clearInterval(this.hbH);
-        this.hbH = setInterval(()=>API.heartbeat({ gameId:this.code }).catch(()=>{}), 10000);
-      }else{
-        if (this.hbG) clearInterval(this.hbG);
-        this.hbG = setInterval(()=>API.participant_heartbeat({ gameId:this.code }).catch(()=>{}), 10000);
+    startHeartbeats(){
+      const code=this.code; const gid=resolveGameId(null);
+      if (this.hbH) { clearInterval(this.hbH); this.hbH=null; }
+      if (this.hbG) { clearInterval(this.hbG); this.hbG=null; }
+      const role = getRole(code);
+      if (role === "host" && gid){
+        const beat=()=>API.heartbeat().catch(()=>{});
+        this.hbH = setInterval(beat, 20000); beat();
+      } else {
+        const pid = JSON.parse(localStorage.getItem(msPidKey(code))||"null");
+        if (pid && gid){
+          const beat=()=>API.participant_heartbeat().catch(()=>{});
+          this.hbG = setInterval(beat, 25000); beat();
+        }
       }
     },
     stop(){ if(this.poll) clearInterval(this.poll); if(this.tick) clearInterval(this.tick); if(this.hbH) clearInterval(this.hbH); if(this.hbG) clearInterval(this.hbG); },
-    async refresh(){ try{ const data=await API.get_state({ code:this.code }); this.state=Object.assign({}, this.state, data); this.render(); }catch(e){ debug({ refresh_error:e.message }); } },
-    isActivePlayer(){ try{ const me=JSON.parse(localStorage.getItem("player_id")||sessionStorage.getItem("player_id")||"null"); return me && me===this.state.active_player_id; }catch{return false;} },
-    remainingSeconds(){ if (!this.state.ends_at) return null; const diff=Math.floor((new Date(this.state.ends_at).getTime()-Date.now())/1000); return Math.max(0,diff); },
+    async refresh(){
+      try{
+        const out=await API.get_state({ code:this.code });
+        await inferAndPersistHostRole(this.code, out);
+
+        const status = out?.status || out?.phase || "lobby";
+        const endsAt = out?.ends_at || out?.endsAt || null;
+        const participants = Array.isArray(out?.participants)? out.participants : (Array.isArray(out?.players)? out.players : []);
+        const question = out?.question || null;
+        const current_turn = out?.current_turn || null;
+        const host_user_id = out?.host_user_id || out?.hostId || null;
+        const sig = [status, endsAt, question?.id||"", current_turn?.participant_id||"", participants.length, host_user_id||""].join("|");
+        const forceFull = (sig !== this.ui.lastSig);
+        this.state = { status, endsAt, participants, question, current_turn, host_user_id };
+        this.render(forceFull);
+        this.ui.lastSig = sig;
+        this.startHeartbeats();
+      }catch(e){ debug({ refresh_error:e.message }); }
+    },
+    remainingSeconds(){ if (!this.state.endsAt) return null; const diff=Math.floor((new Date(this.state.endsAt).getTime()-Date.now())/1000); return Math.max(0,diff); },
     renderTimer(){
       const t=this.remainingSeconds(), el=document.getElementById("roomTimer"); if(!el) return;
       if (t==null) { el.textContent="--:--"; return; }
       const m=String(Math.floor(t/60)).padStart(2,"0"), s=String(t%60).padStart(2,"0");
       el.textContent=`${m}:${s}`;
-      const extendBtn=$("#extendBtn"); if (extendBtn){ extendBtn.toggleAttribute("disabled", !(t<=600)); }
     },
-    async render(){
+    canAnswer(){
+      const code=this.code; const pid = JSON.parse(localStorage.getItem(msPidKey(code))||"null");
+      const cur = this.state.current_turn && this.state.current_turn.participant_id;
+      return pid && cur && String(pid)===String(cur);
+    },
+    render(forceFull){
       const s=this.state; const main=$("#mainCard"); const controls=$("#controlsRow");
-      main.innerHTML=""; controls.innerHTML="";
-      const session = await getSession(); const user=session?.user||null;
-      const isHost = !!(user?.id && s.host_user_id && user.id===s.host_user_id);
-      const minPlayers = s.min_players_required || 2;
-      const enoughPlayers = Array.isArray(s.players) ? s.players.length >= minPlayers : false;
+      if (!main || !controls) return;
+      if (forceFull){ main.innerHTML=""; controls.innerHTML=""; }
 
-      if (s.phase==="lobby"){
-        const wrap=document.createElement("div"); wrap.style.cssText="display:flex;flex-direction:column;align-items:center;gap:8px;";
-        const startBtn=document.createElement("button"); startBtn.className="start-round"; startBtn.id="startGame"; startBtn.textContent="Start";
-        startBtn.disabled = !(isHost && enoughPlayers);
-        startBtn.onclick=async()=>{
-          if(!isHost) return toast("Only host can start");
-          if(!enoughPlayers) return toast(`Need at least ${minPlayers} players`);
-          try{ await API.start_game({ gameId:this.code }); await this.refresh(); }catch(e){ toast(e.message||"Start failed"); debug({ start_error:e }); }
-        };
-        const help=document.createElement("div"); help.className="help";
-        help.textContent = !isHost ? "Waiting for the host…" : (!enoughPlayers ? `Need at least ${minPlayers} players to start.` : "Ready to start.");
-        wrap.appendChild(startBtn); wrap.appendChild(help); main.appendChild(wrap);
+      // Status (top-right) during running
+      let topRight=$("#msTopRight");
+      if (!topRight){ topRight=document.createElement("div"); topRight.id="msTopRight"; topRight.style.cssText="position:absolute; top:16px; right:16px; font-weight:800; display:flex; gap:12px; align-items:center;"; main.appendChild(topRight); }
+      topRight.innerHTML = (s.status==="running" ? `⏱ <span id="roomTimer">--:--</span>` : "");
+
+      if (s.status==="lobby"){
+        if (forceFull){
+          const wrap=document.createElement("div"); wrap.id="msLobby"; wrap.style.cssText="display:flex;flex-direction:column;align-items:center;gap:10px; text-align:center; max-width:640px;";
+          const plist=document.createElement("div"); plist.id="msPlist"; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); wrap.appendChild(plist);
+
+          const role=getRole(this.code);
+          if (role==="host"){
+            const startBtn=document.createElement("button"); startBtn.className="start-round"; startBtn.id="startGame"; startBtn.textContent="Start";
+            const enough = Array.isArray(s.participants) && s.participants.length>=2;
+            startBtn.disabled = !enough;
+            startBtn.onclick=async()=>{
+              try{
+                const out = await API.start_game();
+                // Apply returned game status immediately if provided
+                const g = out?.game || out || {};
+                if (g && (g.status || g.phase)){
+                  this.state.status = g.status || g.phase;
+                  this.state.endsAt = g.ends_at || g.endsAt || null;
+                }
+                await this.refresh();
+              }catch(e){ toast(e.message||"Start failed"); debug({ start_error:e }); }
+            };
+            const help=document.createElement("div"); help.className="help"; help.id="msLobbyHelp"; help.textContent = enough ? "Ready to start." : "Need at least 2 players to start.";
+            wrap.appendChild(startBtn); wrap.appendChild(help);
+          }else{
+            const wait=document.createElement("div"); wait.className="help"; wait.textContent="Waiting for the host to start";
+            wrap.appendChild(wait);
+          }
+          main.appendChild(wrap);
+        }else{
+          const plist=$("#msPlist"); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
+          const startBtn=$("#startGame"); if (startBtn){ const enough = Array.isArray(s.participants) && s.participants.length>=2; startBtn.disabled=!enough; }
+        }
         return;
       }
 
-      if (s.phase==="running"){
-        const hdr=document.createElement("div"); hdr.style.cssText="position:absolute; top:16px; right:16px; font-weight:800;";
-        hdr.innerHTML=`⏱ <span id="roomTimer">--:--</span>`; main.appendChild(hdr);
+      if (s.status==="running"){
+        if (forceFull){
+          const q=document.createElement("div"); q.id="msQ"; q.style.cssText="text-align:center; max-width:640px; padding:8px; margin-top:8px;";
+          q.innerHTML = `<h3 style="margin:0 0 8px 0;">${s.question?.title || "Question"}</h3><p class="help" style="margin:0;">${s.question?.text || ""}</p>`;
+          main.appendChild(q);
 
-        const q=document.createElement("div"); q.style.cssText="text-align:center; max-width:640px; padding:8px";
-        q.innerHTML = `<h3 style="margin:0 0 8px 0;">${s.question?.title || "Question"}</h3><p class="help" style="margin:0;">${s.question?.text || ""}</p>`;
-        main.appendChild(q);
+          const plist=document.createElement("div"); plist.id="msPlistRun"; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); plist.style.marginTop = "6px"; main.appendChild(plist);
 
-        const km=document.createElement("div"); km.className="kb-mic-row";
-        km.innerHTML=`
-          <button id="micBtn" class="kb-mic-btn" ${this.isActivePlayer()?"":"disabled"}><img src="./assets/mic.png" alt="mic"/> <span>Mic</span></button>
-          <button id="kbBtn" class="kb-mic-btn" ${this.isActivePlayer()?"":"disabled"}><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>`;
-        main.appendChild(km);
+          const actRow=document.createElement("div"); actRow.id="msActRow"; actRow.className="kb-mic-row";
+          const can = this.canAnswer();
+          actRow.innerHTML=`
+            <button id="micBtn" class="kb-mic-btn" ${can?"":"disabled"}><img src="./assets/mic.png" alt="mic"/> <span>Mic</span></button>
+            <button id="kbBtn" class="kb-mic-btn" ${can?"":"disabled"}><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>`;
+          main.appendChild(actRow);
+          $("#micBtn").onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
+          $("#kbBtn").onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
+        }else{
+          const plist=$("#msPlistRun"); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
+          const can=this.canAnswer(); const mic=$("#micBtn"); const kb=$("#kbBtn");
+          if (mic) mic.toggleAttribute("disabled", !can); if (kb) kb.toggleAttribute("disabled", !can);
+        }
 
-        const ans=document.createElement("div"); ans.className="answer-row hidden"; ans.id="answerRow";
-        ans.innerHTML = `<input id="answerInput" class="input" placeholder="Type your answer..." ${this.isActivePlayer()?"":"disabled"}>
-                         <button id="submitBtn" class="btn" ${this.isActivePlayer()?"":"disabled"}>Submit</button>`;
-        main.appendChild(ans);
+        if (this.ui.ansVisible){
+          let ans=$("#msAns");
+          if (!ans){
+            ans=document.createElement("div"); ans.className="card"; ans.id="msAns"; ans.style.marginTop="8px";
+            ans.innerHTML = `
+              <div class="meta">Your answer</div>
+              <textarea id="msBox" class="input" rows="3" placeholder="${this.canAnswer()?'Type here…':'Wait for your turn'}"></textarea>
+              <div class="row" style="gap:8px;margin-top:6px;">
+                <button id="submitBtn" class="btn"${this.canAnswer()?"":" disabled"}>Submit</button>
+              </div>`;
+            main.appendChild(ans);
+            const box=$("#msBox"); if (box){ box.value = this.ui.draft||""; box.addEventListener("input", ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
+            const submit=$("#submitBtn"); if (submit) submit.onclick=async()=>{
+              const box=$("#msBox"); const text=(box.value||'').trim(); if(!text) return;
+              try{ submit.disabled=true; await API.submit_answer({ text }); box.value=""; this.ui.draft=""; try{ localStorage.removeItem(draftKey(this.code)); }catch{} await this.refresh(); }catch(e){ submit.disabled=false; toast(e.message||"Submit failed"); debug({ submit_error:e }); }
+            };
+          }else{
+            const box=$("#msBox"); if (box){ box.placeholder = this.canAnswer()? "Type here…" : "Wait for your turn"; box.toggleAttribute("disabled", !this.canAnswer()); }
+            const submit=$("#submitBtn"); if (submit){ submit.toggleAttribute("disabled", !this.canAnswer()); }
+          }
+        }
 
-        $("#micBtn").onclick=()=>$("#answerRow").classList.remove("hidden");
-        $("#kbBtn").onclick=()=>$("#answerRow").classList.remove("hidden");
-        $("#submitBtn").onclick=async()=>{
-          if (!this.isActivePlayer()) return;
-          const text=$("#answerInput").value.trim(); if (!text) return;
-          try{ await API.submit_answer({ gameId:this.code, text }); $("#answerInput").value=""; await this.refresh(); }catch(e){ toast(e.message||"Submit failed"); debug({ submit_error:e }); }
-        };
+        const role=getRole(this.code); const isHost = role==="host";
+        if (isHost && forceFull){
+          controls.innerHTML=`
+            <button id="nextCard" class="btn">Reveal next card</button>
+            <button id="extendBtn" class="btn secondary" disabled>Extend</button>
+            <button id="endAnalyze" class="btn danger">End and analyze</button>`;
+          $("#nextCard").onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||"Next failed"); debug({ next_error:e }); } };
+          $("#extendBtn").onclick=()=>{ location.hash="#/billing"; };
+          $("#endAnalyze").onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); debug({ end_error:e }); } };
+        }else if (!isHost){ controls.innerHTML=""; }
 
-        controls.innerHTML=`
-          <button id="nextCard" class="btn" ${isHost?"":"disabled"}>Reveal next card</button>
-          <button id="extendBtn" class="btn secondary" disabled>Extend</button>
-          <button id="endAnalyze" class="btn danger" ${isHost?"":"disabled"}>End and analyze</button>`;
-        $("#nextCard").onclick=async()=>{ if(!isHost) return; try{ await API.next_question({ gameId:this.code }); await this.refresh(); }catch(e){ toast(e.message||"Next failed"); debug({ next_error:e }); } };
-        $("#extendBtn").onclick=()=>{ location.hash="#/billing"; };
-        $("#endAnalyze").onclick=async()=>{ if(!isHost) return; try{ await API.end_game_and_analyze({ gameId:this.code }); await this.refresh(); }catch(e){ toast(e.message||"End failed"); debug({ end_error:e }); } };
         this.renderTimer();
         return;
       }
 
-      if (s.phase==="ended"){
+      if (s.status==="ended"){
+        controls.innerHTML="";
         main.innerHTML = `
           <div style="text-align:center; max-width:640px;">
             <h3>Summary</h3>
-            <p class="help">A quick view of how the game went. Full report can be emailed.</p>
+            <p class="help">The game has ended. You can start a new one from Host page.</p>
             <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
-              <button id="emailReport" class="btn">Email me my full report</button>
+              <a class="btn" href="#/host">Host a new game</a>
               <button id="shareBtn" class="btn secondary">Share</button>
             </div>
-            <p class="help" style="margin-top:10px;">Note, data is retained for about 30 minutes.</p>
           </div>`;
-        $("#emailReport").onclick=()=>toast("Report requested. Check your email.");
-        $("#shareBtn").onclick=()=>{ navigator.clipboard.writeText(location.href); toast("Link copied"); };
+        $("#shareBtn").onclick=()=>{ navigator.clipboard.writeText(location.origin+location.pathname+"#/"); toast("Link copied"); };
         return;
       }
     }
   };
+
+  // ---------- Robust host inference (shared) ----------
+  async function inferAndPersistHostRole(code, state){
+    try{
+      if (!code || !state) return;
+      const sess = await getSession();
+      const meId = sess?.user?.id || null;
+      // Direct flags
+      if (state.is_host === true) { setRole(code,"host"); return; }
+      // Known host fields
+      const hostId = state?.host_user_id || state?.hostId || state?.host?.id || null;
+      if (meId && hostId && String(meId)===String(hostId)) { setRole(code,"host"); return; }
+      // Try participants data
+      const ppl = Array.isArray(state.participants)? state.participants : (Array.isArray(state.players)? state.players : []);
+      if (ppl && ppl.length){
+        for (const p of ppl){
+          const isHost = p?.is_host || p?.role==="host";
+          const u1 = p?.user_id || p?.auth_user_id || p?.owner_id || p?.uid;
+          if (isHost && meId && u1 && String(meId)===String(u1)){ setRole(code,"host"); return; }
+        }
+      }
+    }catch{}
+  }
 
   pages.game=async(code)=>{
     const app=document.getElementById("app");
