@@ -141,9 +141,14 @@
         return data;
       });
     },
-    start_game(p){ const code=resolveCode(p?.gameId||p?.code); if(!code) throw new Error("Missing game id"); return jpost("start_game", { gameId: code }); },
-    next_question(p){ const code=resolveCode(p?.gameId||p?.code); if(!code) throw new Error("Missing game id"); return jpost("next_question", { gameId: code }).catch(e=>{ if(e.status===400||e.status===422) throw e; return jpost("next_question", null); }); },
-    end_game_and_analyze(p){ const code=resolveCode(p?.gameId||p?.code); if(!code) throw new Error("Missing game id"); return jpost("end_game_and_analyze", { gameId: code }); },
+   start_game(){
+  const gid = resolveGameId(null);
+  if (!gid) throw new Error("Missing game id");
+  return jpost("start_game", { gameId: gid });
+},
+
+    next_question(){ const gid=resolveGameId(null); if(!gid) throw new Error("Missing game id"); return jpost("next_question", { gameId: gid }); },
+end_game_and_analyze(){ const gid=resolveGameId(null); if(!gid) throw new Error("Missing game id"); return jpost("end_game_and_analyze", { gameId: gid }); },
     heartbeat(p){ const code=resolveCode(p?.gameId||p?.code); if(!code) throw new Error("Missing game id"); return jpost("heartbeat", { gameId: code }); },
     participant_heartbeat(p){ const code=resolveCode(p?.gameId||p?.code); if(!code) throw new Error("Missing game id"); const pid=JSON.parse(localStorage.getItem(pidKey(code))||"null"); return jpost("participant_heartbeat", { gameId: code, participant_id: pid }); },
     submit_answer(p){ const code=resolveCode(p?.gameId||p?.code); if(!code) throw new Error("Missing game id"); const pid=JSON.parse(localStorage.getItem(pidKey(code))||"null"); return jpost("submit_answer", { game_id: code, question_id: p?.question_id||p?.qid||null, text: p?.text||p?.answer||"", temp_player_id: pid, participant_id: pid, name: p?.name||p?.nickname||undefined }); }
@@ -336,17 +341,20 @@
       if (ended){ clearRoomData(code); showCreate(); return; }
 
       el.innerHTML = `
-        <div class="grid">
-          <div class="inline-actions">
-            <button class="primary" id="goRoom">Go to room</button>
-            <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
-            <span class="help">Code: <strong>${code}</strong></span>
-            <button class="ghost" id="newGame">Create new game</button>
-          </div>
-        </div>`;
-      $("#goRoom").onclick=()=>location.hash="#/game/"+code;
-      $("#copyCode").onclick=()=>{ navigator.clipboard.writeText(code); toast("Code copied"); };
-      $("#newGame").onclick=()=>{ clearRoomData(code); showCreate(); };
+  <div class="grid">
+    <div class="inline-actions">
+      <span class="help">Code: <strong class="code-value">${code}</strong></span>
+      <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
+      <button class="ghost" id="shareInvite">Share invite</button>
+      <button class="primary" id="goRoom">Go to room</button>
+    </div>
+    <div class="help">Status: <strong>${phase}</strong> • Players: ${players.length}</div>
+    <div>${participantsListHTML(players, (state?.current_turn && state.current_turn.participant_id) || null)}</div>
+  </div>`;
+$("#copyCode").onclick = () => { navigator.clipboard.writeText(code).then(()=>toast("Code copied")).catch(()=>toast("Copy failed")); };
+$("#shareInvite").onclick = () => shareRoom(code);
+$("#goRoom").onclick = () => location.hash = "#/game/" + code;
+
     }
 
     if (ar && (ar.game_code || ar.code || ar.id)){
@@ -432,7 +440,7 @@
 
       if (s.phase==="lobby"){
         const wrap=document.createElement("div"); wrap.style.cssText="display:flex;flex-direction:column;align-items:center;gap:8px;";
-        const list=document.createElement("div"); list.innerHTML = (Array.isArray(s.players)&&s.players.length? `<ul>${s.players.map(p=>`<li>${p.nickname||p.name||'Guest'}${p.id===s.active_player_id?' <b>(turn)</b>':''}</li>`).join('')}</ul>` : '<div class="help">Waiting for players…</div>');
+        const list=document.createElement("div"); list.innerHTML = (Array.isArray(s.players)&&s.players.length? `<ul>${s.players.map(p=>`<li>${p.nickname||p.name||'Guest'}${p.id===s.active_player_id?' <b>(turn)</b>':''}</li>`).join('')}</ul>` : '');
         const startBtn=document.createElement("button"); startBtn.className="start-round"; startBtn.id="startGame"; startBtn.textContent="Start";
         startBtn.disabled = !(isHost && enoughPlayers);
         startBtn.onclick=async()=>{
@@ -440,7 +448,7 @@
           if(!enoughPlayers) return toast(`Need at least ${minPlayers} players`);
           try{ await API.start_game({ gameId:this.code }); await this.refresh(); }catch(e){ toast(e.message||"Start failed"); debug({ start_error:e }); }
         };
-        const help=document.createElement("div"); help.className="help"; help.textContent = !isHost ? "Waiting for the host…" : (!enoughPlayers ? `Need at least ${minPlayers} players to start.` : "Ready to start.");
+        const help=document.createElement("div"); help.className="help"; help.textContent = !isHost ? "Waiting for the host to start…" : (!enoughPlayers ? `Need at least ${minPlayers} players to start.` : "Ready to start.");
         wrap.appendChild(list); wrap.appendChild(startBtn); wrap.appendChild(help); main.appendChild(wrap);
         return;
       }
