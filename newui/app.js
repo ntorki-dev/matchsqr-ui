@@ -490,7 +490,7 @@
           q.innerHTML = `<h3 style="margin:0 0 8px 0;">${s.question?.title || "Question"}</h3><p class="help" style="margin:0;">${s.question?.text || ""}</p>`;
           main.appendChild(q);
 
-          const plist=document.createElement("div"); plist.id="msPlistRun"; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); plist.style	marginTop="6px"; main.appendChild(plist);
+          const plist=document.createElement("div"); plist.id="msPlistRun"; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); plist.style.marginTop = "6px"; main.appendChild(plist);
 
           const actRow=document.createElement("div"); actRow.id="msActRow"; actRow.className="kb-mic-row";
           const can = this.canAnswer();
@@ -586,7 +586,7 @@
   pages.privacy=async()=>{ const app=document.getElementById("app"); app.innerHTML=`<div class="container"><div class="card" style="margin:28px auto;max-width:840px;"><h2>Privacy</h2><p class="help">…</p></div></div>`; await renderHeader(); ensureDebugTray(); };
   pages.help=async()=>{ const app=document.getElementById("app"); app.innerHTML=`<div class="container"><div class="card" style="margin:28px auto;max-width:720px;"><h2>Help</h2><p class="help">…</p></div></div>`; await renderHeader(); ensureDebugTray(); };
 
-  // ---------- Routes & boot (NO re-declarations) ----------
+  // ---------- Routes & boot ----------
   route("#/", pages.home);
   route("#/host", pages.host);
   route("#/join", pages.join);
