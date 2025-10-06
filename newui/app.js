@@ -1,6 +1,49 @@
-
-/*! MatchSqr New UI — singleton Supabase client: reuse if present, else create via /config -> config.js */
 (function(){
+
+  // === Non-conflicting UI version ===
+  try{
+    if (!window.__MS_UI_VERSION) {
+      window.__MS_UI_VERSION = 'v48.3.2';
+      var _h = document.getElementById('hostLog');
+      if (_h) _h.textContent = (_h.textContent? _h.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
+
+      // v36: stamp gid/qid on every /get_state response (no code dependency)
+      (function(){
+        try{
+          if (window.__msStampFetch) return; window.__msStampFetch = true;
+          var OF = window.fetch;
+          window.fetch = async function(resource, init){
+            var res = await OF(resource, init);
+            try{
+              var url = (typeof resource === 'string') ? resource : (resource && resource.url) || '';
+              if (url.indexOf('/get_state') !== -1){
+                var ct = res.headers && res.headers.get('content-type') || '';
+                if (ct.indexOf('application/json') !== -1){
+                  var data = await res.clone().json().catch(function(){ return null; });
+                  if (data && typeof data === 'object'){
+                    try{ window.__ms_ctx = { gid: data.id || null, qid: (data.question && data.question.id) || null, host_user_id: data.host_user_id || null, participants: Array.isArray(data.participants)? data.participants : [] }; }catch(_){}
+                    var gid = data.id || null; var qid = (data.question && data.question.id) || null;
+                    var stamp = function(el){
+                      if (!el) return;
+                      try{ if (gid) el.setAttribute('data-gid', String(gid)); }catch(_){}
+                      try{ if (qid) el.setAttribute('data-qid', String(qid)); }catch(_){}
+                    };
+                    try{ stamp(document.getElementById('msAnsHost')); }catch(_){}
+                    try{ stamp(document.getElementById('msAnsGuest')); }catch(_){}
+                    try{ if (typeof els !== 'undefined'){ stamp(els.questionText); stamp(els.gQuestionText); } }catch(_){}
+                  }
+                }
+              }
+            }catch(_e){}
+            return res;
+          };
+        }catch(_e){}
+      })();
+      var _j = document.getElementById('joinLog');
+      if (_j) _j.textContent = (_j.textContent? _j.textContent+'\n':'') + 'UI version: ' + window.__MS_UI_VERSION;
+    }
+  }catch(e){}
+
   const $ = (sel, root=document) => root.querySelector(sel);
   function toast(msg, ms=2200){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), ms); }
   function debug(obj){ const pre=$("#debug-pre"); if(!pre) return; const s=pre.textContent + "\n" + JSON.stringify(obj,null,2); pre.textContent=s.slice(-30000); }
@@ -13,17 +56,10 @@
 
   // ---------- Supabase client (singleton: reuse else create once) ----------
   async function ensureClient(){
-    // reuse first
     if (window.__MS_CLIENT && window.__MS_CLIENT.auth && window.__MS_CLIENT.functions) return window.__MS_CLIENT;
     if (window.supabaseClient && window.supabaseClient.auth && window.supabaseClient.functions) { window.__MS_CLIENT = window.supabaseClient; return window.__MS_CLIENT; }
-    if (window.supabase && window.supabase.auth && window.supabase.functions && window.supabase.from){ 
-      // This is *already a client instance* exposed globally (rare), reuse.
-      window.__MS_CLIENT = window.supabase; return window.__MS_CLIENT;
-    }
-    // create once
-    if (!window.supabase || !window.supabase.createClient){
-      throw new Error("[MS] Supabase UMD not loaded before app.js");
-    }
+    if (window.supabase && window.supabase.auth && window.supabase.functions && window.supabase.from){ window.__MS_CLIENT = window.supabase; return window.__MS_CLIENT; }
+    if (!window.supabase || !window.supabase.createClient){ throw new Error("[MS] Supabase UMD not loaded before app.js"); }
     let url="", key="";
     try{
       const res = await fetch(FUNCTIONS_BASE + "/config");
@@ -32,22 +68,18 @@
         url = json.supabase_url || url;
         key = json.supabase_anon_key || key;
       }
-    }catch(_){/* ignore */}
+    }catch(_){}
     url = url || CONFIG.SUPABASE_URL || CONFIG.FALLBACK_SUPABASE_URL || "";
     key = key || CONFIG.SUPABASE_ANON_KEY || CONFIG.FALLBACK_SUPABASE_ANON_KEY || "";
     if (!url || !key) throw new Error("[MS] Missing Supabase URL/Key. Ensure /config or config.js provides them.");
     const client = window.supabase.createClient(url, key, { auth: { storageKey: "ms-auth" } });
-    window.__MS_CLIENT = client;
-    window.supabaseClient = client; // expose for any legacy code
-    return client;
+    window.__MS_CLIENT = client; window.supabaseClient = client; return client;
   }
   async function getSession(){ const sb=await ensureClient(); const { data } = await sb.auth.getSession(); return (data&&data.session)||null; }
   function authHeader(session){ const token=session?.access_token||""; return token?{Authorization:`Bearer ${token}`}:{ }; }
 
-  // ---------- storage & code resolution ----------
-  function storedRoom(){
-    try{ return JSON.parse(localStorage.getItem("active_room") || sessionStorage.getItem("active_room") || "null") || {}; }catch{return {}}
-  }
+  // ---------- storage & helpers ----------
+  function storedRoom(){ try{ return JSON.parse(localStorage.getItem("active_room") || sessionStorage.getItem("active_room") || "null") || {}; }catch{return {}} }
   function saveActiveRoom(obj){
     const code = obj?.game_code || obj?.code || obj?.id || obj?.room_id || obj?.roomId;
     const toSave = { ...(storedRoom()||{}), ...obj, game_code: code, code };
@@ -61,15 +93,22 @@
     return ar.game_code || ar.code || ar.id || ar.room_id || ar.roomId || ar.game_id || ar.gameId || null;
   }
   const pidKey = (code)=>`ms_pid_${code}`;
+  const draftKey = (code)=>`ms_draft_${code}`;
+  function clearRoomData(code){
+    try{
+      const ar = storedRoom(); const curCode = ar && (ar.code||ar.game_code);
+      if (!code || code===curCode){ localStorage.removeItem("active_room"); sessionStorage.removeItem("active_room"); }
+      if (code){
+        localStorage.removeItem(pidKey(code));
+        localStorage.removeItem(draftKey(code));
+      }
+    }catch{}
+  }
 
   // ---------- HTTP helpers (Edge Functions) ----------
   async function jpost(path, body){
     const session = await getSession();
-    const res = await fetch(`${FUNCTIONS_BASE}/${path}`, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json", ...authHeader(session) },
-      body: body ? JSON.stringify(body) : undefined
-    });
+    const res = await fetch(`${FUNCTIONS_BASE}/${path}`, { method:"POST", headers:{ "Content-Type":"application/json", ...authHeader(session) }, body: body ? JSON.stringify(body) : undefined });
     const text = await res.text();
     let json=null; try{ json=text?JSON.parse(text):null; }catch{}
     if(!res.ok){ const e=new Error((json&&(json.message||json.error))||text||"Request failed"); e.status=res.status; e.data=json; throw e; }
@@ -78,13 +117,12 @@
   async function jget(pathWithQuery){
     const session = await getSession();
     const res = await fetch(`${FUNCTIONS_BASE}/${pathWithQuery}`, { headers: { ...authHeader(session) } });
-    const text=await res.text();
-    let json=null; try{ json=text?JSON.parse(text):null; }catch{}
+    const text=await res.text(); let json=null; try{ json=text?JSON.parse(text):null; }catch{}
     if(!res.ok){ const e=new Error((json&&(json.message||json.error))||text||"Request failed"); e.status=res.status; e.data=json; throw e; }
     return json;
   }
 
-  // ---------- API (exact contracts) ----------
+  // ---------- API (contracts preserved) ----------
   const API = {
     create_game(){ return jpost("create_game", null); },
     get_state(p){ const code=resolveCode(p?.code); if(!code) throw new Error("Missing game id"); return jget(`get_state?code=${encodeURIComponent(code)}`); },
@@ -94,7 +132,7 @@
       const existingPid = localStorage.getItem(pidKey(code));
       const body = { code };
       if (existingPid) body.participant_id = JSON.parse(existingPid);
-      if (nickname) body.nickname = nickname;
+      if (nickname){ body.nickname = nickname; body.name = nickname; } // map to original
       return jpost("join_game_guest", body).then(data=>{
         const pid = data?.participant_id || data?.player_id || null;
         if (pid){ localStorage.setItem(pidKey(code), JSON.stringify(pid)); localStorage.setItem("player_id", JSON.stringify(pid)); }
@@ -243,7 +281,6 @@
       location.hash = "#/login"; return;
     }
     const app=document.getElementById("app");
-    const ar = storedRoom();
     app.innerHTML = `
       <div class="offline-banner">You are offline. Trying to reconnect…</div>
       <div class="host-wrap">
@@ -253,44 +290,70 @@
         </div>
       </div>`;
     await renderHeader(); ensureDebugTray();
+
     const el=$("#hostControls");
-    if (ar && (ar.game_code || ar.code || ar.id)){
-      const code = ar.game_code || ar.code || ar.id;
+    const ar = storedRoom();
+
+    function showCreate(){
+      el.innerHTML = `
+        <div class="grid">
+          <button class="primary" id="createGame">Create Game</button>
+          <p class="help">You will receive a game code and a room for players to join.</p>
+        </div>`;
+      $("#createGame").onclick=createGame;
+    }
+
+    async function createGame(){
+      try{
+        const data = await API.create_game();
+        const code = data?.game_code || data?.code || data?.id || data?.room_id || data?.roomId;
+        if (!code){ debug({ create_game_unexpected_response:data }); toast("Created, but no code returned"); return; }
+        saveActiveRoom({ ...data, code });
+        await renderExisting(code);
+      }catch(e){
+        if (e.status===409 && e.data){
+          const code = e.data.game_code || e.data.code || e.data.id || e.data.room_id || e.data.roomId;
+          const phase = (e.data.status || e.data.phase || "").toLowerCase();
+          const ended = ["ended","completed","archived","cancelled","finished"].includes(phase);
+          if (code && !ended){
+            saveActiveRoom({ ...e.data, code });
+            toast("Resuming your active room.");
+            await renderExisting(code); return;
+          }
+          if (code && ended){
+            clearRoomData(code);
+          }
+        }
+        toast(e.message||"Failed to create"); debug({ create_game_error:e }); showCreate();
+      }
+    }
+
+    async function renderExisting(code){
+      let state=null;
+      try{ state = await API.get_state({ code }); }catch(e){ debug({ get_state_error:e.message }); }
+      const phase = (state?.status || state?.phase || "lobby").toLowerCase();
+      const ended = ["ended","completed","archived","cancelled","finished"].includes(phase);
+      if (ended){ clearRoomData(code); showCreate(); return; }
+
       el.innerHTML = `
         <div class="grid">
           <div class="inline-actions">
             <button class="primary" id="goRoom">Go to room</button>
             <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
             <span class="help">Code: <strong>${code}</strong></span>
+            <button class="ghost" id="newGame">Create new game</button>
           </div>
         </div>`;
       $("#goRoom").onclick=()=>location.hash="#/game/"+code;
       $("#copyCode").onclick=()=>{ navigator.clipboard.writeText(code); toast("Code copied"); };
+      $("#newGame").onclick=()=>{ clearRoomData(code); showCreate(); };
+    }
+
+    if (ar && (ar.game_code || ar.code || ar.id)){
+      const code = ar.game_code || ar.code || ar.id;
+      await renderExisting(code);
     }else{
-      el.innerHTML = `
-        <div class="grid">
-          <button class="primary" id="createGame">Create Game</button>
-          <p class="help">You will receive a game code and a room for players to join.</p>
-        </div>`;
-      $("#createGame").onclick=async()=>{
-        try{
-          const data = await API.create_game();
-          const code = data?.game_code || data?.code || data?.id || data?.room_id || data?.roomId;
-          if (!code){ debug({ create_game_unexpected_response:data }); toast("Created, but no code returned"); return; }
-          saveActiveRoom({ ...data, code });
-          location.hash="#/host";
-        }catch(e){
-          if (e.status===409 && e.data){
-            const code = e.data.game_code || e.data.code || e.data.id || e.data.room_id || e.data.roomId;
-            if (code){
-              saveActiveRoom({ ...e.data, code });
-              toast("You already have an active room.");
-              location.hash="#/host"; return;
-            }
-          }
-          toast(e.message||"Failed to create"); debug({ create_game_error:e });
-        }
-      };
+      showCreate();
     }
   };
 
@@ -325,8 +388,10 @@
   const Game={
     code:null, poll:null, tick:null, hbH:null, hbG:null,
     state:{ phase:"lobby", ends_at:null, players:[], active_player_id:null, question:null, host_user_id:null, min_players_required:2 },
+    ui:{ ansVisible:false, draft:"" },
     async mount(code){
       this.code=code;
+      try{ this.ui.draft=localStorage.getItem(draftKey(code))||""; }catch{ this.ui.draft=""; }
       await this.refresh();
       this.startPolling();
       this.startHeartbeats();
@@ -340,10 +405,10 @@
       const isHost = (user?.id && user.id === this.state.host_user_id);
       if (isHost){
         if (this.hbH) clearInterval(this.hbH);
-        this.hbH = setInterval(()=>API.heartbeat({ gameId:this.code }).catch(()=>{}), 10000);
+        this.hbH = setInterval(()=>API.heartbeat({ gameId:this.code }).catch(()=>{}), 20000);
       }else{
         if (this.hbG) clearInterval(this.hbG);
-        this.hbG = setInterval(()=>API.participant_heartbeat({ gameId:this.code }).catch(()=>{}), 10000);
+        this.hbG = setInterval(()=>API.participant_heartbeat({ gameId:this.code }).catch(()=>{}), 25000);
       }
     },
     stop(){ if(this.poll) clearInterval(this.poll); if(this.tick) clearInterval(this.tick); if(this.hbH) clearInterval(this.hbH); if(this.hbG) clearInterval(this.hbG); },
@@ -367,6 +432,7 @@
 
       if (s.phase==="lobby"){
         const wrap=document.createElement("div"); wrap.style.cssText="display:flex;flex-direction:column;align-items:center;gap:8px;";
+        const list=document.createElement("div"); list.innerHTML = (Array.isArray(s.players)&&s.players.length? `<ul>${s.players.map(p=>`<li>${p.nickname||p.name||'Guest'}${p.id===s.active_player_id?' <b>(turn)</b>':''}</li>`).join('')}</ul>` : '<div class="help">Waiting for players…</div>');
         const startBtn=document.createElement("button"); startBtn.className="start-round"; startBtn.id="startGame"; startBtn.textContent="Start";
         startBtn.disabled = !(isHost && enoughPlayers);
         startBtn.onclick=async()=>{
@@ -374,14 +440,13 @@
           if(!enoughPlayers) return toast(`Need at least ${minPlayers} players`);
           try{ await API.start_game({ gameId:this.code }); await this.refresh(); }catch(e){ toast(e.message||"Start failed"); debug({ start_error:e }); }
         };
-        const help=document.createElement("div"); help.className="help";
-        help.textContent = !isHost ? "Waiting for the host…" : (!enoughPlayers ? `Need at least ${minPlayers} players to start.` : "Ready to start.");
-        wrap.appendChild(startBtn); wrap.appendChild(help); main.appendChild(wrap);
+        const help=document.createElement("div"); help.className="help"; help.textContent = !isHost ? "Waiting for the host…" : (!enoughPlayers ? `Need at least ${minPlayers} players to start.` : "Ready to start.");
+        wrap.appendChild(list); wrap.appendChild(startBtn); wrap.appendChild(help); main.appendChild(wrap);
         return;
       }
 
       if (s.phase==="running"){
-        const hdr=document.createElement("div"); hdr.style.cssText="position:absolute; top:16px; right:16px; font-weight:800;";
+        const hdr=document.createElement("div"); hdr.style.cssText="position:absolute; top:16px; right:16px; font-weight:800; display:flex; gap:12px; align-items:center;";
         hdr.innerHTML=`⏱ <span id="roomTimer">--:--</span>`; main.appendChild(hdr);
 
         const q=document.createElement("div"); q.style.cssText="text-align:center; max-width:640px; padding:8px";
@@ -389,23 +454,27 @@
         main.appendChild(q);
 
         const km=document.createElement("div"); km.className="kb-mic-row";
+        const can = this.isActivePlayer();
         km.innerHTML=`
-          <button id="micBtn" class="kb-mic-btn" ${this.isActivePlayer()?"":"disabled"}><img src="./assets/mic.png" alt="mic"/> <span>Mic</span></button>
-          <button id="kbBtn" class="kb-mic-btn" ${this.isActivePlayer()?"":"disabled"}><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>`;
+          <button id="micBtn" class="kb-mic-btn" ${can?"":"disabled"}><img src="./assets/mic.png" alt="mic"/> <span>Mic</span></button>
+          <button id="kbBtn" class="kb-mic-btn" ${can?"":"disabled"}><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>`;
         main.appendChild(km);
 
-        const ans=document.createElement("div"); ans.className="answer-row hidden"; ans.id="answerRow";
-        ans.innerHTML = `<input id="answerInput" class="input" placeholder="Type your answer..." ${this.isActivePlayer()?"":"disabled"}>
-                         <button id="submitBtn" class="btn" ${this.isActivePlayer()?"":"disabled"}>Submit</button>`;
-        main.appendChild(ans);
+        if (this.ui.ansVisible){
+          const ans=document.createElement("div"); ans.className="answer-row"; ans.id="answerRow";
+          ans.innerHTML = `<textarea id="answerInput" class="input" rows="3" placeholder="${can?'Type your answer…':'Wait for your turn'}" ${can?"":"disabled"}>${this.ui.draft||""}</textarea>
+                           <button id="submitBtn" class="btn" ${can?"":"disabled"}>Submit</button>`;
+          main.appendChild(ans);
+          const box=$("#answerInput"); if (box){ box.addEventListener("input", ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
+          $("#submitBtn").onclick=async()=>{
+            if (!can) return;
+            const text=$("#answerInput").value.trim(); if (!text) return;
+            try{ await API.submit_answer({ gameId:this.code, text }); $("#answerInput").value=""; this.ui.draft=""; try{ localStorage.removeItem(draftKey(this.code)); }catch{} await this.refresh(); }catch(e){ toast(e.message||"Submit failed"); debug({ submit_error:e }); }
+          };
+        }
 
-        $("#micBtn").onclick=()=>$("#answerRow").classList.remove("hidden");
-        $("#kbBtn").onclick=()=>$("#answerRow").classList.remove("hidden");
-        $("#submitBtn").onclick=async()=>{
-          if (!this.isActivePlayer()) return;
-          const text=$("#answerInput").value.trim(); if (!text) return;
-          try{ await API.submit_answer({ gameId:this.code, text }); $("#answerInput").value=""; await this.refresh(); }catch(e){ toast(e.message||"Submit failed"); debug({ submit_error:e }); }
-        };
+        $("#micBtn").onclick=()=>{ if (!can) return; this.ui.ansVisible=true; this.render(); };
+        $("#kbBtn").onclick=()=>{ if (!can) return; this.ui.ansVisible=true; this.render(); };
 
         controls.innerHTML=`
           <button id="nextCard" class="btn" ${isHost?"":"disabled"}>Reveal next card</button>
@@ -419,18 +488,18 @@
       }
 
       if (s.phase==="ended"){
+        // cleanup stale pointers so Host screen won't show ended codes
+        clearRoomData(this.code);
         main.innerHTML = `
           <div style="text-align:center; max-width:640px;">
             <h3>Summary</h3>
-            <p class="help">A quick view of how the game went. Full report can be emailed.</p>
+            <p class="help">The game has ended. You can start a new one from Host page.</p>
             <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
-              <button id="emailReport" class="btn">Email me my full report</button>
+              <a class="btn" href="#/host">Host a new game</a>
               <button id="shareBtn" class="btn secondary">Share</button>
             </div>
-            <p class="help" style="margin-top:10px;">Note, data is retained for about 30 minutes.</p>
           </div>`;
-        $("#emailReport").onclick=()=>toast("Report requested. Check your email.");
-        $("#shareBtn").onclick=()=>{ navigator.clipboard.writeText(location.href); toast("Link copied"); };
+        $("#shareBtn").onclick=()=>{ navigator.clipboard.writeText(location.origin+location.pathname+"#/"); toast("Link copied"); };
         return;
       }
     }
