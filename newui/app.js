@@ -1,5 +1,5 @@
-<!-- /newui/app.js -->
-/*! MatchSqr New UI v3.0 — Focused updates for host lobby and game room */
+
+/*! MatchSqr New UI — singleton Supabase client: reuse if present, else create via /config -> config.js */
 (function(){
   const $ = (sel, root=document) => root.querySelector(sel);
   function toast(msg, ms=2200){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), ms); }
@@ -13,11 +13,14 @@
 
   // ---------- Supabase client (singleton: reuse else create once) ----------
   async function ensureClient(){
+    // reuse first
     if (window.__MS_CLIENT && window.__MS_CLIENT.auth && window.__MS_CLIENT.functions) return window.__MS_CLIENT;
     if (window.supabaseClient && window.supabaseClient.auth && window.supabaseClient.functions) { window.__MS_CLIENT = window.supabaseClient; return window.__MS_CLIENT; }
     if (window.supabase && window.supabase.auth && window.supabase.functions && window.supabase.from){ 
+      // This is *already a client instance* exposed globally (rare), reuse.
       window.__MS_CLIENT = window.supabase; return window.__MS_CLIENT;
     }
+    // create once
     if (!window.supabase || !window.supabase.createClient){
       throw new Error("[MS] Supabase UMD not loaded before app.js");
     }
@@ -156,24 +159,6 @@
   }
   addEventListener("hashchange", navigate);
 
-  // ---------- Share helper ----------
-  async function shareRoom(code){
-    const shareUrl = location.origin + location.pathname + "#/join";
-    const text = "Join my MatchSqr game. Code: " + code;
-    try{
-      if (navigator.share){
-        await navigator.share({ title:"MatchSqr Room", text, url:shareUrl });
-        return;
-      }
-    }catch(_){/* ignore */}
-    try{
-      await navigator.clipboard.writeText(text + " " + shareUrl);
-      toast("Invite copied");
-    }catch(_){
-      toast("Copy failed, share manually");
-    }
-  }
-
   // ---------- Pages ----------
   const pages={};
 
@@ -269,55 +254,38 @@
       </div>`;
     await renderHeader(); ensureDebugTray();
     const el=$("#hostControls");
-
-    async function renderExisting(code){
-      // Fetch state to show phase and players
-      let state=null;
-      try{ state = await API.get_state({ code }); }catch(e){ state=null; debug({ get_state_error:e.message }); }
-      const phase = state?.phase || "lobby";
-      const players = Array.isArray(state?.players)? state.players : [];
-
+    if (ar && (ar.game_code || ar.code || ar.id)){
+      const code = ar.game_code || ar.code || ar.id;
       el.innerHTML = `
         <div class="grid">
           <div class="inline-actions">
-            <span class="help">Code: <strong class="code-value">${code}</strong></span>
-            <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
-            <button class="ghost" id="shareInvite">Share invite</button>
             <button class="primary" id="goRoom">Go to room</button>
+            <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
+            <span class="help">Code: <strong>${code}</strong></span>
           </div>
-          <div class="help">Status: <strong>${phase}</strong> • Players: ${players.length}</div>
         </div>`;
-
       $("#goRoom").onclick=()=>location.hash="#/game/"+code;
-      $("#copyCode").onclick=()=>{ navigator.clipboard.writeText(code).then(()=>toast("Code copied")).catch(()=>toast("Copy failed")); };
-      $("#shareInvite").onclick=()=>shareRoom(code);
-    }
-
-    if (ar && (ar.game_code || ar.code || ar.id)){
-      const code = ar.game_code || ar.code || ar.id;
-      renderExisting(code);
+      $("#copyCode").onclick=()=>{ navigator.clipboard.writeText(code); toast("Code copied"); };
     }else{
       el.innerHTML = `
         <div class="grid">
           <button class="primary" id="createGame">Create Game</button>
           <p class="help">You will receive a game code and a room for players to join.</p>
         </div>`;
-
       $("#createGame").onclick=async()=>{
         try{
           const data = await API.create_game();
           const code = data?.game_code || data?.code || data?.id || data?.room_id || data?.roomId;
           if (!code){ debug({ create_game_unexpected_response:data }); toast("Created, but no code returned"); return; }
           saveActiveRoom({ ...data, code });
-          // Stay on host page and morph UI to "Go to room" + code + copy/share
-          await renderExisting(code);
+          location.hash="#/host";
         }catch(e){
           if (e.status===409 && e.data){
             const code = e.data.game_code || e.data.code || e.data.id || e.data.room_id || e.data.roomId;
             if (code){
               saveActiveRoom({ ...e.data, code });
               toast("You already have an active room.");
-              await renderExisting(code); return;
+              location.hash="#/host"; return;
             }
           }
           toast(e.message||"Failed to create"); debug({ create_game_error:e });
@@ -462,7 +430,7 @@
             <p class="help" style="margin-top:10px;">Note, data is retained for about 30 minutes.</p>
           </div>`;
         $("#emailReport").onclick=()=>toast("Report requested. Check your email.");
-        $("#shareBtn").onclick=()=>{ navigator.clipboard.writeText(location.href).then(()=>toast("Link copied")).catch(()=>toast("Copy failed")); };
+        $("#shareBtn").onclick=()=>{ navigator.clipboard.writeText(location.href); toast("Link copied"); };
         return;
       }
     }
