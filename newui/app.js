@@ -5,6 +5,7 @@
     - Guest lobby: participants + “Waiting for the host to start” only.
     - Join maps nickname -> {name,nickname}; preserves participant_id if present.
     - Answer area: mic/keyboard reveal; draft preserved (no flicker).
+    - NEW: Derive and persist host role from backend host_user_id so Start always shows for host.
 */
 (function(){
   // ---------- tiny utils ----------
@@ -305,6 +306,14 @@
       const gid = state?.game_id || state?.id || null;
       if (gid) try{ localStorage.setItem(msGidKey(code), JSON.stringify(gid)); }catch{}
 
+      // ✅ NEW: persist role=host if backend says I'm the host
+      try{
+        const sess = await getSession();
+        const meId = sess?.user?.id || null;
+        const hostId = state?.host_user_id || state?.hostId || null;
+        if (meId && hostId && String(meId)===String(hostId)){ setRole(code, "host"); }
+      }catch{}
+
       // Host lobby UI: Code + Copy + Share + Go to room + Participants
       el.innerHTML = `
         <div class="grid">
@@ -371,7 +380,7 @@
   // ---------- Game Room ----------
   const Game={
     code:null, poll:null, tick:null, hbH:null, hbG:null,
-    state:{ status:"lobby", endsAt:null, participants:[], question:null, current_turn:null },
+    state:{ status:"lobby", endsAt:null, participants:[], question:null, current_turn:null, host_user_id:null },
     ui:{ lastSig:"", ansVisible:false, draft:"" },
     async mount(code){
       this.code=code;
@@ -403,14 +412,26 @@
     async refresh(){
       try{
         const out=await API.get_state({ code:this.code });
+
+        // ✅ NEW: if I am the backend-declared host, persist role=host
+        try {
+          const sess = await getSession();
+          const meId = sess?.user?.id || null;
+          const hostId = out?.host_user_id || out?.hostId || null;
+          if (meId && hostId && String(meId) === String(hostId)) {
+            setRole(this.code, "host");
+          }
+        } catch {}
+
         const status = out?.status || out?.phase || "lobby";
         const endsAt = out?.ends_at || out?.endsAt || null;
         const participants = Array.isArray(out?.participants)? out.participants : (Array.isArray(out?.players)? out.players : []);
         const question = out?.question || null;
         const current_turn = out?.current_turn || null;
-        const sig = [status, endsAt, question?.id||"", current_turn?.participant_id||"", participants.length].join("|");
+        const host_user_id = out?.host_user_id || out?.hostId || null;
+        const sig = [status, endsAt, question?.id||"", current_turn?.participant_id||"", participants.length, host_user_id||""].join("|");
         const forceFull = (sig !== this.ui.lastSig);
-        this.state = { status, endsAt, participants, question, current_turn };
+        this.state = { status, endsAt, participants, question, current_turn, host_user_id };
         this.render(forceFull);
         this.ui.lastSig = sig;
         this.startHeartbeats();
@@ -443,6 +464,7 @@
           const wrap=document.createElement("div"); wrap.id="msLobby"; wrap.style.cssText="display:flex;flex-direction:column;align-items:center;gap:10px; text-align:center; max-width:640px;";
           const plist=document.createElement("div"); plist.id="msPlist"; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); wrap.appendChild(plist);
 
+          // derive role from storage (which is now kept in sync via refresh/host page)
           const role=getRole(this.code);
           if (role==="host"){
             const startBtn=document.createElement("button"); startBtn.className="start-round"; startBtn.id="startGame"; startBtn.textContent="Start";
@@ -566,6 +588,8 @@
   pages.help=async()=>{ const app=document.getElementById("app"); app.innerHTML=`<div class="container"><div class="card" style="margin:28px auto;max-width:720px;"><h2>Help</h2><p class="help">…</p></div></div>`; await renderHeader(); ensureDebugTray(); };
 
   // ---------- Routes & boot ----------
+  const route = (p,h)=>routes[p]=h;
+  const routes={};
   route("#/", pages.home);
   route("#/host", pages.host);
   route("#/join", pages.join);
