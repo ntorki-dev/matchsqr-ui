@@ -327,7 +327,6 @@
     state:{ phase:"lobby", ends_at:null, players:[], active_player_id:null, question:null, host_user_id:null, min_players_required:2 },
     async mount(code){
       this.code=code;
-      try{ if (sessionStorage.getItem(hostMarkerKey(code))==="1"){ setRole(code, "host"); sessionStorage.removeItem(hostMarkerKey(code)); } }catch{}
       await this.refresh();
       this.startPolling();
       this.startHeartbeats();
