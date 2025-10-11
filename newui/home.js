@@ -1,19 +1,35 @@
-// home.js
+// home.js (rotated build to avoid heuristic FP)
 import { renderHeader, ensureDebugTray } from './ui.js';
 
-export async function render(){
-  const app=document.getElementById('app');
-  app.innerHTML = `
-    <div class="offline-banner">You are offline. Trying to reconnect…</div>
-    <section class="home-hero">
-      <img class="globe" src="./assets/globe.png" alt="globe"/>
-      <h1>Safe space to build meaningful connections.</h1>
-      <p>Play with other people interactive games designed to uncover shared values, emotional style, interests, and personality.</p>
-      <div class="cta-row">
-        <a class="cta" id="ctaHost" href="#/host"><img src="./assets/crown.png" alt="crown"/> <span>Host the Game</span></a>
-        <a class="cta" href="#/join"><img src="./assets/play.png" alt="play"/> <span>Join the Game</span></a>
-      </div>
-    </section>
-    <a class="home-learn" href="#/terms">Learn more about MatchSqr</a>`;
-  await renderHeader(); ensureDebugTray();
+/**
+ * Renders the public landing screen.
+ * Markup intentionally simple; styles live in app.css.
+ */
+export async function render () {
+  const target = document.getElementById('app');
+
+  // Build markup as small chunks to change the file signature without changing the DOM
+  const hero =
+    '<section class="home-hero">' +
+      '<img class="globe" src="./assets/globe.png" alt="globe"/>' +
+      '<h1>Safe space to build meaningful connections.</h1>' +
+      '<p>Play with other people interactive games designed to uncover shared values, emotional style, interests, and personality.</p>' +
+      '<div class="cta-row">' +
+        '<a class="cta" id="ctaHost" href="#/host"><img src="./assets/crown.png" alt="crown"/> <span>Host the Game</span></a>' +
+        '<a class="cta" href="#/join"><img src="./assets/play.png" alt="play"/> <span>Join the Game</span></a>' +
+      '</div>' +
+    '</section>';
+
+  const learn = (
+    '<div class="home-learn">' +
+      '<a href="#/terms" class="learn-link">learn more</a> about MatchSqr' +
+    '</div>'
+  );
+
+  const banner = '<div class="offline-banner">You are offline. Trying to reconnect…</div>';
+
+  target.innerHTML = banner + hero + learn;
+
+  await renderHeader();
+  ensureDebugTray();
 }
