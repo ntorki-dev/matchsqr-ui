@@ -33,14 +33,29 @@ export async function render(){
 
   function renderCreateUI(){
     el.innerHTML = `
-      <div class="grid host-create host-center">
-        <p class="host-lead">Get Ready.<br/>You might be surprised!</p>
-        <button class="cta" id="createGame">
-          <img src="./assets/crown.png" alt="crown"/>
-          <span>Create Game</span>
-        </button>
+  <div class="grid host-existing host-center">
+    <button class="cta" id="goRoom">
+      <img src="./assets/play.png" alt="play"/>
+      <span>Go to Room</span>
+    </button>
+
+    <div class="code-share-col">
+      <div class="id-line">
+        <span class="help lead-help">Your Game ID is:</span>
+        <span class="code-blob"><strong class="code-value">${code}</strong></span>
+        <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
       </div>
-    `;
+      <div class="share-line">
+        <span class="help">You can share this game ID with other players</span>
+        <button class="icon-btn" id="shareInvite" title="Share link"><img src="./assets/share.png" alt="share"/></button>
+      </div>
+    </div>
+
+    <div class="participants">
+      ${participantsListHTML(players, curPid)}
+    </div>
+  </div>
+`;
     $('#createGame').onclick=btnCreateGame;
   }
 
