@@ -35,13 +35,15 @@ export async function render(){
   const el=$('#hostControls');
 
   function renderCreateUI(){
-    el.innerHTML = `
-      <div class="grid">
-        <button class="primary" id="createGame">Create Game</button>
-        <p class="help">You will receive a game code and a room for players to join.</p>
-      </div>`;
-    $('#createGame').onclick=btnCreateGame;
-  }
+  el.innerHTML = `
+    <div class="grid host-grid">
+      <h2 class="host-lead">Safe space to build meaningful connections.</h2>
+      <button class="cta block" id="createGame">
+        <img src="./assets/crown.png" alt="crown"/> <span>Create Game</span>
+      </button>
+    </div>`;
+  $('#createGame').onclick=btnCreateGame;
+}
 
   async function renderExisting(code){
     // Always verify with server before showing any existing code
@@ -71,16 +73,25 @@ export async function render(){
     await inferAndPersistHostRole(code, state);
 
     el.innerHTML = `
-      <div class="grid">
-        <div class="inline-actions">
-          <span class="help">Code: <strong class="code-value">${code}</strong></span>
-          <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
-          <button class="ghost" id="shareInvite">Share invite</button>
-          <button class="primary" id="goRoom">Go to room</button>
-        </div>
-        <div class="help">Status: <strong>${phase}</strong> • Players: ${players.length}</div>
-        <div>${participantsListHTML(players, curPid)}</div>
-      </div>`;
+  <div class="grid host-grid">
+    <button class="cta block" id="goRoom">
+      <img src="./assets/play.png" alt="play"/> <span>Go to Room</span>
+    </button>
+
+    <div class="code-share">
+      <span class="help">Code: <strong class="code-value">${code}</strong></span>
+      <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
+      <a class="icon-link" id="shareLink" href="#/join?code=${encodeURIComponent(code)}" title="Share join link">
+        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M18 8a3 3 0 1 0-2.816-4H15a3 3 0 0 0 0 6 2.99 2.99 0 0 0 2.39-1.2l-7.136 4.082a3.002 3.002 0 1 0 0 2.236L17.39 15.8A2.99 2.99 0 0 0 15 14a3 3 0 1 0 2.816 4H19a3 3 0 1 0-1-5.816V12l-7.39 4.2" fill="currentColor"></path>
+        </svg>
+        <span>Share</span>
+      </a>
+    </div>
+
+    <div class="help">Status: <strong>${phase}</strong> • Players: ${players.length}</div>
+    <div>${participantsListHTML(players, curPid)}</div>
+  </div>`;
 
     $('#goRoom').onclick=()=>{ try{ sessionStorage.setItem(hostMarkerKey(code), '1'); }catch{} location.hash='#/game/'+code; };
     $('#copyCode').onclick=()=>{ navigator.clipboard.writeText(code).then(()=>toast('Code copied')).catch(()=>toast('Copy failed')); };

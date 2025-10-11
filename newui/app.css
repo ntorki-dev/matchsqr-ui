@@ -141,3 +141,48 @@ a{color:inherit;text-decoration:none}
   .home-learn{ left: 12px; bottom: 12px; font-size: 13px; }
   #app { padding-bottom: 56px; }
 }
+
+/* Host page lead text, 25% smaller than home hero h1 (48px -> 36px) */
+.host-lead{
+  font-size:36px;
+  line-height:1.2;
+  margin:0 0 10px 0;
+  font-weight:800;
+  text-align:center;
+  color:var(--ink);
+}
+
+/* Make CTA occupy full width on host for a clear primary action */
+.cta.block{
+  width:100%;
+  justify-content:center;
+}
+
+/* Code + Share row beneath the CTA */
+.code-share{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  justify-content:center;
+  flex-wrap:wrap;
+}
+
+/* Stronger emphasis on the displayed game code */
+.code-value{
+  font-weight:800;
+}
+
+/* Text link with icon, styled like a light button */
+.icon-link{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  text-decoration:none;
+  color:var(--ink);
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:10px 14px;
+  font-weight:600;
+}
+.icon-link:hover{ background:#f9fafb; }
