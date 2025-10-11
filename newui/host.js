@@ -33,24 +33,17 @@ export async function render(){
 
   function renderCreateUI(){
     el.innerHTML = `
-      <div class="grid host-existing host-center">
-        <button class="cta" id="goRoom">
-          <img src="./assets/play.png" alt="play"/>
-          <span>Go to Room</span>
+      <div class="grid host-create host-center">
+        <p class="host-lead">Get Ready.<br/>You might be surprised!</p>
+        <button class="cta" id="createGame">
+          <img src="./assets/crown.png" alt="crown"/>
+          <span>Create Game</span>
         </button>
-        <div class="code-share-row">
-          <span class="help">Game ID: <strong class="code-value">${code}</strong></span>
-          <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
-          <a class="icon-btn" id="shareInviteLink" title="Share link" href="#/join?gameCode=${code}"><img src="./assets/share.png" alt="share"/></a>
-        </div>
-        <p class="help small-note">Please share this Game ID with other players</p>
-        <div class="participants">
-          ${participantsListHTML(players, curPid)}
-        </div>
       </div>
     `;
     $('#createGame').onclick=btnCreateGame;
   }
+
 
   async function renderExisting(code){
     // Always verify with server before showing any existing code
