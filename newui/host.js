@@ -36,14 +36,10 @@ export async function render(){
 
   function renderCreateUI(){
     el.innerHTML = `
-
-<div class="grid host-create">
-  <p class="host-lead">Get Ready.<br/>You might be surprised!</p>
-  <button class="cta" id="createGame">
-    <img src="./assets/crown.png" alt="crown"/>
-    <span>Create Game</span>
-  </button>
-</div>    `;
+      <div class="grid">
+        <button class="primary" id="createGame">Create Game</button>
+        <p class="help">You will receive a game code and a room for players to join.</p>
+      </div>`;
     $('#createGame').onclick=btnCreateGame;
   }
 
@@ -75,25 +71,20 @@ export async function render(){
     await inferAndPersistHostRole(code, state);
 
     el.innerHTML = `
-
-<div class="grid host-existing">
-  <button class="cta" id="goRoom">
-    <img src="./assets/play.png" alt="play"/>
-    <span>Go to Room</span>
-  </button>
-  <div class="code-share-row">
-    <span class="help">Code: <strong class="code-value">${code}</strong></span>
-    <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
-    <a class="icon-btn" id="shareInviteLink" title="Share link" href="#/join?gameCode=${code}"><img src="./assets/share.png" alt="share"/></a>
-  </div>
-  <div class="participants">
-    ${participantsListHTML(players, curPid)}
-  </div>
-</div>
-      `;
+      <div class="grid">
+        <div class="inline-actions">
+          <span class="help">Code: <strong class="code-value">${code}</strong></span>
+          <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
+          <button class="ghost" id="shareInvite">Share invite</button>
+          <button class="primary" id="goRoom">Go to room</button>
+        </div>
+        <div class="help">Status: <strong>${phase}</strong> • Players: ${players.length}</div>
+        <div>${participantsListHTML(players, curPid)}</div>
+      </div>`;
 
     $('#goRoom').onclick=()=>{ try{ sessionStorage.setItem(hostMarkerKey(code), '1'); }catch{} location.hash='#/game/'+code; };
     $('#copyCode').onclick=()=>{ navigator.clipboard.writeText(code).then(()=>toast('Code copied')).catch(()=>toast('Copy failed')); };
+    $('#shareInvite').onclick=()=>shareRoom(code);
   }
 
   async function btnCreateGame(){
