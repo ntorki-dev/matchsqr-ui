@@ -235,10 +235,7 @@ export async function render(ctx){
       <div class="card main-card" id="mainCard"></div>
       <div class="controls-row" id="controlsRow"></div>
     </div>`;
-  await renderHeader(); ensureDebugTray();
-  try { document.querySelector('.header')?.classList.add('dark'); } catch {}
-  try { document.querySelector('.site-footer')?.classList.add('dark'); } catch {}
-  // Make header/footer black only in game room, without touching global CSS
+  await renderHeader(); ensureDebugTray();// Make header/footer black only in game room, without touching global CSS
   try { const h=document.querySelector('.header'); if(h){ h.style.background='#000'; h.style.color='#fff'; } } catch {}
   try { const f=document.querySelector('.site-footer'); if(f){ f.style.background='#000'; f.style.color='#fff'; } } catch {}
   if (code){ Game.mount(code); }
