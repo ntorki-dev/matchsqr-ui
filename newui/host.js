@@ -102,25 +102,20 @@ export async function render(){
   const joinUrl = `${location.origin}${location.pathname}#/join?gameCode=${code}`;
   $('#copyCode').onclick = () => { navigator.clipboard.writeText(code).then(()=>toast('Code copied')).catch(()=>toast('Copy failed')); };
   $('#shareInvite').onclick = async () => {
+  const joinUrl = `${location.origin}${location.pathname}#/join?gameCode=${code}`;
+  if (navigator.share){
     try{
-      if (typeof shareRoom === 'function'){
-        await shareRoom(code, joinUrl);
-        return;
-      }
+      await navigator.share({ title: 'Join my game', text: `Game ID: ${code}`, url: joinUrl });
+      return;
     }catch{}
-    if (navigator.share){
-      try{
-        await navigator.share({ title: 'Join my game', text: 'Join my MatchSqr game', url: joinUrl });
-        return;
-      }catch{}
-    }
-    try{
-      await navigator.clipboard.writeText(joinUrl);
-      toast('Join link copied');
-    }catch{
-      toast('Unable to share');
-    }
-  };
+  }
+  try{
+    await navigator.clipboard.writeText(joinUrl);
+    toast('Join link copied');
+  }catch{
+    toast('Unable to share');
+  }
+};
 }
 
   async function btnCreateGame(){
