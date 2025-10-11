@@ -5,7 +5,6 @@ import { inferAndPersistHostRole } from './api.js';
 
 function clearRememberedRoom(code){
   try{
-    // Clear generic active room
     localStorage.removeItem('active_room');
     sessionStorage.removeItem('active_room');
   }catch{}
@@ -95,6 +94,11 @@ export async function render(){
       const gid  = data?.id || data?.game_id;
       if (!code || !gid){ toast('Created, but missing code/id'); return; }
       try{ sessionStorage.setItem(hostMarkerKey(code), '1'); }catch{}
+      // Persist host participant_id when provided by API, to enable answering on host turn
+      try{
+        const pid = data?.participant_id || data?.host_participant_id || null;
+        if (pid) localStorage.setItem(msPidKey(code), JSON.stringify(pid));
+      }catch{}
       await renderExisting(code);
     }catch(e){
       toast(e.message||'Failed to create');

@@ -1,5 +1,5 @@
 // game.js
-import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey, inferAndPersistHostRole } from './api.js';
+import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey, inferAndPersistHostRole, getSession } from './api.js';
 import { renderHeader, ensureDebugTray, $, toast, participantsListHTML } from './ui.js';
 
 const Game = {
@@ -47,6 +47,7 @@ const Game = {
       const sig = [status, endsAt, question?.id||'', current_turn?.participant_id||'', participants.length, host_user_id||''].join('|');
       const forceFull = (sig !== this.ui.lastSig);
       this.state = { status, endsAt, participants, question, current_turn, host_user_id };
+      await this.backfillPidIfMissing();
       this.render(forceFull);
       this.ui.lastSig = sig;
       this.startHeartbeats();
@@ -63,6 +64,47 @@ const Game = {
     const code=this.code; const pid = JSON.parse(localStorage.getItem(msPidKey(code))||'null');
     const cur = this.state.current_turn && this.state.current_turn.participant_id;
     return pid && cur && String(pid)===String(cur);
+  },
+  async backfillPidIfMissing(){
+    const code=this.code;
+    // If we already have a pid, nothing to do
+    let pidRaw = localStorage.getItem(msPidKey(code));
+    if (pidRaw) return;
+    const participants = Array.isArray(this.state.participants)? this.state.participants : [];
+    // Try host match by auth user id or is_host flag
+    try{
+      const sess = await getSession();
+      const myUid = sess?.user?.id || null;
+      if (myUid){
+        const mine = participants.find(p => String(p.user_id||p.auth_user_id||p.owner_id||'') === String(myUid));
+        if (mine && (mine.participant_id || mine.id)){
+          localStorage.setItem(msPidKey(code), JSON.stringify(mine.participant_id || mine.id));
+          return;
+        }
+      }
+      // If role indicates we are host, try the is_host participant
+      const hostP = participants.find(p => p.is_host || p.role==='host');
+      if (hostP && (hostP.participant_id || hostP.id)){
+        if (getRole(code)==='host'){
+          localStorage.setItem(msPidKey(code), JSON.stringify(hostP.participant_id || hostP.id));
+          return;
+        }
+      }
+    }catch{}
+    // Guest nickname fallback: map by stored nickname
+    try{
+      const nick = localStorage.getItem(`ms_nick_${code}`);
+      if (nick){
+        const cand = participants.find(p => {
+          const nm = (p.nickname || p.name || '').trim().toLowerCase();
+          return nm && nm === nick.trim().toLowerCase();
+        });
+        if (cand && (cand.participant_id || cand.id)){
+          localStorage.setItem(msPidKey(code), JSON.stringify(cand.participant_id || cand.id));
+          return;
+        }
+      }
+    }catch{}
   },
   render(forceFull){
     const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow');

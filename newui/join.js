@@ -21,7 +21,11 @@ export async function render(){
     const code=$('#gameId').value.trim(); const nickname=$('#nickname').value.trim();
     if (!code) return toast('Enter game code');
     if (!nickname) return toast('Enter nickname');
-    try{ await API.join_game_guest({ code, nickname }); location.hash='#/game/'+code; }
+    try{
+      await API.join_game_guest({ code, nickname });
+      try{ localStorage.setItem(`ms_nick_${code}`, nickname); }catch{}
+      location.hash='#/game/'+code;
+    }
     catch(e){ toast(e.message||'Failed to join'); }
   };
 }
