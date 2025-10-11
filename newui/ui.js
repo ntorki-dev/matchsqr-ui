@@ -1,12 +1,16 @@
 // ui.js
-// Shared DOM helpers and header rendering.
+// Shared DOM helpers and header/footer rendering.
 
 import { getSession } from './api.js';
 
 export const $ = (sel, root=document) => root.querySelector(sel);
 
 export function toast(msg, ms=2200){
-  const t=document.createElement('div'); t.className='toast'; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), ms);
+  const t=document.createElement('div');
+  t.className='toast';
+  t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), ms);
 }
 
 export function debug(obj){
@@ -17,54 +21,109 @@ export function debug(obj){
   }catch{}
 }
 
-export function setOfflineBanner(show){ const b=document.querySelector('.offline-banner'); if(!b) return; b.classList.toggle('show', !!show); }
+export function setOfflineBanner(show){
+  const b=document.querySelector('.offline-banner');
+  if(!b) return;
+  b.classList.toggle('show', !!show);
+}
 addEventListener('offline',()=>setOfflineBanner(true));
 addEventListener('online',()=>setOfflineBanner(false));
 
+function ensureChrome(){
+  // Ensure structural chrome exists as body-level siblings
+  if (!$('.site-header')){
+    const h = document.createElement('header');
+    h.className = 'site-header header';
+    h.innerHTML = `
+      <div class="header-inner">
+        <a class="brand" href="#/">
+          <img class="brand-logo" src="./assets/logo.png" alt="logo"/>
+          <span class="brand-name">MatchSqr</span>
+        </a>
+        <div class="right" id="hdrRight">
+          <a class="btn-login" href="#/login">Login</a>
+          <a class="btn-help" href="#/help" aria-label="Help">?</a>
+        </div>
+      </div>`;
+    document.body.prepend(h);
+  }
+  if (!$('.site-footer')){
+    const f = document.createElement('footer');
+    f.className = 'site-footer';
+    f.innerHTML = `
+      <div class="footer-inner">
+        <span class="muted">&copy; ${new Date().getFullYear()} MatchSqr</span>
+      </div>`;
+    document.body.appendChild(f);
+  }
+  if (!$('#app')){
+    const main = document.createElement('main');
+    main.id = 'app';
+    document.body.insertBefore(main, $('.site-footer'));
+  }
+  if (!$('.offline-banner')){
+    const b = document.createElement('div');
+    b.className = 'offline-banner';
+    b.textContent = 'You are offline. Trying to reconnect...';
+    document.body.insertBefore(b, $('#app'));
+  }
+}
+
 export async function renderHeader(){
-  const app=document.getElementById('app');
-  const headerHTML = `
-    <div class="header">
-      <a class="brand" href="#/"><img src="./assets/logo.png" alt="logo"/><span>MatchSqr</span></a>
-      <div class="right" id="hdrRight">
-        <a class="btn-login" href="#/login">Login</a>
-        <a class="btn-help" href="#/help">?</a>
-      </div>
-    </div>`;
-  app.innerHTML = headerHTML + app.innerHTML;
+  ensureChrome();
+
+  // personalize header right side
   try{
     const session = await getSession();
     const user = session?.user || null;
+    const right = $('#hdrRight');
+    if (!right) return;
     if (user){
       const name = user.user_metadata?.name || (user.email? user.email.split('@')[0] : 'Account');
-      const right = document.getElementById('hdrRight');
-      if (right){
-        right.innerHTML = `
-          <a class="avatar-link" href="#/account" title="${name}"><img class="avatar" src="./assets/profile.png" alt="profile"/></a>
-          <a class="btn-help" href="#/help">?</a>`;
-      }
+      right.innerHTML = `
+        <a class="avatar-link" href="#/account" title="${name}">
+          <img class="avatar" src="./assets/profile.png" alt="profile"/>
+        </a>
+        <a class="btn-help" href="#/help" aria-label="Help">?</a>`;
+    }else{
+      right.innerHTML = `
+        <a class="btn-login" href="#/login">Login</a>
+        <a class="btn-help" href="#/help" aria-label="Help">?</a>`;
     }
   }catch{}
 }
 
 export function ensureDebugTray(){
-  const app = document.getElementById('app');
-  if (!document.getElementById('debug-tray')){
-    app.insertAdjacentHTML('beforeend', `<div class="debug-tray" id="debug-tray"><pre id="debug-pre"></pre></div>`);
+  if (!$('#debug-tray')){
+    const tray = document.createElement('div');
+    tray.className = 'debug-tray';
+    tray.id = 'debug-tray';
+    tray.innerHTML = `<pre id="debug-pre"></pre>`;
+    document.body.appendChild(tray);
   }
   setOfflineBanner(!navigator.onLine);
 }
 
-// small helpers for invites/participants UI
+// Sharing helpers
 export async function shareRoom(code){
   const shareUrl = location.origin + location.pathname + '#/join';
   const text = 'Join my MatchSqr game. Code: ' + code;
-  try{ if (navigator.share){ await navigator.share({ title:'MatchSqr Room', text, url:shareUrl }); return; } }catch(_){}
-  try{ await navigator.clipboard.writeText(text + ' ' + shareUrl); toast('Invite copied'); }catch(_){ toast('Copy failed, share manually'); }
+  try{
+    if (navigator.share){
+      await navigator.share({ title:'MatchSqr Room', text, url:shareUrl }); return;
+    }
+  }catch(_){}
+  try{
+    await navigator.clipboard.writeText(text + ' ' + shareUrl);
+    toast('Invite copied');
+  }catch(_){
+    toast('Copy failed, share manually');
+  }
 }
 
 export function participantsListHTML(ppl, curPid){
-  if (!Array.isArray(ppl) || ppl.length===0) return '<ul id="participantsList"><li class="meta">No one yet</li></ul>';
+  if (!Array.isArray(ppl) || ppl.length===0)
+    return '<ul id="participantsList"><li class="meta">No one yet</li></ul>';
   const li = ppl.map(p=>{
     const pid = p?.participant_id || p?.id || '';
     const name = p?.nickname || p?.name || 'Guest';
