@@ -142,16 +142,28 @@ a{color:inherit;text-decoration:none}
   #app { padding-bottom: 56px; }
 }
 
-/* Host UI refinements (UI-only) */
-.host-lead{font-size:36px;line-height:1.15;margin:0 0 10px 0;font-weight:800;text-align:center;color:var(--ink)}
-.host-wrap .primary{display:inline-flex;align-items:center;gap:10px;justify-content:center}
-.host-wrap #createGame{width:100%}
-.btn-ico{width:18px;height:18px;object-fit:contain}
 
-/* Reposition when a game exists: Go-to-room takes the top full row; code/copy/share sit below centered */
-.host-wrap .inline-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
-.host-wrap .inline-actions #goRoom{order:-1;flex:1 0 100%;}
-.code-value{font-weight:800}
-
-/* Visually hidden text utility for a11y */
-.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+/* Host screen additions */
+.host-lead{
+  text-align:center;
+  color: var(--muted);
+  font-size: 14px; /* 25% smaller than home-hero p (18px) */
+  margin: 0 0 8px 0;
+}
+.host-create .cta,
+.host-existing .cta{
+  justify-content:center;
+  width: 100%;
+  max-width: 320px; /* align with homepage CTA visual size */
+  margin: 0 auto;
+}
+.code-share-row{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:10px;
+  margin-top: 8px;
+}
+.code-share-row .code-value{
+  font-weight: 800;
+}
