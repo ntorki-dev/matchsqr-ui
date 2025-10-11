@@ -1,21 +1,12 @@
 :root{
   --bg:#ffffff; --ink:#1f2937; --muted:#6b7280; --green:#22a447; --green-pressed:#1e8d3d; --border:#e5e7eb; --radius:16px;
 }
-*{box-sizing:border-box}
-html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+*{box-sizing:border-box} html,body{height:100%} body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
 a{color:inherit;text-decoration:none}
 .container{max-width:1080px;margin:0 auto;padding:16px}
 
-/* Header (full-width, top-aligned) */
-.header{
-  width:100%;
-  margin:0;
-  padding:12px 24px;
-  display:flex;align-items:center;justify-content:space-between;
-  background:#fff;
-  border-bottom:1px solid var(--border);
-}
+/* Header */
+.header{display:flex;align-items:center;justify-content:space-between;max-width:1200px;margin:20px auto 0;padding:0 24px}
 .header .brand{display:flex;align-items:center;gap:10px;font-weight:700}
 .header .brand img{width:32px;height:32px;object-fit:contain}
 .header .right{display:flex;align-items:center;gap:12px}
@@ -23,28 +14,25 @@ a{color:inherit;text-decoration:none}
 .header .btn-help{width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:18px;border:1px solid var(--border);background:#fff;font-weight:700}
 .header .avatar{width:32px;height:32px;border-radius:50%;object-fit:cover;border:1px solid var(--border)}
 
-/* Homepage hero (smaller type) */
-.home-hero{max-width:980px;margin:40px auto 0;padding:0 24px;text-align:center}
+/* Homepage hero */
+.home-hero{max-width:980px;margin:64px auto 0;padding:0 24px;text-align:center}
 .home-hero .globe{width:160px;height:160px;margin:0 auto 18px auto;object-fit:contain}
-.home-hero h1{font-size:clamp(22px,4.2vw,34px);line-height:1.2;margin:0 0 10px 0;font-weight:800}
-.home-hero p{max-width:720px;margin:0 auto 28px auto;color:var(--muted);font-size:clamp(14px,2.4vw,18px);line-height:1.55}
+.home-hero h1{font-size:48px;line-height:1.15;margin:0 0 10px 0;font-weight:800}
+.home-hero p{max-width:720px;margin:0 auto 28px auto;color:var(--muted);font-size:18px}
 .cta-row{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
 .cta{display:inline-flex;align-items:center;gap:10px;background:var(--green);color:#fff;border:0;border-radius:8px;padding:12px 18px;font-weight:700;cursor:pointer}
 .cta img{width:18px;height:18px;object-fit:contain}
-
-/* Learn more: normal flow, only phrase clickable, no underline on surrounding text */
 .home-learn{
-  position:static; left:auto; right:auto; bottom:auto;
-  display:block;
-  color:var(--muted);
-  font-size:14px;
-  text-align:center;
-  max-width:720px;
-  margin:16px auto 0;
-  text-decoration:none;
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  display: block;
+  margin: 0;
+  text-align: left;
+  color: #667085;
+  font-size: 14px;
+  background: transparent;
 }
-.home-learn .learn-link{ text-decoration:none; font-weight:600; }
-.home-learn .learn-link:hover{ text-decoration:none; }
 
 /* Cards / layout */
 .card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:16px}
@@ -90,18 +78,66 @@ a{color:inherit;text-decoration:none}
 .debug-tray{position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow:auto;background:#111;color:#e5e7eb;font-size:12px;padding:8px 10px;display:none}
 .debug-tray pre{white-space:pre-wrap;word-break:break-word}
 
-/* Footer (full-width baseline; only styles, no content change) */
-.site-footer{ width:100%; margin:0; padding:12px 16px; background:#fff; color:var(--muted); border-top:1px solid var(--border); }
 
-/* Game room: optional dark theme (if JS adds .dark), plus taller header in game views */
-.header.dark{ background:#000; color:#fff; }
-.header.dark a{ color:#fff; }
-.header.dark .btn-help { 
-  background:#fff; 
-  color:#000; 
-  border:1px solid rgba(0,0,0,.2); 
+/* === Homepage typography scale (about 25% smaller) === */
+.home-hero h1{
+  font-size: clamp(22px, 4.2vw, 34px);
+  line-height: 1.2;
 }
-.header.dark .btn-help img { filter:none; }
+.home-hero p{
+  font-size: clamp(14px, 2.4vw, 18px);
+  line-height: 1.55;
+}
 
-/* Taller header when the game room is present (#app contains .room-wrap) */
-#app:has(> .room-wrap) > .header{ padding:16px 24px; }
+/* === Learn more: normal flow, only phrase clickable === */
+.home-learn{
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  display: block;
+  margin: 0;
+  text-align: left;
+  color: #667085;
+  font-size: 14px;
+  background: transparent;
+}
+.home-learn .learn-link{
+  color: #2563eb;
+  text-decoration: underline;
+  font-weight: 500;
+}
+.home-learn .learn-link:hover{ text-decoration: underline; }
+
+/* === Game room: dark header/footer when .dark is present === */
+.header.dark{
+  background: #000;
+  color: #fff;
+}
+.header.dark a{ color: #fff; }
+.site-footer.dark{
+  background: #000;
+  color: #fff;
+}
+
+/* Responsive tweaks */
+@media (max-width: 520px){
+  .home-hero .globe{ width: 120px; height: 120px; }
+  .home-hero h1{ font-size: clamp(20px, 6vw, 28px); }
+  .home-hero p{ font-size: clamp(13px, 3.3vw, 16px); }
+  .home-learn{
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  display: block;
+  margin: 0;
+  text-align: left;
+  color: #667085;
+  font-size: 14px;
+  background: transparent;
+}
+}
+
+@media (max-width: 520px){
+  .home-learn{ left: 12px; bottom: 12px; font-size: 13px; }
+  #app { padding-bottom: 56px; }
+}
