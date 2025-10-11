@@ -145,20 +145,8 @@ a{color:inherit;text-decoration:none}
 
 /* Host screen additions */
 
-.host-lead{
-  text-align:center;
-  color: var(--ink);
-  font-size: 36px; /* 25% smaller than home-hero h1 (48px) */
-  line-height: 1.15;
-  font-weight: 800;
-  margin: 0 0 16px 0;
-  max-width: 720px;
-  margin-left: auto;
-  margin-right: auto;
-}
 @media (max-width: 640px){
-  .host-lead{ font-size: 28px; }
-}
+  }
 .host-create .cta,
 .host-existing .cta{
   justify-content:center;
@@ -180,14 +168,6 @@ a{color:inherit;text-decoration:none}
 /* Host screen hero layout (card-less) */
 .host-wrap{max-width:720px;margin:64px auto;padding:0 16px}
 .host-center{justify-items:center;text-align:center}
-.host-lead{
-  text-align:center;
-  color: var(--ink);
-  font-size: 14px; /* 25% smaller than home-hero p (18px) */
-  font-weight: 700;
-  line-height: 1.3;
-  margin: 0 0 12px 0;
-}
 .host-create .cta,
 .host-existing .cta{
   justify-content:center;
@@ -206,3 +186,23 @@ a{color:inherit;text-decoration:none}
 }
 .code-share-row .code-value{ font-weight: 800; }
 .small-note{ margin-top: 6px; }
+
+/* Host headline, match homepage H1 at 25% smaller */
+.host-wrap .host-lead{
+  text-align: center;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.15;
+  font-weight: 800;
+  margin: 0 0 16px 0;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (max-width: 640px){
+  .host-wrap .host-lead{
+    font-size: 28px;
+  }
+}
+
