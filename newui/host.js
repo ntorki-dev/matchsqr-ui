@@ -1,7 +1,23 @@
 // host.js
-import { API, getSession, msGidKey, hostMarkerKey } from './api.js';
+import { API, getSession, msGidKey, msPidKey, msRoleKey, hostMarkerKey } from './api.js';
 import { renderHeader, ensureDebugTray, $, toast, shareRoom, participantsListHTML } from './ui.js';
 import { inferAndPersistHostRole } from './api.js';
+
+function clearRememberedRoom(code){
+  try{
+    // Clear generic active room
+    localStorage.removeItem('active_room');
+    sessionStorage.removeItem('active_room');
+  }catch{}
+  try{
+    if (code){
+      localStorage.removeItem(msGidKey(code));
+      localStorage.removeItem(msPidKey(code));
+      localStorage.removeItem(msRoleKey(code));
+      sessionStorage.removeItem(hostMarkerKey(code));
+    }
+  }catch{}
+}
 
 export async function render(){
   const session = await getSession();
@@ -29,9 +45,25 @@ export async function render(){
   }
 
   async function renderExisting(code){
+    // Always verify with server before showing any existing code
     let state=null;
-    try{ state = await API.get_state({ code }); }catch(e){}
+    try{
+      state = await API.get_state({ code });
+    }catch(e){
+      // Not found or any error, treat as stale
+      clearRememberedRoom(code);
+      renderCreateUI();
+      return;
+    }
+
     const phase = (state?.status || state?.phase || 'lobby');
+    // If the game is ended or closed, clear and fallback
+    if (phase === 'ended'){
+      clearRememberedRoom(code);
+      renderCreateUI();
+      return;
+    }
+
     const players = Array.isArray(state?.participants||state?.players) ? (state.participants||state.players) : [];
     const curPid = state?.current_turn?.participant_id || null;
     const gid = state?.game_id || state?.id || null;
@@ -70,9 +102,14 @@ export async function render(){
     }
   }
 
-  // Try to prefill existing
+  // Prefill from remembered room, but only show it if server confirms it's lobby or running
   const arRaw = localStorage.getItem('active_room') || sessionStorage.getItem('active_room');
   let ar; try{ ar = JSON.parse(arRaw||'null'); }catch{ ar=null; }
-  if (ar && (ar.code || ar.game_code)){ await renderExisting(ar.code || ar.game_code); }
-  else { renderCreateUI(); }
+  const rememberedCode = ar && (ar.code || ar.game_code);
+
+  if (rememberedCode){
+    await renderExisting(rememberedCode);
+  } else {
+    renderCreateUI();
+  }
 }
