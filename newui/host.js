@@ -36,9 +36,9 @@ export async function render(){
 
   function renderCreateUI(){
     el.innerHTML = `
-      <div class="grid host-grid">
+      <div class="grid">
         <h2 class="host-lead">Get ready. You might be surprised!</h2>
-        <button class="primary cta" id="createGame"><img src="./assets/crown.png" alt=""/> <span>Create Game</span></button>
+        <button class="primary" id="createGame"><img class="btn-ico" src="./assets/crown.png" alt=""/> <span>Create Game</span></button>
         <p class="help">You will receive a game code and a room for players to join.</p>
       </div>`;
     $('#createGame').onclick=btnCreateGame;
@@ -72,12 +72,12 @@ export async function render(){
     await inferAndPersistHostRole(code, state);
 
     el.innerHTML = `
-      <div class="grid host-grid">
-        <button class="primary cta" id="goRoom"><img src="./assets/play.png" alt=""/> <span>Go to room</span></button>
-        <div class="inline-actions centered">
-          <span class="help">Game ID: <strong>${code}</strong></span>
+      <div class="grid">
+        <div class="inline-actions">
+          <span class="help">Code: <strong class="code-value">${code}</strong></span>
           <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
-          <button class="ghost" id="shareInvite" title="Share join link"><img src="./assets/share.png" alt="share"/> <span>Share</span></button>
+          <button class="ghost" id="shareInvite"><img class="btn-ico" src="./assets/share.png" alt=""/> <span class="visually-hidden">Share</span></button>
+          <button class="primary" id="goRoom"><img class="btn-ico" src="./assets/play.png" alt=""/> <span>Go to room</span></button>
         </div>
         <div class="help">Status: <strong>${phase}</strong> • Players: ${players.length}</div>
         <div>${participantsListHTML(players, curPid)}</div>

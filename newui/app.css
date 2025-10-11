@@ -142,7 +142,16 @@ a{color:inherit;text-decoration:none}
   #app { padding-bottom: 56px; }
 }
 
-/* Host screen lead text, 25% smaller than home hero h1 (48px -> 36px) */
+/* Host UI refinements (UI-only) */
 .host-lead{font-size:36px;line-height:1.15;margin:0 0 10px 0;font-weight:800;text-align:center;color:var(--ink)}
-.host-grid{max-width:720px;margin:28px auto;padding:0 16px;text-align:center}
-.inline-actions.centered{justify-content:center}
+.host-wrap .primary{display:inline-flex;align-items:center;gap:10px;justify-content:center}
+.host-wrap #createGame{width:100%}
+.btn-ico{width:18px;height:18px;object-fit:contain}
+
+/* Reposition when a game exists: Go-to-room takes the top full row; code/copy/share sit below centered */
+.host-wrap .inline-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+.host-wrap .inline-actions #goRoom{order:-1;flex:1 0 100%;}
+.code-value{font-weight:800}
+
+/* Visually hidden text utility for a11y */
+.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
