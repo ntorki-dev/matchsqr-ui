@@ -236,7 +236,8 @@ export async function render(ctx){
       <div class="controls-row" id="controlsRow"></div>
     </div>`;
   await renderHeader(); ensureDebugTray();// Make header/footer black only in game room, without touching global CSS
-  try { const h=document.querySelector('.header'); if(h){ h.style.background='#000'; h.style.color='#fff'; } } catch {}
-  try { const f=document.querySelector('.site-footer'); if(f){ f.style.background='#000'; f.style.color='#fff'; } } catch {}
+  try { const h=document.querySelector('.header'); if(h){ h.style.background='#4a4a4a'; h.style.color='#fff'; } } catch {}
+  try { const f=document.querySelector('.site-footer'); if(f){ f.style.background='#4a4a4a'; f.style.color='#fff'; } } catch {}
+  try{ document.body.style.background='#f7f5e5'; }catch{}
   if (code){ Game.mount(code); }
 }
