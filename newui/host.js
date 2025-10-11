@@ -32,82 +32,96 @@ export async function render(){
   const el=$('#hostControls');
 
   function renderCreateUI(){
-    el.innerHTML = `
-  <div class="grid host-existing host-center">
-    <button class="cta" id="goRoom">
-      <img src="./assets/play.png" alt="play"/>
-      <span>Go to Room</span>
-    </button>
-
-    <div class="code-share-col">
-      <div class="id-line">
-        <span class="help lead-help">Your Game ID is:</span>
-        <span class="code-blob"><strong class="code-value">${code}</strong></span>
-        <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
-      </div>
-      <div class="share-line">
-        <span class="help">You can share this game ID with other players</span>
-        <button class="icon-btn" id="shareInvite" title="Share link"><img src="./assets/share.png" alt="share"/></button>
-      </div>
+  el.innerHTML = `
+    <div class="grid host-create host-center">
+      <p class="host-lead">Get Ready.<br/>You might be surprised!</p>
+      <button class="cta" id="createGame">
+        <img src="./assets/crown.png" alt="crown"/>
+        <span>Create Game</span>
+      </button>
     </div>
-
-    <div class="participants">
-      ${participantsListHTML(players, curPid)}
-    </div>
-  </div>
-`;
-    $('#createGame').onclick=btnCreateGame;
-  }
+  `;
+  $('#createGame').onclick = btnCreateGame;
+}
 
 
   async function renderExisting(code){
-    // Always verify with server before showing any existing code
-    let state=null;
-    try{
-      state = await API.get_state({ code });
-    }catch(e){
-      // Not found or any error, treat as stale
-      clearRememberedRoom(code);
-      renderCreateUI();
-      return;
-    }
-
-    const phase = (state?.status || state?.phase || 'lobby');
-    // If the game is ended or closed, clear and fallback
-    if (phase === 'ended'){
-      clearRememberedRoom(code);
-      renderCreateUI();
-      return;
-    }
-
-    const players = Array.isArray(state?.participants||state?.players) ? (state.participants||state.players) : [];
-    const curPid = state?.current_turn?.participant_id || null;
-    const gid = state?.game_id || state?.id || null;
-    if (gid) try{ localStorage.setItem(msGidKey(code), JSON.stringify(gid)); }catch{}
-
-    await inferAndPersistHostRole(code, state);
-
-    el.innerHTML = `
-
-<div class="grid host-existing">
-  <button class="cta" id="goRoom">
-    <img src="./assets/play.png" alt="play"/>
-    <span>Go to Room</span>
-  </button>
-  <div class="code-share-row">
-    <span class="help">Code: <strong class="code-value">${code}</strong></span>
-    <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
-    <a class="icon-btn" id="shareInviteLink" title="Share link" href="#/join?gameCode=${code}"><img src="./assets/share.png" alt="share"/></a>
-  </div>
-  <div class="participants">
-    ${participantsListHTML(players, curPid)}
-  </div>
-</div>
-      `;
-
-    $('#goRoom').onclick=()=>{ try{ sessionStorage.setItem(hostMarkerKey(code), '1'); }catch{} location.hash='#/game/'+code; };
-    $('#copyCode').onclick=()=>{ navigator.clipboard.writeText(code).then(()=>toast('Code copied')).catch(()=>toast('Copy failed')); };
+  // Always verify with server before showing any existing code
+  let state=null;
+  try{
+    state = await API.get_state({ code });
+  }catch(e){
+    // Not found or any error, treat as stale
+    clearRememberedRoom(code);
+    renderCreateUI();
+    return;
   }
+
+  const phase = (state?.status || state?.phase || 'lobby');
+  // If the game is ended or closed, clear and fallback
+  if (phase === 'ended'){
+    clearRememberedRoom(code);
+    renderCreateUI();
+    return;
+  }
+
+  const players = Array.isArray(state?.participants||state?.players) ? (state.participants||state.players) : [];
+  const curPid = state?.current_turn?.participant_id || null;
+  const gid = state?.game_id || state?.id || null;
+  if (gid) try{ localStorage.setItem(msGidKey(code), JSON.stringify(gid)); }catch{}
+
+  await inferAndPersistHostRole(code, state);
+
+  el.innerHTML = `
+    <div class="grid host-existing host-center">
+      <button class="cta" id="goRoom">
+        <img src="./assets/play.png" alt="play"/>
+        <span>Go to Room</span>
+      </button>
+
+      <div class="code-share-col">
+        <div class="id-line">
+          <span class="help lead-help">Your Game ID is:</span>
+          <span class="code-blob"><strong class="code-value">${code}</strong></span>
+          <button class="icon-btn" id="copyCode" title="Copy code"><img src="./assets/copy.png" alt="copy"/></button>
+        </div>
+        <div class="share-line">
+          <span class="help">You can share this game ID with other players</span>
+          <button class="icon-btn" id="shareInvite" title="Share link"><img src="./assets/share.png" alt="share"/></button>
+        </div>
+      </div>
+
+      <div class="participants">
+        ${participantsListHTML(players, curPid)}
+      </div>
+    </div>
+  `;
+
+  $('#goRoom').onclick=()=>{ try{ sessionStorage.setItem(hostMarkerKey(code), '1'); }catch{} location.hash='#/game/'+code; };
+
+  const joinUrl = `${location.origin}${location.pathname}#/join?gameCode=${code}`;
+  $('#copyCode').onclick = () => { navigator.clipboard.writeText(code).then(()=>toast('Code copied')).catch(()=>toast('Copy failed')); };
+  $('#shareInvite').onclick = async () => {
+    try{
+      if (typeof shareRoom === 'function'){
+        await shareRoom(code, joinUrl);
+        return;
+      }
+    }catch{}
+    if (navigator.share){
+      try{
+        await navigator.share({ title: 'Join my game', text: 'Join my MatchSqr game', url: joinUrl });
+        return;
+      }catch{}
+    }
+    try{
+      await navigator.clipboard.writeText(joinUrl);
+      toast('Join link copied');
+    }catch{
+      toast('Unable to share');
+    }
+  };
+}
 
   async function btnCreateGame(){
     try{
