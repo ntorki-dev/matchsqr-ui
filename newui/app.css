@@ -11,8 +11,8 @@ a{color:inherit;text-decoration:none}
 .header .brand img{width:32px;height:32px;object-fit:contain}
 .header .right{display:flex;align-items:center;gap:12px}
 .header .btn-login{background:var(--green);color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer}
-.header .btn-help{width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:18px;border:1px solid var(--border);background:#fff;font-weight:700}
-.header .avatar{width:32px;height:32px;border-radius:50%;object-fit:cover;border:1px solid var(--border)}
+.header .btn-help{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:18px;border:1px solid var(--border);background:#fff;font-weight:700}
+.header .avatar{width:32px;height:32px;object-fit:cover;border:1px solid var(--border)}
 
 /* Homepage hero */
 .home-hero{max-width:980px;margin:64px auto 0;padding:0 24px;text-align:center}
@@ -107,18 +107,6 @@ a{color:inherit;text-decoration:none}
   font-weight: 500;
 }
 .home-learn .learn-link:hover{ text-decoration: underline; }
-
-/* === Game room: dark header/footer when .dark is present === 
-.header.dark{
-  background: #000;
-  color: #fff;
-}
-.header.dark a{ color: #fff; }
-.site-footer.dark{
-  background: #000;
-  color: #fff;
-}
-*/
 
 /* Responsive tweaks */
 @media (max-width: 520px){
@@ -227,7 +215,7 @@ html, body { background: #fdfdfd; }
 /* Game room theme via body class (no inline styles) */
 body.is-game { background: #f7f5e5; }
 body.is-game .header { background: #4a4a4a; color: #ffffff; }
-body.is-game .header a { color: #ffffff; }
+/* body.is-game .header a { color: #ffffff; } */
 body.is-game .site-footer,
 body.is-game footer,
 body.is-game .footer,
