@@ -11,7 +11,7 @@ export async function render () {
   // Build markup as small chunks to change the file signature without changing the DOM
   const hero =
     '<section class="home-hero">' +
-      '<video class="sphere" autoplay muted loop playsinline preload="metadata" poster="./assets/globe.png"><source src="./assets/Sphere.webm" type="video/mp4" /></video>' +
+      '<video class="sphere" autoplay muted loop playsinline preload="metadata" poster="./assets/globe.png"><source src="./assets/Sphere.mp4" type="video/mp4" /></video>' +
       '<h1>Safe space to build meaningful connections.</h1>' +
       '<p>Play with other people interactive games designed to uncover shared values, emotional style, interests, and personality.</p>' +
       '<div class="cta-row">' +
