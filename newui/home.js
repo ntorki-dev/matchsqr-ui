@@ -11,7 +11,7 @@ export async function render () {
   // Build markup as small chunks to change the file signature without changing the DOM
   const hero =
     '<section class="home-hero">' +
-      '<video class="sphere" src="./assets/Sphere.mp4" autoplay muted playsinline preload="auto" disablepictureinpicture x5-playsinline webkit-playsinline></video>' +
+      '<img class="globe" src="./assets/globe.png" alt="globe"/>' +
       '<h1>Safe space to build meaningful connections.</h1>' +
       '<p>Play with other people interactive games designed to uncover shared values, emotional style, interests, and personality.</p>' +
       '<div class="cta-row">' +
@@ -30,32 +30,38 @@ export async function render () {
 
   target.innerHTML = banner + hero + learn;
 
-  // Strict fallback: show the globe ONLY if the video errors.
+  // Ensure loop and immediate autoplay, especially on mobile Safari/Chrome.
   (function(){
     const v = document.querySelector('.home-hero .sphere');
     if(!v) return;
-
-    // Ensure autoplay-friendly flags before load/play
+    // Make attributes explicit before load
     v.muted = true;
     v.defaultMuted = true;
+    v.autoplay = true;
+    v.loop = true;
+    v.preload = 'auto';
     v.playsInline = true;
+    v.setAttribute('playsinline','');
     v.setAttribute('webkit-playsinline','');
     v.setAttribute('x5-playsinline','');
-    try { v.load(); } catch(e){}
+    try { v.load(); } catch(e) {}
 
-    // Try immediate play; if it fails due to policy, retry on first user gesture
-    const tryPlay = () => { v.play && v.play().catch(()=>{}); };
-    tryPlay();
-    document.addEventListener('pointerdown', tryPlay, { once: true });
+    const kick = () => {
+      try {
+        const p = v.play && v.play();
+        if (p && p.catch) p.catch(()=>{});
+      } catch(e) {}
+    };
 
-    // If a hard error occurs, replace with the globe image
-    v.addEventListener('error', () => {
-      const img = document.createElement('img');
-      img.className = 'globe';
-      img.src = './assets/globe.png';
-      img.alt = 'globe';
-      v.replaceWith(img);
-    }, { once: true });
+    if (v.readyState >= 2) { // HAVE_CURRENT_DATA or better
+      kick();
+    } else {
+      v.addEventListener('loadeddata', kick, { once: true });
+      v.addEventListener('canplay', kick, { once: true });
+    }
+
+    // As a final backup for strict autoplay policies, retry once on first user gesture
+    document.addEventListener('pointerdown', kick, { once: true });
   })();
 
 
