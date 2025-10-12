@@ -1,4 +1,4 @@
-// home.js (rotated build to avoid heuristic FP)
+// home.js — Final minimal version for stable desktop/mobile playback
 import { renderHeader, ensureDebugTray } from './ui.js';
 
 /**
@@ -8,10 +8,12 @@ import { renderHeader, ensureDebugTray } from './ui.js';
 export async function render () {
   const target = document.getElementById('app');
 
-  // Build markup as small chunks to change the file signature without changing the DOM
   const hero =
     '<section class="home-hero">' +
-      '<video class="sphere" src="./assets/Sphere.mp4" autoplay muted playsinline preload="auto" disablepictureinpicture x5-playsinline webkit-playsinline loop></video>' +
+      '<video class="sphere" autoplay muted loop playsinline preload="auto">' +
+        '<source src="./assets/Sphere.mp4" type="video/mp4" />' +
+        '<source src="./assets/Sphere.webm" type="video/webm" />' +
+      '</video>' +
       '<h1>Safe space to build meaningful connections.</h1>' +
       '<p>Play with other people interactive games designed to uncover shared values, emotional style, interests, and personality.</p>' +
       '<div class="cta-row">' +
@@ -20,60 +22,45 @@ export async function render () {
       '</div>' +
     '</section>';
 
-  const learn = (
+  const learn =
     '<div class="home-learn">' +
       '<a href="#/terms" class="learn-link">learn more</a> about MatchSqr' +
-    '</div>'
-  );
+    '</div>';
 
   const banner = '<div class="offline-banner">You are offline. Trying to reconnect…</div>';
 
   target.innerHTML = banner + hero + learn;
 
-  // Minimal autoplay kick, preserves existing error fallback.
+  // --- Minimal autoplay logic ---
   (function(){
     const v = document.querySelector('.home-hero .sphere');
     if(!v) return;
-    v.muted = true; v.defaultMuted = true;
-    v.autoplay = true; v.loop = true;
-    v.preload = 'auto';
-    v.playsInline = true; v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.setAttribute('x5-playsinline','');
-    try { v.load(); } catch(e){}
-    const kick = () => { try { const p = v.play && v.play(); if (p && p.catch) p.catch(()=>{});} catch(e){} };
-    if (v.readyState >= 2) kick();
-    else { v.addEventListener('loadeddata', kick, { once: true }); v.addEventListener('canplay', kick, { once: true }); }
-    document.addEventListener('pointerdown', kick, { once: true });
-  })();
-
-
-  // Strict fallback: show the globe ONLY if the video errors.
-  (function(){
-    const v = document.querySelector('.home-hero .sphere');
-    if(!v) return;
-
-    // Ensure autoplay-friendly flags before load/play
     v.muted = true;
     v.defaultMuted = true;
+    v.autoplay = true;
+    v.loop = true;
+    v.preload = 'auto';
     v.playsInline = true;
+    v.setAttribute('playsinline','');
     v.setAttribute('webkit-playsinline','');
     v.setAttribute('x5-playsinline','');
+
     try { v.load(); } catch(e){}
 
-    // Try immediate play; if it fails due to policy, retry on first user gesture
-    const tryPlay = () => { v.play && v.play().catch(()=>{}); };
+    // Attempt playback immediately and once the video can play
+    const tryPlay = () => {
+      try {
+        const p = v.play && v.play();
+        if (p && p.catch) p.catch(()=>{});
+      } catch(e){}
+    };
     tryPlay();
+    v.addEventListener('canplay', tryPlay, { once: true });
+    v.addEventListener('loadeddata', tryPlay, { once: true });
+
+    // As a final fallback, retry on first user interaction
     document.addEventListener('pointerdown', tryPlay, { once: true });
-
-    // If a hard error occurs, replace with the globe image
-    v.addEventListener('error', () => {
-      const img = document.createElement('img');
-      img.className = 'globe';
-      img.src = './assets/globe.png';
-      img.alt = 'globe';
-      v.replaceWith(img);
-    }, { once: true });
   })();
-
 
   await renderHeader();
   ensureDebugTray();
