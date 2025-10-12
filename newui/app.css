@@ -17,7 +17,7 @@ a{color:inherit;text-decoration:none}
 /* Homepage hero */
 .home-hero{max-width:980px;margin:64px auto 0;padding:0 24px;text-align:center}
 .home-hero .globe{width:160px;height:160px;margin:0 auto 18px auto;object-fit:contain}
-/* Sphere video styling, mirrors globe size and blends into background */
+/* Sphere video styling: same box as globe, blends into background */
 .home-hero .sphere{
   width:160px;
   height:160px;
@@ -25,9 +25,11 @@ a{color:inherit;text-decoration:none}
   object-fit:contain;
   display:block;
   pointer-events:none;
-  /* Feather 8px on top and bottom into the page background */
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 30px, black calc(100% - 30px), transparent 100%);
   mask-image: linear-gradient(to bottom, transparent 0, black 30px, black calc(100% - 30px), transparent 100%);
+}
+@media (max-width:520px){
+  .home-hero .sphere{ width:120px; height:120px; }
 }
 .home-hero h1{font-size:48px;line-height:1.15;margin:0 0 10px 0;font-weight:800}
 .home-hero p{max-width:720px;margin:0 auto 28px auto;color:var(--muted);font-size:18px}

@@ -11,10 +11,7 @@ export async function render () {
   // Build markup as small chunks to change the file signature without changing the DOM
   const hero =
     '<section class="home-hero">' +
-      '<video class="sphere" autoplay muted loop playsinline preload="auto" poster="./assets/globe.png">' +
-        '<source src="./assets/Sphere.mp4" type="video/mp4" />' +
-        '<img class="globe" src="./assets/globe.png" alt="globe"/>' +
-      '</video>' +
+      '<video class="sphere" src="./assets/Sphere.mp4" autoplay muted playsinline preload="auto" disablepictureinpicture x5-playsinline webkit-playsinline></video>' +
       '<h1>Safe space to build meaningful connections.</h1>' +
       '<p>Play with other people interactive games designed to uncover shared values, emotional style, interests, and personality.</p>' +
       '<div class="cta-row">' +
@@ -33,23 +30,32 @@ export async function render () {
 
   target.innerHTML = banner + hero + learn;
 
-  // Minimal, standards-based fallback: only if the <video> fails to load/playback.
+  // Strict fallback: show the globe ONLY if the video errors.
   (function(){
     const v = document.querySelector('.home-hero .sphere');
     if(!v) return;
-    // Ensure autoplay-friendly flags prior to play
-    v.muted = true; v.defaultMuted = true; v.playsInline = true; v.setAttribute('webkit-playsinline','');
-    try{ v.load(); v.play && v.play().catch(()=>{});}catch(e){}
 
-    function fallbackToImage(){
-      // Replace the whole video with a normal globe image
+    // Ensure autoplay-friendly flags before load/play
+    v.muted = true;
+    v.defaultMuted = true;
+    v.playsInline = true;
+    v.setAttribute('webkit-playsinline','');
+    v.setAttribute('x5-playsinline','');
+    try { v.load(); } catch(e){}
+
+    // Try immediate play; if it fails due to policy, retry on first user gesture
+    const tryPlay = () => { v.play && v.play().catch(()=>{}); };
+    tryPlay();
+    document.addEventListener('pointerdown', tryPlay, { once: true });
+
+    // If a hard error occurs, replace with the globe image
+    v.addEventListener('error', () => {
       const img = document.createElement('img');
       img.className = 'globe';
       img.src = './assets/globe.png';
       img.alt = 'globe';
       v.replaceWith(img);
-    }
-    v.addEventListener('error', fallbackToImage, { once:true });
+    }, { once: true });
   })();
 
 
