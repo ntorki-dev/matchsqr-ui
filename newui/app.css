@@ -222,3 +222,16 @@ html, body { margin: 0; }
 
 /* Default app background */
 html, body { background: #fdfdfd; }
+
+
+/* Default app background for non-game pages */
+html, body { background: #fdfdfd; }
+
+/* Game room theme via body class (no inline styles) */
+body.is-game { background: #f7f5e5; }
+body.is-game .header { background: #4a4a4a; color: #ffffff; }
+body.is-game .header a { color: #ffffff; }
+body.is-game .site-footer,
+body.is-game footer,
+body.is-game .footer,
+body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
