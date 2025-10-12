@@ -11,10 +11,10 @@ export async function render () {
   // Build markup as small chunks to change the file signature without changing the DOM
   const hero =
     '<section class="home-hero">' +
-      '<video class="sphere" autoplay muted loop playsinline preload="auto">' +
+      '<video class="sphere" autoplay muted loop playsinline preload="auto" poster="./assets/globe.png">' +
         '<source src="./assets/Sphere.mp4" type="video/mp4" />' +
       '</video>' +
-      '<img class="globe" src="./assets/globe.png" alt="globe"/>' +
+      '<noscript><img class="globe" src="./assets/globe.png" alt="globe"/></noscript>' +
       '<h1>Safe space to build meaningful connections.</h1>' +
       '<p>Play with other people interactive games designed to uncover shared values, emotional style, interests, and personality.</p>' +
       '<div class="cta-row">' +
@@ -32,20 +32,6 @@ export async function render () {
   const banner = '<div class="offline-banner">You are offline. Trying to reconnect…</div>';
 
   target.innerHTML = banner + hero + learn;
-
-  // Sphere readiness, toggle body class when video can play
-  try{
-    const v = document.querySelector('.home-hero .sphere');
-    if(v){
-      const onReady = () => document.body.classList.add('has-sphere');
-      const onError = () => document.body.classList.remove('has-sphere');
-      v.addEventListener('canplay', onReady, { once: true });
-      v.addEventListener('error', onError);
-      const p = v.play && v.play();
-      if(p && p.catch) p.catch(() => {/* keep globe visible */});
-    }
-  }catch(e){}
-
 
   await renderHeader();
   ensureDebugTray();

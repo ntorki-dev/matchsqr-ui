@@ -23,15 +23,12 @@ a{color:inherit;text-decoration:none}
   height:160px;
   margin:0 auto 18px auto;
   object-fit:contain;
-  display:none; /* hidden by default, shown when video can play */
+  display:block;
   pointer-events:none;
-  /* Feather 8px on top and bottom into the page background */
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 30px, black calc(100% - 30px), transparent 100%);
   mask-image: linear-gradient(to bottom, transparent 0, black 30px, black calc(100% - 30px), transparent 100%);
 }
-/* When the video is ready, show it and hide the globe */
-.has-sphere .home-hero .sphere{ display:block; }
-.has-sphere .home-hero .globe{ display:none; }
+
 .home-hero h1{font-size:48px;line-height:1.15;margin:0 0 10px 0;font-weight:800}
 .home-hero p{max-width:720px;margin:0 auto 28px auto;color:var(--muted);font-size:18px}
 .cta-row{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
