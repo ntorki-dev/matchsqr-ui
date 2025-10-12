@@ -235,3 +235,14 @@ body.is-game .site-footer,
 body.is-game footer,
 body.is-game .footer,
 body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
+
+.site-footer{
+  position: fixed;
+  left:0; right:0; bottom:0;
+  height: 56px;
+  box-sizing: border-box;
+  padding: 12px 24px;
+  background: transparent;
+  color: inherit;
+  z-index: 10;
+}

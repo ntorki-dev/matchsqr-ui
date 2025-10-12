@@ -29,7 +29,7 @@ export async function renderHeader(){
         <a class="btn-help" href="#/help" aria-label="Help">?</a>
       </div>
     </div>`;
-  if (app) app.innerHTML = headerHTML + app.innerHTML;
+  if (app && !document.querySelector('.header')) app.innerHTML = headerHTML + app.innerHTML;
   try{
     const session = await getSession();
     const user = session?.user || null;
@@ -43,6 +43,7 @@ export async function renderHeader(){
       }
     }
   }catch{}
+  ensureFooter();
 }
 
 export function ensureDebugTray(){
@@ -72,4 +73,14 @@ export function participantsListHTML(ppl, curPid){
     return `<li${pidAttr}${bold}>${name}${role?` <span class="meta">(${role})</span>`:''}</li>`;
   }).join('');
   return `<ul id="participantsList">${li}</ul>`;
+}
+
+
+export function ensureFooter(){
+  try{
+    const app=document.getElementById('app');
+    if (app && !document.querySelector('.site-footer')){
+      app.insertAdjacentHTML('beforeend', `<div class="site-footer"></div>`);
+    }
+  }catch{}
 }
