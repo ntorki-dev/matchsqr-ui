@@ -11,8 +11,7 @@ export async function render () {
   // Build markup as small chunks to change the file signature without changing the DOM
   const hero =
     '<section class="home-hero">' +
-      // Prefer the looping sphere video, fall back to the existing globe image
-      '<video class="sphere" autoplay muted loop playsinline preload="auto" style="display:none">' +
+      '<video class="sphere" autoplay muted loop playsinline preload="auto">' +
         '<source src="./assets/Sphere.mp4" type="video/mp4" />' +
       '</video>' +
       '<img class="globe" src="./assets/globe.png" alt="globe"/>' +
@@ -34,20 +33,19 @@ export async function render () {
 
   target.innerHTML = banner + hero + learn;
 
-  // Prefer video sphere if it can play; otherwise keep globe image
-  try {
+  // Sphere readiness, toggle body class when video can play
+  try{
     const v = document.querySelector('.home-hero .sphere');
-    const img = document.querySelector('.home-hero .globe');
-    if (v && img) {
-      const showVideo = () => { img && (img.style.display = 'none'); v && (v.style.display = 'block'); };
-      const hideVideo = () => { img && (img.style.display = 'block'); v && (v.style.display = 'none'); };
-      v.addEventListener('canplay', showVideo, { once: true });
-      v.addEventListener('error', hideVideo);
-      // Kick off playback without blocking
+    if(v){
+      const onReady = () => document.body.classList.add('has-sphere');
+      const onError = () => document.body.classList.remove('has-sphere');
+      v.addEventListener('canplay', onReady, { once: true });
+      v.addEventListener('error', onError);
       const p = v.play && v.play();
-      if (p && p.catch) p.catch(() => { /* autoplay blocked, keep image */ });
+      if(p && p.catch) p.catch(() => {/* keep globe visible */});
     }
-  } catch(e) { /* no-op */ }
+  }catch(e){}
+
 
   await renderHeader();
   ensureDebugTray();

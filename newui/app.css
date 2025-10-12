@@ -1,7 +1,7 @@
 :root{
   --ink:#1f2937; --muted:#6b7280; --green:#22a447; --green-pressed:#1e8d3d; --border:#e5e7eb; --radius:16px;
 }
-*{box-sizing:border-box} html,body{height:100%} body{margin:0;background:#ffffff;color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+*{box-sizing:border-box} html,body{height:100%} body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
 a{color:inherit;text-decoration:none}
 .container{max-width:1080px;margin:0 auto;padding:16px}
 
@@ -14,34 +14,224 @@ a{color:inherit;text-decoration:none}
 .header .btn-help{color:#000000;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:18px;border:1px solid var(--border);background:#fff;font-weight:700}
 .header .avatar{width:32px;height:32px;object-fit:cover;}
 
-/* Home hero */
+/* Homepage hero */
 .home-hero{max-width:980px;margin:64px auto 0;padding:0 24px;text-align:center}
 .home-hero .globe{width:160px;height:160px;margin:0 auto 18px auto;object-fit:contain}
-
-/* Sphere video styling, mirrors .home-hero .globe */
+/* Sphere video styling, mirrors globe size and blends into background */
 .home-hero .sphere{
   width:160px;
   height:160px;
   margin:0 auto 18px auto;
   object-fit:contain;
-  display:block;
+  display:none; /* hidden by default, shown when video can play */
   pointer-events:none;
-  /* Feather top and bottom into the page background */
+  /* Feather 8px on top and bottom into the page background */
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 30px, black calc(100% - 30px), transparent 100%);
   mask-image: linear-gradient(to bottom, transparent 0, black 30px, black calc(100% - 30px), transparent 100%);
 }
-
+/* When the video is ready, show it and hide the globe */
+.has-sphere .home-hero .sphere{ display:block; }
+.has-sphere .home-hero .globe{ display:none; }
 .home-hero h1{font-size:48px;line-height:1.15;margin:0 0 10px 0;font-weight:800}
 .home-hero p{max-width:720px;margin:0 auto 28px auto;color:var(--muted);font-size:18px}
-
-@media (max-width: 520px){
-  .home-hero .globe{ width: 120px; height: 120px; }
-  .home-hero .sphere{ width: 120px; height: 120px; }
-  .home-hero h1{ font-size: clamp(20px, 6vw, 28px); }
-  .home-hero p{ font-size: clamp(13px, 3.3vw, 16px); }
+.cta-row{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
+.cta{display:inline-flex;align-items:center;gap:10px;background:var(--green);color:#fff;border:0;border-radius:8px;padding:12px 18px;font-weight:700;cursor:pointer}
+.cta img{width:18px;height:18px;object-fit:contain}
+.home-learn{
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  display: block;
+  margin: 0;
+  text-align: left;
+  color: #667085;
+  font-size: 14px;
+  background: transparent;
 }
 
-/* Footer states used elsewhere */
+/* Cards / layout */
+.card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.grid{display:grid;gap:16px}
+
+/* Host lobby */
+.host-wrap{max-width:720px;margin:28px auto;padding:0 16px}
+.host-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.inline-actions{display:flex;align-items:center;gap:10px}
+.icon-btn{background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.icon-btn img{width:18px;height:18px}
+.primary{background:var(--green);color:#fff;border:0;border-radius:10px;padding:12px 16px;font-weight:700;cursor:pointer}
+.ghost{background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 16px;cursor:pointer}
+.help{font-size:12px}
+
+/* Game room */
+.room-wrap{max-width:860px;margin:24px auto;padding:0 16px}
+.timer{font-weight:800}
+.main-card{min-height:260px;display:flex;align-items:center;justify-content:center;position:relative}
+
+/* Centered round Start (pre-start) */
+.start-round{width:120px;height:120px;border-radius:60px;background:var(--green);color:#fff;border:0;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 10px 30px rgba(34,164,71,.25)}
+
+.controls-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.hidden{display:none !important}
+.input{width:100%;padding:12px 14px;background:#fff;color:var(--ink);border:1px solid var(--border);border-radius:12px}
+.btn{background:var(--green);color:#fff;border:0;border-radius:10px;padding:12px 16px;font-weight:700;cursor:pointer}
+.btn.secondary{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0}
+.btn.warn{background:#ffb020;color:#3a2a00}
+.btn.danger{background:#e05252}
+
+.kb-mic-row{display:flex;gap:8px}
+.kb-mic-btn{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.kb-mic-btn img{width:18px;height:18px}
+.answer-row{display:flex;gap:8px;margin-top:8px}
+
+/* Toast & offline */
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;padding:10px 14px;border-radius:10px;background:#111;color:#fff;z-index:1000;font-size:14px}
+.offline-banner{position:sticky;top:0;width:100%;background:#f1f5eb;color:#37543a;padding:8px 12px;text-align:center;border-bottom:1px solid var(--border);display:none}
+.offline-banner.show{display:block}
+
+/* Debug tray (optional) */
+.debug-tray{position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow:auto;background:#111;color:#e5e7eb;font-size:12px;padding:8px 10px;display:none}
+.debug-tray pre{white-space:pre-wrap;word-break:break-word}
+
+
+/* === Homepage typography scale (about 25% smaller) === */
+.home-hero h1{
+  font-size: clamp(22px, 4.2vw, 34px);
+  line-height: 1.2;
+}
+.home-hero p{
+  font-size: clamp(14px, 2.4vw, 18px);
+  line-height: 1.55;
+}
+
+/* === Learn more: normal flow, only phrase clickable === */
+.home-learn{
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  display: block;
+  margin: 0;
+  text-align: left;
+  color: #667085;
+  font-size: 14px;
+  background: transparent;
+}
+.home-learn .learn-link{
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 500;
+}
+.home-learn .learn-link:hover{ text-decoration: underline; }
+
+/* Responsive tweaks */
+@media (max-width: 520px){
+  .home-hero .globe{ width: 120px; height: 120px; }
+  .home-hero h1{ font-size: clamp(20px, 6vw, 28px); }
+  .home-hero p{ font-size: clamp(13px, 3.3vw, 16px); }
+  .home-learn{
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  display: block;
+  margin: 0;
+  text-align: left;
+  color: #667085;
+  font-size: 14px;
+  background: transparent;
+}
+}
+
+@media (max-width: 520px){
+  .home-learn{ left: 12px; bottom: 12px; font-size: 13px; }
+  #app { padding-bottom: 56px; }
+}
+
+
+/* Host screen additions */
+
+@media (max-width: 640px){
+  }
+.host-create .cta,
+.host-existing .cta{
+  justify-content:center;
+  width: 100%;
+  max-width: 320px; /* align with homepage CTA visual size */
+  margin: 0 auto;
+}
+.code-share-row{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:10px;
+  margin-top: 8px;
+}
+.code-share-row .code-value{
+  font-weight: 800;
+}
+
+/* Host screen hero layout (card-less) */
+.host-wrap{max-width:720px;margin:64px auto;padding:0 16px}
+.host-center{justify-items:center;text-align:center}
+.host-create .cta,
+.host-existing .cta{
+  justify-content:center;
+  width: 100%;
+  max-width: 240px; /* tighter like the reference */
+  margin: 0 auto;
+}
+.host-create .cta img,
+.host-existing .cta img{ display:inline-block; vertical-align:middle }
+.code-share-row{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:10px;
+  margin-top: 10px;
+}
+.code-share-row .code-value{ font-weight: 800; }
+.small-note{ margin-top: 6px; }
+
+/* Host headline, match homepage H1 at 25% smaller */
+.host-wrap .host-lead{
+  text-align: center;
+  color: var(--ink);
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: 800;
+  margin: 0 0 16px 0;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (max-width: 640px){
+  .host-wrap .host-lead{
+    font-size: 28px;
+  }
+}
+
+
+
+/* Host existing-game lines */
+.code-share-col{display:flex;flex-direction:column;align-items:center;gap:8px}
+.id-line,.share-line{display:flex;align-items:center;gap:10px;justify-content:center;flex-wrap:wrap}
+.code-blob{display:inline-block;padding:4px 10px;border:1px solid var(--border);border-radius:8px;background:#fff}
+.lead-help{font-size:14px}
+
+
+/* Header should span full width and start at the very top on all pages */
+html, body { margin: 0; }
+.header{ width:100%; max-width:none; margin:0; padding:12px 24px; box-sizing:border-box; }
+
+
+/* Default app background */
+html, body { background: #fdfdfd; }
+
+/* Game room theme via body class (no inline styles) */
+body.is-game { background: #f7f5e5; }
+body.is-game .header { background: #4a4a4a; color: #ffffff; }
+/* body.is-game .header a { color: #ffffff; } */
+body.is-game .site-footer,
 body.is-game footer,
 body.is-game .footer,
 body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
