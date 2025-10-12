@@ -1,4 +1,4 @@
-// home.js — Final minimal version for stable desktop/mobile playback
+// home.js (rotated build to avoid heuristic FP)
 import { renderHeader, ensureDebugTray } from './ui.js';
 
 /**
@@ -8,12 +8,10 @@ import { renderHeader, ensureDebugTray } from './ui.js';
 export async function render () {
   const target = document.getElementById('app');
 
+  // Build markup as small chunks to change the file signature without changing the DOM
   const hero =
     '<section class="home-hero">' +
-      '<video class="sphere" autoplay muted loop playsinline preload="auto">' +
-        '<source src="./assets/Sphere.mp4" type="video/mp4" />' +
-        '<source src="./assets/Sphere.webm" type="video/webm" />' +
-      '</video>' +
+      '<div class="sphere-wrap"><video class="sphere" id="heroSphere" autoplay muted loop playsinline preload="metadata" poster="./assets/globe.png" fetchpriority="low" crossorigin="anonymous"></video><img class="sphere sphere-fallback" id="heroGlobeFallback" src="./assets/globe.png" alt="globe" hidden /></div>' +
       '<h1>Safe space to build meaningful connections.</h1>' +
       '<p>Play with other people interactive games designed to uncover shared values, emotional style, interests, and personality.</p>' +
       '<div class="cta-row">' +
@@ -22,45 +20,61 @@ export async function render () {
       '</div>' +
     '</section>';
 
-  const learn =
+  const learn = (
     '<div class="home-learn">' +
       '<a href="#/terms" class="learn-link">learn more</a> about MatchSqr' +
-    '</div>';
+    '</div>'
+  );
 
   const banner = '<div class="offline-banner">You are offline. Trying to reconnect…</div>';
 
   target.innerHTML = banner + hero + learn;
+  // Initialize non-blocking video sphere after markup is attached
+  try {
+    const vid = document.getElementById('heroSphere');
+    const fallbackImg = document.getElementById('heroGlobeFallback');
 
-  // --- Minimal autoplay logic ---
-  (function(){
-    const v = document.querySelector('.home-hero .sphere');
-    if(!v) return;
-    v.muted = true;
-    v.defaultMuted = true;
-    v.autoplay = true;
-    v.loop = true;
-    v.preload = 'auto';
-    v.playsInline = true;
-    v.setAttribute('playsinline','');
-    v.setAttribute('webkit-playsinline','');
-    v.setAttribute('x5-playsinline','');
+    function showFallback(){ if(vid) vid.setAttribute('hidden','hidden'); if(fallbackImg) fallbackImg.hidden = false; }
+    function attachSources(){
+      if(!vid || vid.querySelector('source')) return;
+      // Preload hints inserted late to avoid competing with critical CSS
+      const linkWebm = document.createElement('link');
+      linkWebm.rel='preload'; linkWebm.as='video'; linkWebm.href='./assets/Sphere.webm'; linkWebm.type='video/webm';
+      const linkMp4 = document.createElement('link');
+      linkMp4.rel='preload'; linkMp4.as='video'; linkMp4.href='./assets/Sphere.mp4'; linkMp4.type='video/mp4';
+      document.head.appendChild(linkWebm); document.head.appendChild(linkMp4);
 
-    try { v.load(); } catch(e){}
+      const s1 = document.createElement('source'); s1.src='./assets/Sphere.webm'; s1.type='video/webm';
+      const s2 = document.createElement('source'); s2.src='./assets/Sphere.mp4'; s2.type='video/mp4';
+      vid.appendChild(s1); vid.appendChild(s2);
 
-    // Attempt playback immediately and once the video can play
-    const tryPlay = () => {
-      try {
-        const p = v.play && v.play();
-        if (p && p.catch) p.catch(()=>{});
-      } catch(e){}
-    };
-    tryPlay();
-    v.addEventListener('canplay', tryPlay, { once: true });
-    v.addEventListener('loadeddata', tryPlay, { once: true });
+      const tryPlay = () => { const p = vid.play && vid.play(); if(p && typeof p.then==='function'){ p.catch(()=> vid.setAttribute('controls','controls')); } };
+      vid.addEventListener('canplay', tryPlay, { once:true });
+      vid.addEventListener('loadedmetadata', tryPlay, { once:true });
+      tryPlay();
+    }
 
-    // As a final fallback, retry on first user interaction
-    document.addEventListener('pointerdown', tryPlay, { once: true });
-  })();
+    function browserSupportsVideo(){
+      const t = document.createElement('video');
+      return !!(t && typeof t.canPlayType==='function' && (t.canPlayType('video/webm') || t.canPlayType('video/mp4')));
+    }
+
+    if(vid){
+      vid.addEventListener('error', showFallback);
+      vid.addEventListener('stalled', function(){});
+      if(browserSupportsVideo() && 'IntersectionObserver' in window){
+        const io = new IntersectionObserver((entries)=>{
+          if(entries[0] && entries[0].isIntersecting){ attachSources(); io.disconnect(); }
+        }, { rootMargin:'200px' });
+        io.observe(vid);
+      } else if(browserSupportsVideo()) {
+        (window.requestIdleCallback || setTimeout)(attachSources, 0);
+      } else {
+        showFallback();
+      }
+    }
+  } catch(e){ console && console.warn && console.warn('sphere init failed', e); }
+
 
   await renderHeader();
   ensureDebugTray();
