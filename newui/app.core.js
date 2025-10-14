@@ -19,8 +19,7 @@ function register(path, handler){
   routes.set(path, handler);
 }
 
-// Hash parser -> { path, query }
-// Supports hashes like "#/account" or "#/login?next=%2F#%2Faccount"
+// Hash parser -> returns { path, query, ctx }
 function parseHash(){
   const raw = location.hash || '#/';
   const qIndex = raw.indexOf('?');
@@ -39,12 +38,11 @@ function parseHash(){
   }
 
   return { path, query, ctx };
-};
 }
 
 // Route guard for protected pages
-async function guard(path, ctx){
-  // Account and Billing are protected
+async function guard(path){
+  // Account and Billing require auth
   if (path === '#/account' || path === '#/billing') {
     const session = await getSession();
     if (!session || !session.user) {
@@ -53,16 +51,16 @@ async function guard(path, ctx){
       return false;
     }
   }
-  // Game: module has its own guards for host actions. We do not block guests here.
+  // Game route stays open here, module guards host-only actions internally.
   return true;
 }
 
 async function navigate(){
-  const { path, query, ctx } = parseHash();
-
+  const { path, ctx } = parseHash();
   const handler = routes.get(path) || Home.render;
 
-  if (!(await guard(path, ctx))) return;
+  const ok = await guard(path);
+  if (!ok) return;
 
   await handler(ctx);
 }
@@ -71,7 +69,7 @@ async function navigate(){
 register('#/', Home.render);
 register('#/host', Host.render);
 register('#/join', Join.render);
-register('#/game', Game.render); // module guards host-only flows internally
+register('#/game', Game.render); // module handles host auth internally
 register('#/login', (ctx)=>Account.render({ ...ctx, tab: 'login' }));
 register('#/account', (ctx)=>Account.render({ ...ctx, tab: 'account' }));
 register('#/billing', Billing.render);
