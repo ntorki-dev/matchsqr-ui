@@ -1,25 +1,6 @@
 // ui.js (reverted: header/footer rendered inside #app, no structural chrome changes)
 import { getSession } from './api.js';
 
-// Cached profile names for participants
-const __msProfileNameCache = new Map();
-
-export async function ensureProfileNamesForParticipants(ppl){
-  try{
-    const userIds = Array.from(new Set((ppl||[]).map(p=>p?.user_id).filter(Boolean)));
-    const missing = userIds.filter(id => !__msProfileNameCache.has(id));
-    if (missing.length === 0) return;
-    const mod = await import('./api.js');
-    if (mod && typeof mod.getProfileNames === 'function') {
-      const map = await mod.getProfileNames(missing);
-      for (const [id, name] of Object.entries(map||{})) {
-        __msProfileNameCache.set(id, name);
-      }
-    }
-  }catch(_){}
-}
-
-
 // Anti-flash helpers: tiny cache of last known user
 const AUTH_CACHE_KEY = 'ms_lastKnownUser';
 
@@ -143,19 +124,17 @@ export async function shareRoom(code){
 }
 
 export function participantsListHTML(ppl, curPid){
-  let cu = null; try { cu = __msGetCachedUser && __msGetCachedUser(); } catch {}
-  if (!Array.isArray(ppl) || ppl.length === 0) {
-    return '<ul id="participantsList"><li class="meta">No one yet</li></ul>';
-  }
-  const li = ppl.map(p => {
+  const cachedCU = (function(){ try{ return __msGetCachedUser && __msGetCachedUser(); }catch(_){ return null; } })();
+  if (!Array.isArray(ppl) || ppl.length===0) return '<ul id="participantsList"><li class="meta">No one yet</li></ul>';
+  const li = ppl.map(p=>{
     const pid = p?.participant_id || p?.id || '';
     const uid = p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || '';
-    const isCurrent = !!(cu && String(uid) === String(cu.id || ''));
-    const display = (isCurrent ? (cu?.name || p?.profile_name) : p?.profile_name) || p?.nickname || p?.name || 'Guest';
+    const isCurrent = !!(cachedCU && uid && String(uid)===String(cachedCU.id||''));
+    const name = (isCurrent ? (cachedCU?.user_metadata?.name || cachedCU?.name) : (p?.profile_name || p?.nickname || p?.name)) || 'Guest';
     const role = p?.role || (p?.is_host ? 'host' : '');
-    const bold = (curPid && String(curPid) === String(pid)) ? ' style="font-weight:700;"' : '';
+    const bold = (curPid && String(curPid)===String(pid)) ? ' style="font-weight:700;"' : '';
     const pidAttr = pid ? ` data-pid="${pid}"` : '';
-    return `<li${bold}${pidAttr}><span class="name">${display}</span>${role ? ` <span class="role">${role}</span>` : ''}</li>`;
+    return `<li${pidAttr}${bold}>${name}${role?` <span class="meta">(${role})</span>`:''}</li>`;
   }).join('');
   return `<ul id="participantsList">${li}</ul>`;
 }
