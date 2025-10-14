@@ -128,7 +128,7 @@ async function confirmedSession() {
 }
 
 // Public API
-export const Account = {
+const Account = {
   /**
    * Render Account screen.
    * - If not authenticated, redirect to #/login and render a simple message.
@@ -149,3 +149,6 @@ export const Account = {
     if (btn) btn.addEventListener('click', handleLogout);
   }
 };
+
+export { Account };
+export default Account;
