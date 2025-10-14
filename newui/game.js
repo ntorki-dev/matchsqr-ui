@@ -1,6 +1,6 @@
 // game.js
 import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey, inferAndPersistHostRole, getSession } from './api.js';
-import { renderHeader, ensureDebugTray, $, toast, participantsListHTML } from './ui.js';
+import { renderHeader, ensureDebugTray, $, toast, participantsListHTML, ensureProfileNamesForParticipants } from './ui.js';
 
 const Game = {
   code:null, poll:null, tick:null, hbH:null, hbG:null,
@@ -118,7 +118,8 @@ const Game = {
     if (s.status==='lobby'){
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.style.cssText='display:flex;flex-direction:column;align-items:center;gap:10px; text-align:center; max-width:640px;';
-        const plist=document.createElement('div'); plist.id='msPlist'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); wrap.appendChild(plist);
+        const plist=document.createElement('div'); plist.id='msPlist'; await ensureProfileNamesForParticipants(s.participants);
+        plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); wrap.appendChild(plist);
 
         const role=getRole(this.code);
         if (role==='host'){
@@ -144,7 +145,8 @@ const Game = {
         }
         main.appendChild(wrap);
       }else{
-        const plist=$('#msPlist'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
+        const plist=$('#msPlist'); if (plist) await ensureProfileNamesForParticipants(s.participants);
+        plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
         const startBtn=$('#startGame'); if (startBtn){ const enough = Array.isArray(s.participants) && s.participants.length>=2; startBtn.disabled=!enough; }
       }
       return;
@@ -156,7 +158,8 @@ const Game = {
         q.innerHTML = `<h3 style="margin:0 0 8px 0;">${s.question?.title || 'Question'}</h3><p class="help" style="margin:0;">${s.question?.text || ''}</p>`;
         main.appendChild(q);
 
-        const plist=document.createElement('div'); plist.id='msPlistRun'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); plist.style.marginTop = '6px'; main.appendChild(plist);
+        const plist=document.createElement('div'); plist.id='msPlistRun'; await ensureProfileNamesForParticipants(s.participants);
+        plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); plist.style.marginTop = '6px'; main.appendChild(plist);
 
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
@@ -167,7 +170,8 @@ const Game = {
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
       }else{
-        const plist=$('#msPlistRun'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
+        const plist=$('#msPlistRun'); if (plist) await ensureProfileNamesForParticipants(s.participants);
+        plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
         const can=this.canAnswer(); const mic=$('#micBtn'); const kb=$('#kbBtn');
         if (mic) mic.toggleAttribute('disabled', !can); if (kb) kb.toggleAttribute('disabled', !can);
       }

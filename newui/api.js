@@ -155,3 +155,18 @@ export async function getProfileName(userId){
     return data?.name || null;
   }catch(_){ return null; }
 }
+
+
+// ---- Batch profiles helper ----
+export async function getProfileNames(userIds){
+  const sb = await ensureClient();
+  try{
+    const ids = Array.from(new Set((userIds||[]).filter(Boolean)));
+    if (ids.length === 0) return {};
+    const { data, error } = await sb.from('profiles').select('id, name').in('id', ids);
+    if (error) return {};
+    const map = {};
+    for (const row of data || []) { if (row && row.id) map[row.id] = row.name || null; }
+    return map;
+  }catch(_){ return {}; }
+}
