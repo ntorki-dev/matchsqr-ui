@@ -158,9 +158,9 @@ export function ensureFooter(){
       if (/\bemail\b/.test(key)) token = 'email';
       else if (/(new|confirm).{0,10}password/.test(key)) token = 'new-password';
       else if (/password/.test(key)) token = 'current-password';
-      else if (/^(first|given)[-_ ]?name$/.test(key)) token = 'given-name';
-      else if (/^(last|family)[-_ ]?name$/.test(key)) token = 'family-name';
-      else if (/^(full[_- ]?name|name)$/.test(key)) token = 'name';
+      else if (/^(first|given)[_\- ]?name$/.test(key)) token = 'given-name';
+      else if (/^(last|family)[_\- ]?name$/.test(key)) token = 'family-name';
+      else if (/^(full[_\- ]?name|name)$/.test(key)) token = 'name';
       else if (/user(name)?/.test(key)) token = 'username';
       else if (/(phone|tel|mobile)/.test(key)) token = 'tel';
       else if (/country/.test(key)) token = 'country';
@@ -171,8 +171,8 @@ export function ensureFooter(){
       else if (/(postal|zip)/.test(key)) token = 'postal-code';
       else if (/(company|organization|organisation|org)/.test(key)) token = 'organization';
       else if (/(nickname|handle)/.test(key)) token = 'nickname';
-      else if (/game[_- ]?id/.test(key)) token = 'off';
-      else if (/(otp|one[_- ]?time|verification|code)/.test(key)) token = 'one-time-code';
+      else if (/game[_\- ]?id/.test(key)) token = 'off';
+      else if (/(otp|one[_\- ]?time|verification|code)/.test(key)) token = 'one-time-code';
       else if (/(cc|card)/.test(key)) {
         if (/name/.test(key)) token = 'cc-name';
         else if (/number|no/.test(key)) token = 'cc-number';
