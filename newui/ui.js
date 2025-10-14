@@ -143,25 +143,21 @@ export async function shareRoom(code){
 }
 
 export function participantsListHTML(ppl, curPid){
-  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}
-  if (!Array.isArray(ppl) || ppl.length===0) return '<ul id="participantsList"><li class="meta">No one yet</li></ul>';
-  const li = ppl.map(p=>{
-  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}
+  let cu = null; try { cu = __msGetCachedUser && __msGetCachedUser(); } catch {}
+  if (!Array.isArray(ppl) || ppl.length === 0) {
+    return '<ul id="participantsList"><li class="meta">No one yet</li></ul>';
+  }
+  const li = ppl.map(p => {
     const pid = p?.participant_id || p?.id || '';
-    const name = ( (__cachedCU && (String(p?.user_id||'')===String(__cachedCU.id||''))) ? (__cachedCU.name || p?.profile_name) : (p?.profile_name) ) || p?.nickname || p?.name || 'Guest';
+    const uid = p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || '';
+    const isCurrent = !!(cu && String(uid) === String(cu.id || ''));
+    const display = (isCurrent ? (cu?.name || p?.profile_name) : p?.profile_name) || p?.nickname || p?.name || 'Guest';
     const role = p?.role || (p?.is_host ? 'host' : '');
-    const bold = (curPid && String(curPid)===String(pid)) ? ' style="font-weight:700;"' : '';
-    const pidAttr = pid ? ` data-pid="${
-  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}pid}"` : '';
-    return `<li${
-  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}pidAttr}${
-  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}bold}>${
-  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}name}${
-  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}role?` <span class="meta">(${
-  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}role})</span>`:''}</li>`;
+    const bold = (curPid && String(curPid) === String(pid)) ? ' style="font-weight:700;"' : '';
+    const pidAttr = pid ? ` data-pid="${pid}"` : '';
+    return `<li${bold}${pidAttr}><span class="name">${display}</span>${role ? ` <span class="role">${role}</span>` : ''}</li>`;
   }).join('');
-  return `<ul id="participantsList">${
-  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}li}</ul>`;
+  return `<ul id="participantsList">${li}</ul>`;
 }
 
 
