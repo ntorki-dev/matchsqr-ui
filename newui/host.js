@@ -1,7 +1,6 @@
 // host.js
 import { API, getSession, msGidKey, msPidKey, msRoleKey, hostMarkerKey } from './api.js';
-import { renderHeader, ensureDebugTray, $, toast, shareRoom, participantsListHTML, ensureProfileNamesForParticipants } from './ui.js';
-import { getProfileNames } from './api.js';
+import { renderHeader, ensureDebugTray, $, toast, shareRoom, participantsListHTML } from './ui.js';
 import { inferAndPersistHostRole } from './api.js';
 
 function clearRememberedRoom(code){
@@ -32,7 +31,8 @@ export async function render(){
 
   const el=$('#hostControls');
 
-  function renderCreateUI(){el.innerHTML = `
+  function renderCreateUI(){
+  el.innerHTML = `
     <div class="grid host-create host-center">
       <p class="host-lead">Get Ready.<br/>You might be surprised!</p>
       <button class="cta" id="createGame">
@@ -72,9 +72,7 @@ export async function render(){
 
   await inferAndPersistHostRole(code, state);
 
-    await ensureProfileNamesForParticipants(players);
-  const __msPlistHTML = participantsListHTML(playersEnriched, curPid);
-el.innerHTML = `
+  el.innerHTML = `
     <div class="grid host-existing host-center">
       <button class="cta" id="goRoom">
         <img src="./assets/play.png" alt="play"/>
@@ -94,7 +92,7 @@ el.innerHTML = `
       </div>
 
       <div class="participants">
-        ${__msPlistHTML}
+        ${participantsListHTML(players, curPid)}
       </div>
     </div>
   `;
