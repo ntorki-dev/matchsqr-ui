@@ -13,7 +13,7 @@ export async function render () {
     '<section class="home-hero">' +
       '<video class="sphere" autoplay muted loop playsinline preload="metadata" poster="./assets/globe.png"><source src="./assets/Sphere.mp4" type="video/mp4" /></video>' +
       '<h1>Safe space to build meaningful connections.</h1>' +
-      '<p>Play with other people interactive games designed to uncover shared values, emotional style, interests, and personality.</p>' +
+      '<p>Play with other people to uncover shared values, emotional style, interests, and personality.</p>' +
       '<div class="cta-row">' +
         '<a class="cta" id="ctaHost" href="#/host"><img src="./assets/crown.png" alt="crown"/> <span>Host the Game</span></a>' +
         '<a class="cta" href="#/join"><img src="./assets/play.png" alt="play"/> <span>Join the Game</span></a>' +
