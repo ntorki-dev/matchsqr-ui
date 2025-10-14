@@ -22,7 +22,7 @@ export async function render () {
 
   const learn = (
     '<div class="home-learn">' +
-      '<a href="#/terms" class="learn-link">learn more</a> about MatchSqr' +
+      '<br /><a href="https://www.matchsqr.com/about" target="_blank" class="learn-link">learn more</a> about MatchSqr' +
     '</div>'
   );
 
