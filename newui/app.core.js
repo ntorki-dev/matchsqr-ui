@@ -22,10 +22,24 @@ function register(path, handler){
 // Hash parser -> { path, query }
 // Supports hashes like "#/account" or "#/login?next=%2F#%2Faccount"
 function parseHash(){
-  const h = location.hash || '#/';
-  const [path, queryString] = h.split('?');
+  const raw = location.hash || '#/';
+  const qIndex = raw.indexOf('?');
+  const hashPart = qIndex >= 0 ? raw.slice(0, qIndex) : raw;
+  const queryString = qIndex >= 0 ? raw.slice(qIndex + 1) : '';
   const query = Object.fromEntries(new URLSearchParams(queryString || ''));
-  return { path, query };
+
+  let path = hashPart;
+  const ctx = { path: hashPart, query };
+
+  // Dynamic game route: #/game/:code
+  const gm = hashPart.match(/^#\/game\/([^/?#]+)/);
+  if (gm) {
+    ctx.code = gm[1];
+    path = '#/game';
+  }
+
+  return { path, query, ctx };
+};
 }
 
 // Route guard for protected pages
@@ -44,8 +58,7 @@ async function guard(path, ctx){
 }
 
 async function navigate(){
-  const { path, query } = parseHash();
-  const ctx = { path, query };
+  const { path, query, ctx } = parseHash();
 
   const handler = routes.get(path) || Home.render;
 
