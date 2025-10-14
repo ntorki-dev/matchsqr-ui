@@ -256,3 +256,22 @@ body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
     justify-content: flex-start !important;
   }
 }
+
+
+/* === LAYOUT: Make home section a flex column so Learn more sits at the bottom === */
+.home-hero{
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh; /* use small viewport units for mobile browser UI */
+}
+
+/* Push the Learn more block to the bottom-left, without fixing it */
+.home-learn{
+  margin-top: auto;            /* pushes it to the bottom within the flex column */
+  align-self: flex-start;      /* left align inside flex parent */
+  text-align: left;
+  margin-left: 0;
+  margin-right: 0;
+  display: block;
+  width: auto;
+}
