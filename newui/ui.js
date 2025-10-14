@@ -143,16 +143,25 @@ export async function shareRoom(code){
 }
 
 export function participantsListHTML(ppl, curPid){
+  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}
   if (!Array.isArray(ppl) || ppl.length===0) return '<ul id="participantsList"><li class="meta">No one yet</li></ul>';
   const li = ppl.map(p=>{
+  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}
     const pid = p?.participant_id || p?.id || '';
-    const name = p?.profile_name || p?.nickname || p?.name || 'Guest';
+    const name = ( (__cachedCU && (String(p?.user_id||'')===String(__cachedCU.id||''))) ? (__cachedCU.name || p?.profile_name) : (p?.profile_name) ) || p?.nickname || p?.name || 'Guest';
     const role = p?.role || (p?.is_host ? 'host' : '');
     const bold = (curPid && String(curPid)===String(pid)) ? ' style="font-weight:700;"' : '';
-    const pidAttr = pid ? ` data-pid="${pid}"` : '';
-    return `<li${pidAttr}${bold}>${name}${role?` <span class="meta">(${role})</span>`:''}</li>`;
+    const pidAttr = pid ? ` data-pid="${
+  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}pid}"` : '';
+    return `<li${
+  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}pidAttr}${
+  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}bold}>${
+  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}name}${
+  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}role?` <span class="meta">(${
+  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}role})</span>`:''}</li>`;
   }).join('');
-  return `<ul id="participantsList">${li}</ul>`;
+  return `<ul id="participantsList">${
+  let __cachedCU = null; try{ __cachedCU = __msGetCachedUser && __msGetCachedUser(); }catch{}li}</ul>`;
 }
 
 
