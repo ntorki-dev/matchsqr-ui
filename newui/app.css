@@ -275,3 +275,38 @@ body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
   display: block;
   width: auto;
 }
+
+
+/* === REVERT & FIX: Use grid layout for home, keep Learn more bottom-left, clickable, no overlay === */
+.home-hero{
+  display: grid !important;
+  grid-template-rows: auto 1fr auto !important;
+  min-height: 100svh !important;
+}
+
+.home-learn{
+  grid-row: 3 !important;
+  margin-top: 0 !important;           /* revert flex push */
+  text-align: left !important;
+  align-self: start !important;
+  justify-self: start !important;
+  position: relative !important;      /* create stacking context for z-index */
+  z-index: 10 !important;             /* sit above decorative layers */
+  pointer-events: auto !important;    /* ensure clicks are received */
+  display: block !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+@media (max-width: 520px){
+  .home-hero{
+    display: grid !important;
+    grid-template-rows: auto 1fr auto !important;
+    min-height: 100svh !important;
+  }
+  .home-learn{
+    text-align: left !important;
+    justify-self: start !important;
+    align-self: start !important;
+  }
+}
