@@ -31,10 +31,7 @@ export async function render(){
 
   const el=$('#hostControls');
 
-  function renderCreateUI(){
-    await ensureProfileNamesForParticipants(players);
-  const __msPlistHTML = participantsListHTML(players, curPid);
-el.innerHTML = `
+  function renderCreateUI(){el.innerHTML = `
     <div class="grid host-create host-center">
       <p class="host-lead">Get Ready.<br/>You might be surprised!</p>
       <button class="cta" id="createGame">
@@ -74,7 +71,9 @@ el.innerHTML = `
 
   await inferAndPersistHostRole(code, state);
 
-  el.innerHTML = `
+    await ensureProfileNamesForParticipants(players);
+  const __msPlistHTML = participantsListHTML(players, curPid);
+el.innerHTML = `
     <div class="grid host-existing host-center">
       <button class="cta" id="goRoom">
         <img src="./assets/play.png" alt="play"/>
