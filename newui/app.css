@@ -29,7 +29,7 @@ a{color:inherit;text-decoration:none}
   mask-image: linear-gradient(to bottom, transparent 0, black 30px, black calc(100% - 30px), transparent 100%);
 }
 @media (max-width:520px){
-  .home-hero .sphere{ width:120px; height:120px; }
+  .home-hero .sphere{ width:180px; height:180px; }
 }
 .home-hero h1{font-size:48px;line-height:1.15;margin:0 0 10px 0;font-weight:800}
 .home-hero p{max-width:720px;margin:0 auto 28px auto;color:var(--muted);font-size:18px}
@@ -39,8 +39,8 @@ a{color:inherit;text-decoration:none}
 .home-learn{
   position: static;
   display: block;
-  margin: 16px auto 0;
-  text-align: center;
+  margin: 16px 0 0;
+  text-align: left;
   color: #667085;
   font-size: 14px;
   background: transparent;
@@ -107,8 +107,8 @@ a{color:inherit;text-decoration:none}
 .home-learn{
   position: static;
   display: block;
-  margin: 16px auto 0;
-  text-align: center;
+  margin: 16px 0 0;
+  text-align: left;
   color: #667085;
   font-size: 14px;
   background: transparent;
