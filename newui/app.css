@@ -29,7 +29,7 @@ a{color:inherit;text-decoration:none}
   mask-image: linear-gradient(to bottom, transparent 0, black 30px, black calc(100% - 30px), transparent 100%);
 }
 @media (max-width:520px){
-  .home-hero .sphere{ width:120px; height:120px; }
+  .home-hero .sphere{ width:160px; height:160px; }
 }
 .home-hero h1{font-size:48px;line-height:1.15;margin:0 0 10px 0;font-weight:800}
 .home-hero p{max-width:720px;margin:0 auto 28px auto;color:var(--muted);font-size:18px}
@@ -254,59 +254,5 @@ body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
     display: inline-block !important;   /* defeat parent centering */
     align-self: flex-start !important;   /* if parent is flex */
     justify-content: flex-start !important;
-  }
-}
-
-
-/* === LAYOUT: Make home section a flex column so Learn more sits at the bottom === */
-.home-hero{
-  display: flex;
-  flex-direction: column;
-  min-height: 100svh; /* use small viewport units for mobile browser UI */
-}
-
-/* Push the Learn more block to the bottom-left, without fixing it */
-.home-learn{
-  margin-top: auto;            /* pushes it to the bottom within the flex column */
-  align-self: flex-start;      /* left align inside flex parent */
-  text-align: left;
-  margin-left: 0;
-  margin-right: 0;
-  display: block;
-  width: auto;
-}
-
-
-/* === REVERT & FIX: Use grid layout for home, keep Learn more bottom-left, clickable, no overlay === */
-.home-hero{
-  display: grid !important;
-  grid-template-rows: auto 1fr auto !important;
-  min-height: 100svh !important;
-}
-
-.home-learn{
-  grid-row: 3 !important;
-  margin-top: 0 !important;           /* revert flex push */
-  text-align: left !important;
-  align-self: start !important;
-  justify-self: start !important;
-  position: relative !important;      /* create stacking context for z-index */
-  z-index: 10 !important;             /* sit above decorative layers */
-  pointer-events: auto !important;    /* ensure clicks are received */
-  display: block !important;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
-}
-
-@media (max-width: 520px){
-  .home-hero{
-    display: grid !important;
-    grid-template-rows: auto 1fr auto !important;
-    min-height: 100svh !important;
-  }
-  .home-learn{
-    text-align: left !important;
-    justify-self: start !important;
-    align-self: start !important;
   }
 }
