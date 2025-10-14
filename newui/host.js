@@ -1,6 +1,7 @@
 // host.js
 import { API, getSession, msGidKey, msPidKey, msRoleKey, hostMarkerKey } from './api.js';
 import { renderHeader, ensureDebugTray, $, toast, shareRoom, participantsListHTML, ensureProfileNamesForParticipants } from './ui.js';
+import { getProfileNames } from './api.js';
 import { inferAndPersistHostRole } from './api.js';
 
 function clearRememberedRoom(code){
@@ -72,7 +73,7 @@ export async function render(){
   await inferAndPersistHostRole(code, state);
 
     await ensureProfileNamesForParticipants(players);
-  const __msPlistHTML = participantsListHTML(players, curPid);
+  const __msPlistHTML = participantsListHTML(playersEnriched, curPid);
 el.innerHTML = `
     <div class="grid host-existing host-center">
       <button class="cta" id="goRoom">

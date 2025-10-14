@@ -146,9 +146,7 @@ export function participantsListHTML(ppl, curPid){
   if (!Array.isArray(ppl) || ppl.length===0) return '<ul id="participantsList"><li class="meta">No one yet</li></ul>';
   const li = ppl.map(p=>{
     const pid = p?.participant_id || p?.id || '';
-    const uid = p?.user_id || p?.userId || p?.uid;
-    const cached = uid ? __msProfileNameCache.get(uid) : null;
-    const name = (cached || p?.nickname || p?.name || 'Guest');
+    const name = p?.profile_name || p?.nickname || p?.name || 'Guest';
     const role = p?.role || (p?.is_host ? 'host' : '');
     const bold = (curPid && String(curPid)===String(pid)) ? ' style="font-weight:700;"' : '';
     const pidAttr = pid ? ` data-pid="${pid}"` : '';

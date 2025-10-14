@@ -1,6 +1,7 @@
 // game.js
 import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey, inferAndPersistHostRole, getSession } from './api.js';
 import { renderHeader, ensureDebugTray, $, toast, participantsListHTML, ensureProfileNamesForParticipants } from './ui.js';
+import { getProfileNames } from './api.js';
 
 const Game = {
   code:null, poll:null, tick:null, hbH:null, hbG:null,
