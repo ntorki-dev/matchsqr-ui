@@ -1,6 +1,6 @@
 // host.js
 import { API, getSession, msGidKey, msPidKey, msRoleKey, hostMarkerKey } from './api.js';
-import { renderHeader, ensureDebugTray, $, toast, shareRoom, participantsListHTML } from './ui.js';
+import { renderHeader, ensureDebugTray, $, toast, shareRoom, participantsListHTML, ensureProfileNamesForParticipants } from './ui.js';
 import { inferAndPersistHostRole } from './api.js';
 
 function clearRememberedRoom(code){
@@ -22,8 +22,6 @@ export async function render(){
   const session = await getSession();
   if (!session){ sessionStorage.setItem('__redirect_after_login', '#/host'); location.hash = '#/login'; return; }
   const app=document.getElementById('app');
-  await ensureProfileNamesForParticipants(players);
-  const __msPlistHTML = participantsListHTML(players, curPid);
   app.innerHTML = `
     <div class="offline-banner">You are offline. Trying to reconnect…</div>
     <div class="host-wrap">
@@ -34,7 +32,9 @@ export async function render(){
   const el=$('#hostControls');
 
   function renderCreateUI(){
-  el.innerHTML = `
+    await ensureProfileNamesForParticipants(players);
+  const __msPlistHTML = participantsListHTML(players, curPid);
+el.innerHTML = `
     <div class="grid host-create host-center">
       <p class="host-lead">Get Ready.<br/>You might be surprised!</p>
       <button class="cta" id="createGame">
