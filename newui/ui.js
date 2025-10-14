@@ -1,6 +1,25 @@
 // ui.js (reverted: header/footer rendered inside #app, no structural chrome changes)
 import { getSession } from './api.js';
 
+// Cached profile names for participants
+const __msProfileNameCache = new Map();
+
+export async function ensureProfileNamesForParticipants(ppl){
+  try{
+    const userIds = Array.from(new Set((ppl||[]).map(p=>p?.user_id).filter(Boolean)));
+    const missing = userIds.filter(id => !__msProfileNameCache.has(id));
+    if (missing.length === 0) return;
+    const mod = await import('./api.js');
+    if (mod && typeof mod.getProfileNames === 'function') {
+      const map = await mod.getProfileNames(missing);
+      for (const [id, name] of Object.entries(map||{})) {
+        __msProfileNameCache.set(id, name);
+      }
+    }
+  }catch(_){}
+}
+
+
 // Anti-flash helpers: tiny cache of last known user
 const AUTH_CACHE_KEY = 'ms_lastKnownUser';
 
