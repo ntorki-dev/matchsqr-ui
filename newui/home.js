@@ -22,8 +22,8 @@ export async function render () {
 
   const learn = (
     '<div class="home-learn">' +
-      '<br /><br /><a href="https://www.matchsqr.com/about" target="_blank" class="learn-link">learn more</a> about MatchSqr' +
-    '<br /></div>'
+      '<br> </br><br> </br><a href="https://www.matchsqr.com/about" target="_blank" class="learn-link">learn more</a> about MatchSqr' +
+    '<br> </br><br> </br></div>'
   );
 
   const banner = '<div class="offline-banner">You are offline. Trying to reconnect…</div>';
