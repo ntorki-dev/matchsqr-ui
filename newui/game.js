@@ -146,8 +146,9 @@ const Game = {
         }
         main.appendChild(wrap);
       }else{
-        const plist=$('#msPlist'); if (plist) await ensureProfileNamesForParticipants(s.participants);
-        plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
+        const plist=$('#msPlist');
+        plist && (plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null));
+        ensureProfileNamesForParticipants(s.participants).then(()=>{ const p=$('#msPlist'); if (p) p.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); });
         const startBtn=$('#startGame'); if (startBtn){ const enough = Array.isArray(s.participants) && s.participants.length>=2; startBtn.disabled=!enough; }
       }
       return;
