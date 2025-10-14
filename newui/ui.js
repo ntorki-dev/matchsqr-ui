@@ -3,6 +3,18 @@ import { getSession } from './api.js';
 
 // Anti-flash helpers: tiny cache of last known user
 const AUTH_CACHE_KEY = 'ms_lastKnownUser';
+
+// Lazy bind to api.getProfileName without altering bundling
+async function __msFetchProfileName(userId){
+  try{
+    const mod = await import('./api.js');
+    if (mod && typeof mod.getProfileName === 'function') {
+      return await mod.getProfileName(userId);
+    }
+  }catch(_){}
+  return null;
+}
+
 function __msGetCachedUser(){
   try{
     const raw = localStorage.getItem(AUTH_CACHE_KEY);
@@ -19,7 +31,7 @@ function __msSetCachedUser(user){
         id: user.id,
         email: user.email || user.user_metadata?.email || null,
         user_metadata: {
-          name: user.user_metadata?.full_name || user.user_metadata?.name || null,
+          name: displayNameOverride || user.user_metadata?.full_name || user.user_metadata?.name || null,
           avatar_url: user.user_metadata?.avatar_url || null
         }
       };

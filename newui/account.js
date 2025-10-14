@@ -1,5 +1,5 @@
 // account.js
-import { ensureClient, getSession } from './api.js';
+import { ensureClient, getSession, getProfileName } from './api.js';
 import { renderHeader, ensureDebugTray, $, toast } from './ui.js';
 
 export async function render(ctx){
@@ -27,7 +27,8 @@ export async function render(ctx){
     return;
   }
 
-  const name = user?.user_metadata?.name || (user?.email ? user.email.split('@')[0] : 'Account');
+  const dbName = await getProfileName(user.id);
+  const name = dbName || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0] : 'Account');
   app.innerHTML = `
     <div class="offline-banner">You are offline. Trying to reconnect…</div>
     <div class="container">

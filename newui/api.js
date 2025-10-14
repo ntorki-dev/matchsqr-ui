@@ -143,3 +143,15 @@ export async function inferAndPersistHostRole(code, state){
     }
   }catch{}
 }
+
+// ---- Profiles helper (surgical) ----
+export async function getProfileName(userId){
+  const sb = await ensureClient();
+  try{
+    const uid = userId;
+    if (!uid) return null;
+    const { data, error } = await sb.from('profiles').select('name').eq('id', uid).single();
+    if (error) return null;
+    return data?.name || null;
+  }catch(_){ return null; }
+}
