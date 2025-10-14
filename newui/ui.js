@@ -133,3 +133,74 @@ export function ensureFooter(){
     }
   }catch{}
 }
+
+/* === Autofill helper, surgical and non-breaking ===
+ * Fixes console warning: inputs recognized for autofill but missing autocomplete.
+ * We infer sensible tokens from id/name, set them only when missing.
+ * Runs on DOMContentLoaded and for dynamically added nodes via MutationObserver.
+ */
+(function () {
+  function ensureAutocompleteAttributes(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    const nodes = scope.querySelectorAll('input, textarea, select');
+    for (const el of nodes) {
+      if (el.hasAttribute('autocomplete')) continue;
+      // Avoid touching iframes or third-party widgets
+      if (el.closest('iframe')) continue;
+
+      const name = (el.getAttribute('name') || '').toLowerCase();
+      const id = (el.id || '').toLowerCase();
+      const key = name || id;
+
+      let token = null;
+      const has = (pat) => pat.test(key);
+
+      if (/\bemail\b/.test(key)) token = 'email';
+      else if (/(new|confirm).{0,10}password/.test(key)) token = 'new-password';
+      else if (/password/.test(key)) token = 'current-password';
+      else if (/^(first|given)[-_ ]?name$/.test(key)) token = 'given-name';
+      else if (/^(last|family)[-_ ]?name$/.test(key)) token = 'family-name';
+      else if (/^(full[_- ]?name|name)$/.test(key)) token = 'name';
+      else if (/user(name)?/.test(key)) token = 'username';
+      else if (/(phone|tel|mobile)/.test(key)) token = 'tel';
+      else if (/country/.test(key)) token = 'country';
+      else if (/address.*(1|line1)/.test(key)) token = 'address-line1';
+      else if (/address.*(2|line2)/.test(key)) token = 'address-line2';
+      else if (/(city|locality)/.test(key)) token = 'address-level2';
+      else if (/(state|province|region)/.test(key)) token = 'address-level1';
+      else if (/(postal|zip)/.test(key)) token = 'postal-code';
+      else if (/(company|organization|organisation|org)/.test(key)) token = 'organization';
+      else if (/(nickname|handle)/.test(key)) token = 'nickname';
+      else if (/game[_- ]?id/.test(key)) token = 'off';
+      else if (/(otp|one[_- ]?time|verification|code)/.test(key)) token = 'one-time-code';
+      else if (/(cc|card)/.test(key)) {
+        if (/name/.test(key)) token = 'cc-name';
+        else if (/number|no/.test(key)) token = 'cc-number';
+        else if (/exp|expiry|expiration/.test(key)) token = 'cc-exp';
+        else if (/csc|cvv|cvc/.test(key)) token = 'cc-csc';
+      }
+
+      if (token) {
+        el.setAttribute('autocomplete', token);
+      }
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    try { ensureAutocompleteAttributes(document); } catch (_e) {}
+  });
+
+  // Observe dynamic DOM changes, apply lazily on added nodes
+  try {
+    const mo = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const n of m.addedNodes) {
+          if (n && n.querySelectorAll) {
+            ensureAutocompleteAttributes(n);
+          }
+        }
+      }
+    });
+    mo.observe(document.documentElement, { childList: true, subtree: true });
+  } catch (_e) {}
+})();
