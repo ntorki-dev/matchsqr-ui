@@ -55,7 +55,7 @@ const Game = {
   },
   remainingSeconds(){ if (!this.state.endsAt) return null; const diff=Math.floor((new Date(this.state.endsAt).getTime()-Date.now())/1000); return Math.max(0,diff); },
   renderTimer(){
-    const t=this.remainingSeconds(), el=document.getElementById('roomTimer'); if(!el) _ms_syncWidths(); return;
+    const t=this.remainingSeconds(), el=document.getElementById('roomTimer'); if(!el) return;
     if (t==null) { el.textContent='--:--'; return; }
     const m=String(Math.floor(t/60)).padStart(2,'0'), s=String(t%60).padStart(2,'0');
     el.textContent=`${m}:${s}`;
@@ -107,7 +107,7 @@ const Game = {
     }catch{}
   },
   render(forceFull){
-    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
+    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft'); const tools=$('#toolsRow'); const side=$('#sideLeft');
     if (!main || !controls) return;
     if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; }
 
@@ -205,7 +205,7 @@ const Game = {
         $('#endAnalyze').onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
       }else if (!isHost){ controls.innerHTML=''; }
 
-      this.renderTimer(); _ms_syncWidths();
+      this.renderTimer();
       return;
     }
 
@@ -221,7 +221,7 @@ const Game = {
           </div>
         </div>`;
       $('#shareBtn').onclick=()=>{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); };
-      _ms_syncWidths(); return;
+      return;
     }
   }
 };
@@ -235,47 +235,35 @@ export async function render(ctx){
       <div class="controls-row" id="controlsRow"></div>
       <div id="roomMain" style="display:grid;grid-template-columns:1fr auto 1fr;column-gap:12px;align-items:flex-start;justify-items:center;width:100%;">
         <div id="sideLeft" style="min-width:220px;justify-self:end;"></div>
-        <div class="card main-card" id="mainCard"></div>
+        <div class="card main-card" id="mainCard" style="width:220px;max-width:220px;"></div>
       </div>
       <div class="controls-row" id="toolsRow"></div>
       <div class="answer-row" id="answerRow"></div>
     </div>`;
   await renderHeader(); ensureDebugTray();
-  function _ms_syncWidths(){
-    var card = document.getElementById('mainCard');
-    var rows = [document.getElementById('controlsRow'), document.getElementById('toolsRow'), document.getElementById('answerRow')];
-    if (!card) return;
-    var w = card.getBoundingClientRect().width;
-    for (var i=0;i<rows.length;i++){
-      var r = rows[i];
-      if (!r) continue;
-      r.style.maxWidth = w + 'px';
-      r.style.width = '100%';
-      r.style.marginLeft = 'auto';
-      r.style.marginRight = 'auto';
-      r.style.display = r.style.display || 'flex';
-      r.style.justifyContent = 'center';
-      r.style.gap = '10px';
-    }
-  }
-
-  _ms_syncWidths(); window.addEventListener('resize', _ms_syncWidths);
+  
   function _ms_applyGameLayout(){
     var room = document.getElementById('roomMain');
     var side = document.getElementById('sideLeft');
-    if (!room) return;
+    var card = document.getElementById('mainCard');
+    if (!room || !card) return;
     if (window.innerWidth < 768){
       room.style.display = 'flex';
       room.style.flexDirection = 'column';
       room.style.alignItems = 'center';
-      if (side) side.style.alignSelf = 'stretch';
+      if (side){ side.style.alignSelf = 'stretch'; }
+      card.style.width = 'min(90vw, 220px)';
+      card.style.maxWidth = '220px';
     } else {
       room.style.display = 'grid';
       room.style.gridTemplateColumns = '1fr auto 1fr';
       room.style.columnGap = '12px';
       room.style.alignItems = 'flex-start';
       room.style.justifyItems = 'center';
+      card.style.width = '220px';
+      card.style.maxWidth = '220px';
     }
+  }
   }
 
   _ms_applyGameLayout(); window.addEventListener('resize', _ms_applyGameLayout);
@@ -284,25 +272,6 @@ export async function render(ctx){
   const _ms_onHash = () => { if (!location.hash.startsWith('#/game/')) { try{ document.body.classList.remove('is-game'); }catch{} window.removeEventListener('hashchange', _ms_onHash); } };
   window.addEventListener('hashchange', _ms_onHash);
 await renderHeader(); ensureDebugTray();
-  function _ms_syncWidths(){
-    var card = document.getElementById('mainCard');
-    var rows = [document.getElementById('controlsRow'), document.getElementById('toolsRow'), document.getElementById('answerRow')];
-    if (!card) return;
-    var w = card.getBoundingClientRect().width;
-    for (var i=0;i<rows.length;i++){
-      var r = rows[i];
-      if (!r) continue;
-      r.style.maxWidth = w + 'px';
-      r.style.width = '100%';
-      r.style.marginLeft = 'auto';
-      r.style.marginRight = 'auto';
-      r.style.display = r.style.display || 'flex';
-      r.style.justifyContent = 'center';
-      r.style.gap = '10px';
-    }
-  }
-
-  _ms_syncWidths(); window.addEventListener('resize', _ms_syncWidths);
   function _ms_applyGameLayout(){
     var room = document.getElementById('roomMain');
     var side = document.getElementById('sideLeft');
