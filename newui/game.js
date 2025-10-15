@@ -107,12 +107,12 @@ const Game = {
     }catch{}
   },
   render(forceFull){
-    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft'); tools=$('#toolsRow'); side=$('#sideLeft');
+    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
     if (!main || !controls) return;
     if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; }
 
     let topRight=$('#msTopRight');
-    if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.style.cssText='position:absolute; top:16px; right:16px; font-weight:800; display:flex; gap:12px; align-items:center;'; main.appendChild(topRight); } main.style.margin='0 auto';
+    if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.style.cssText='position:absolute; top:16px; right:16px; font-weight:800; display:flex; gap:12px; align-items:center;'; main.appendChild(topRight); }
     topRight.innerHTML = (s.status==='running' ? `⏱ <span id="roomTimer">--:--</span>` : '');
 
     if (s.status==='lobby'){
@@ -230,66 +230,54 @@ export async function render(ctx){
   const code = ctx?.code || null;
   const app=document.getElementById('app');
   app.innerHTML=`
-    <div class="offline-banner">You are offline. Trying to reconnect…</div>
+<div class="offline-banner">You are offline. Trying to reconnect…</div>
     <div class="room-wrap">
       <div class="controls-row" id="controlsRow"></div>
-      <div id="roomMain" style="display:grid;grid-template-columns:1fr auto 1fr;column-gap:12px;align-items:flex-start;justify-items:center;width:100%;">
+      <div class="room-main" id="roomMain" style="display:grid;grid-template-columns:1fr auto 1fr;column-gap:12px;align-items:flex-start;justify-items:center;width:100%;">
         <div id="sideLeft" style="min-width:220px;justify-self:end;"></div>
         <div class="card main-card" id="mainCard" style="width:220px;max-width:220px;"></div>
       </div>
       <div class="controls-row" id="toolsRow"></div>
       <div class="answer-row" id="answerRow"></div>
-    </div>`;
+    </div>
+`;
   await renderHeader(); ensureDebugTray();
-  
-  function _ms_applyGameLayout(){
-    var room = document.getElementById('roomMain');
-    var side = document.getElementById('sideLeft');
-    var card = document.getElementById('mainCard');
-    if (!room || !card) return;
-    if (window.innerWidth < 768){
-      room.style.display = 'flex';
-      room.style.flexDirection = 'column';
-      room.style.alignItems = 'center';
-      if (side){ side.style.alignSelf = 'stretch'; }
-      card.style.width = 'min(90vw, 220px)';
-      card.style.maxWidth = '220px';
+  // Responsive: fixed 220px on desktop, min(90vw, 220px) on small screens
+  function _ms_setCardWidth(){
+    var c = document.getElementById('mainCard');
+    if (!c) return;
+    var isSmall = window.innerWidth < 768;
+    if (isSmall){
+      c.style.width = Math.min(window.innerWidth*0.9, 220) + 'px';
+      c.style.maxWidth = '220px';
     } else {
-      room.style.display = 'grid';
-      room.style.gridTemplateColumns = '1fr auto 1fr';
-      room.style.columnGap = '12px';
-      room.style.alignItems = 'flex-start';
-      room.style.justifyItems = 'center';
-      card.style.width = '220px';
-      card.style.maxWidth = '220px';
+      c.style.width = '220px';
+      c.style.maxWidth = '220px';
     }
   }
-  }
+  _ms_setCardWidth();
+  window.addEventListener('resize', _ms_setCardWidth);
 
-  _ms_applyGameLayout(); window.addEventListener('resize', _ms_applyGameLayout);
   // Apply game theme via body class, and clean it when leaving
   try{ document.body.classList.add('is-game'); }catch{}
   const _ms_onHash = () => { if (!location.hash.startsWith('#/game/')) { try{ document.body.classList.remove('is-game'); }catch{} window.removeEventListener('hashchange', _ms_onHash); } };
   window.addEventListener('hashchange', _ms_onHash);
 await renderHeader(); ensureDebugTray();
-  function _ms_applyGameLayout(){
-    var room = document.getElementById('roomMain');
-    var side = document.getElementById('sideLeft');
-    if (!room) return;
-    if (window.innerWidth < 768){
-      room.style.display = 'flex';
-      room.style.flexDirection = 'column';
-      room.style.alignItems = 'center';
-      if (side) side.style.alignSelf = 'stretch';
+  // Responsive: fixed 220px on desktop, min(90vw, 220px) on small screens
+  function _ms_setCardWidth(){
+    var c = document.getElementById('mainCard');
+    if (!c) return;
+    var isSmall = window.innerWidth < 768;
+    if (isSmall){
+      c.style.width = Math.min(window.innerWidth*0.9, 220) + 'px';
+      c.style.maxWidth = '220px';
     } else {
-      room.style.display = 'grid';
-      room.style.gridTemplateColumns = '1fr auto 1fr';
-      room.style.columnGap = '12px';
-      room.style.alignItems = 'flex-start';
-      room.style.justifyItems = 'center';
+      c.style.width = '220px';
+      c.style.maxWidth = '220px';
     }
   }
-
-  _ms_applyGameLayout(); window.addEventListener('resize', _ms_applyGameLayout);// Make header/footer black only in game room, without touching global CSS
+  _ms_setCardWidth();
+  window.addEventListener('resize', _ms_setCardWidth);
+// Make header/footer black only in game room, without touching global CSS
   if (code){ Game.mount(code); }
 }
