@@ -118,7 +118,7 @@ const Game = {
     if (s.status==='lobby'){
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.style.cssText='display:flex;flex-direction:column;align-items:center;gap:10px; text-align:center; max-width:640px;';
-        const plist=document.createElement('div'); plist.id='msPlist'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); wrap.appendChild(plist);
+        const plist=document.createElement('div'); plist.id='msPlist'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); const sideEl = side || document.getElementById('sideLeft'); (sideEl||wrap).appendChild(plist);
 
         const role=getRole(this.code);
         if (role==='host'){
@@ -233,8 +233,8 @@ export async function render(ctx){
     <div class="offline-banner">You are offline. Trying to reconnect…</div>
     <div class="room-wrap">
       <div class="controls-row" id="controlsRow"></div>
-      <div class="room-main" id="roomMain" style="display:flex;gap:12px;align-items:flex-start;justify-content:center;">
-        <div id="sideLeft" style="min-width:220px;"></div>
+      <div class="room-main" id="roomMain" style="display:grid;grid-template-columns:1fr auto 1fr;column-gap:12px;align-items:flex-start;justify-items:center;">
+        <div id="sideLeft" style="min-width:220px;justify-self:end;"></div>
         <div class="card main-card" id="mainCard"></div>
       </div>
       <div class="controls-row" id="toolsRow"></div>
