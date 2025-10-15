@@ -90,10 +90,6 @@ export async function render(){
           <button class="icon-btn" id="shareInvite" title="Share link"><img src="./assets/share.png" alt="share"/></button>
         </div>
       </div>
-
-      <div class="participants">
-        ${participantsListHTML(players, curPid)}
-      </div>
     </div>
   `;
 
