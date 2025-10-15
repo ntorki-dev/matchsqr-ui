@@ -107,9 +107,9 @@ const Game = {
     }catch{}
   },
   render(forceFull){
-    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow');
+    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow');
     if (!main || !controls) return;
-    if (forceFull){ main.innerHTML=''; controls.innerHTML=''; }
+    if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; }
 
     let topRight=$('#msTopRight');
     if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.style.cssText='position:absolute; top:16px; right:16px; font-weight:800; display:flex; gap:12px; align-items:center;'; main.appendChild(topRight); }
@@ -182,7 +182,7 @@ const Game = {
             <div class="row" style="gap:8px;margin-top:6px;">
               <button id="submitBtn" class="btn"${this.canAnswer()?'':' disabled'}>Submit</button>
             </div>`;
-          main.appendChild(ans);
+          if (answer) answer.appendChild(ans); else main.appendChild(ans);
           const box=$('#msBox'); if (box){ box.value = this.ui.draft||''; box.addEventListener('input', ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
           const submit=$('#submitBtn'); if (submit) submit.onclick=async()=>{
             const box=$('#msBox'); const text=(box.value||'').trim(); if(!text) return;
@@ -232,8 +232,9 @@ export async function render(ctx){
   app.innerHTML=`
     <div class="offline-banner">You are offline. Trying to reconnect…</div>
     <div class="room-wrap">
-      <div class="card main-card" id="mainCard"></div>
       <div class="controls-row" id="controlsRow"></div>
+      <div class="card main-card" id="mainCard"></div>
+      <div class="answer-row" id="answerRow"></div>
     </div>`;
   await renderHeader(); ensureDebugTray();
   // Apply game theme via body class, and clean it when leaving
