@@ -125,9 +125,22 @@ export async function shareRoom(code){
 
 export function participantsListHTML(ppl, curPid){
   if (!Array.isArray(ppl) || ppl.length===0) return '<ul id="participantsList"><li class="meta">No one yet</li></ul>';
+  // Read cached account user once (same cache Account page uses)
+  let __cu = null; try { __cu = (__msGetCachedUser && __msGetCachedUser()) || null; } catch(_) { __cu = null; }
+  const __cuEmailName = (__cu && typeof __cu.email==='string') ? (__cu.email.split('@')[0]||null) : null;
+  const __cuDisplay = (__cu?.user_metadata?.name) || (__cu?.name) || null;
+
   const li = ppl.map(p=>{
     const pid = p?.participant_id || p?.id || '';
-    const name = p?.nickname || p?.name || 'Guest';
+    const uid = p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || '';
+    // Start with normal fallback
+    let name = p?.profile_name || p?.nickname || p?.name || 'Guest';
+    // If this participant is the current logged-in user, force the DB (Account) name instead of email-derived
+    const isMe = !!(__cu && (
+      (uid && String(uid)===String(__cu.id||'')) ||
+      (__cuEmailName && typeof p?.name==='string' && p.name===__cuEmailName)
+    ));
+    if (isMe && __cuDisplay){ name = __cuDisplay; }
     const role = p?.role || (p?.is_host ? 'host' : '');
     const bold = (curPid && String(curPid)===String(pid)) ? ' style="font-weight:700;"' : '';
     const pidAttr = pid ? ` data-pid="${pid}"` : '';
