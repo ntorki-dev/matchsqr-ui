@@ -205,7 +205,7 @@ const Game = {
         $('#endAnalyze').onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
       }else if (!isHost){ controls.innerHTML=''; }
 
-      this.renderTimer();
+      this.renderTimer(); _ms_applyGameLayout();
       return;
     }
 
@@ -242,6 +242,161 @@ export async function render(ctx){
     </div>
 `;
   await renderHeader(); ensureDebugTray();
+  
+  
+  function _ms_applyGameLayout(){
+    var room = document.getElementById('roomMain');
+    var side = document.getElementById('sideLeft');
+    var card = document.getElementById('mainCard');
+    var ctrl = document.getElementById('controlsRow');
+    var tools = document.getElementById('toolsRow');
+    var ans = document.getElementById('answerRow');
+    if (!room || !card) return;
+    var cardW = 220;
+    if (window.innerWidth < 768){
+      // Base: card centered
+      room.style.display = 'block';
+      room.style.position = 'relative';
+      card.style.width = 'min(90vw, 220px)';
+      card.style.maxWidth = '220px';
+      card.style.margin = '0 auto';
+      [ctrl, tools, ans].forEach(function(el){
+        if (!el) return;
+        el.style.maxWidth = card.style.width;
+        el.style.width = '100%';
+        el.style.marginLeft = 'auto';
+        el.style.marginRight = 'auto';
+        el.style.display = 'flex';
+        el.style.justifyContent = 'center';
+      });
+      if (side){
+        // Float left of the card
+        side.style.position = 'absolute';
+        side.style.top = '0';
+        side.style.right = 'calc(50% + 110px + 12px)'; // 110px = half of 220
+        side.style.maxWidth = '40vw';
+        side.style.width = 'auto';
+        side.style.textAlign = 'left';
+        side.style.whiteSpace = 'normal';
+        // After laying out, check for potential overlap. If overlapping, fall back to stacked (above card).
+        setTimeout(function(){
+          try{
+            var cb = card.getBoundingClientRect();
+            var sb = side.getBoundingClientRect();
+            var overlaps = !(sb.right < cb.left - 8); // if sidebar approaches card
+            if (overlaps){
+              // Stack above card without pushing layout horizontally
+              side.style.position = 'static';
+              side.style.maxWidth = 'min(90vw, 320px)';
+              side.style.marginLeft = 'auto';
+              side.style.marginRight = 'auto';
+              // Keep card centered
+              card.style.margin = '0 auto';
+            }
+          }catch(e){}
+        }, 0);
+      }
+    } else {
+      // Desktop
+      room.style.display = 'grid';
+      room.style.gridTemplateColumns = '1fr auto 1fr';
+      room.style.columnGap = '12px';
+      room.style.alignItems = 'flex-start';
+      room.style.justifyItems = 'center';
+      card.style.width = cardW + 'px';
+      card.style.maxWidth = cardW + 'px';
+      card.style.margin = '0';
+      if (side){
+        side.style.position = '';
+        side.style.top = '';
+        side.style.right = '';
+        side.style.maxWidth = '';
+        side.style.width = '';
+        side.style.marginLeft = '';
+        side.style.marginRight = '';
+        side.style.textAlign = '';
+        side.style.whiteSpace = '';
+      }
+      [ctrl, tools, ans].forEach(function(el){
+        if (!el) return;
+        el.style.maxWidth = cardW + 'px';
+        el.style.width = '100%';
+        el.style.marginLeft = 'auto';
+        el.style.marginRight = 'auto';
+        el.style.display = 'flex';
+        el.style.justifyContent = 'center';
+      });
+    }
+  }
+    } else {
+      // Desktop grid with centered card and left sidebar
+      room.style.display = 'grid';
+      room.style.gridTemplateColumns = '1fr auto 1fr';
+      room.style.columnGap = '12px';
+      room.style.alignItems = 'flex-start';
+      room.style.justifyItems = 'center';
+      card.style.width = cardW + 'px';
+      card.style.maxWidth = cardW + 'px';
+      card.style.margin = '0';
+      if (side){
+        side.style.position = '';
+        side.style.top = '';
+        side.style.right = '';
+        side.style.maxWidth = '';
+        side.style.width = '';
+        side.style.alignSelf = '';
+        side.style.justifySelf = 'end';
+        side.style.textAlign = '';
+      }
+      [ctrl, tools, ans].forEach(function(el){
+        if (!el) return;
+        el.style.maxWidth = cardW + 'px';
+        el.style.width = '100%';
+        el.style.marginLeft = 'auto';
+        el.style.marginRight = 'auto';
+        el.style.display = 'flex';
+        el.style.justifyContent = 'center';
+      });
+    }
+  }
+      [ctrl, tools, ans].forEach(function(el){
+        if (!el) return;
+        el.style.maxWidth = card.style.width;
+        el.style.width = '100%';
+        el.style.marginLeft = 'auto';
+        el.style.marginRight = 'auto';
+        el.style.display = 'flex';
+        el.style.justifyContent = 'center';
+      });
+    } else {
+      // Desktop grid with centered card and left sidebar
+      room.style.display = 'grid';
+      room.style.gridTemplateColumns = '1fr auto 1fr';
+      room.style.columnGap = '12px';
+      room.style.alignItems = 'flex-start';
+      room.style.justifyItems = 'center';
+      card.style.width = '220px';
+      card.style.maxWidth = '220px';
+      card.style.margin = '0';
+      if (side){
+        side.style.width = '';
+        side.style.maxWidth = '';
+        side.style.alignSelf = '';
+        side.style.justifySelf = 'end';
+      }
+      [ctrl, tools, ans].forEach(function(el){
+        if (!el) return;
+        el.style.maxWidth = card.style.width;
+        el.style.width = '100%';
+        el.style.marginLeft = 'auto';
+        el.style.marginRight = 'auto';
+        el.style.display = 'flex';
+        el.style.justifyContent = 'center';
+      });
+    }
+  }
+
+  _ms_applyGameLayout(); window.addEventListener('resize', _ms_applyGameLayout);
   // Responsive: fixed 220px on desktop, min(90vw, 220px) on small screens
   function _ms_setCardWidth(){
     var c = document.getElementById('mainCard');
@@ -263,6 +418,161 @@ export async function render(ctx){
   const _ms_onHash = () => { if (!location.hash.startsWith('#/game/')) { try{ document.body.classList.remove('is-game'); }catch{} window.removeEventListener('hashchange', _ms_onHash); } };
   window.addEventListener('hashchange', _ms_onHash);
 await renderHeader(); ensureDebugTray();
+  
+  
+  function _ms_applyGameLayout(){
+    var room = document.getElementById('roomMain');
+    var side = document.getElementById('sideLeft');
+    var card = document.getElementById('mainCard');
+    var ctrl = document.getElementById('controlsRow');
+    var tools = document.getElementById('toolsRow');
+    var ans = document.getElementById('answerRow');
+    if (!room || !card) return;
+    var cardW = 220;
+    if (window.innerWidth < 768){
+      // Base: card centered
+      room.style.display = 'block';
+      room.style.position = 'relative';
+      card.style.width = 'min(90vw, 220px)';
+      card.style.maxWidth = '220px';
+      card.style.margin = '0 auto';
+      [ctrl, tools, ans].forEach(function(el){
+        if (!el) return;
+        el.style.maxWidth = card.style.width;
+        el.style.width = '100%';
+        el.style.marginLeft = 'auto';
+        el.style.marginRight = 'auto';
+        el.style.display = 'flex';
+        el.style.justifyContent = 'center';
+      });
+      if (side){
+        // Float left of the card
+        side.style.position = 'absolute';
+        side.style.top = '0';
+        side.style.right = 'calc(50% + 110px + 12px)'; // 110px = half of 220
+        side.style.maxWidth = '40vw';
+        side.style.width = 'auto';
+        side.style.textAlign = 'left';
+        side.style.whiteSpace = 'normal';
+        // After laying out, check for potential overlap. If overlapping, fall back to stacked (above card).
+        setTimeout(function(){
+          try{
+            var cb = card.getBoundingClientRect();
+            var sb = side.getBoundingClientRect();
+            var overlaps = !(sb.right < cb.left - 8); // if sidebar approaches card
+            if (overlaps){
+              // Stack above card without pushing layout horizontally
+              side.style.position = 'static';
+              side.style.maxWidth = 'min(90vw, 320px)';
+              side.style.marginLeft = 'auto';
+              side.style.marginRight = 'auto';
+              // Keep card centered
+              card.style.margin = '0 auto';
+            }
+          }catch(e){}
+        }, 0);
+      }
+    } else {
+      // Desktop
+      room.style.display = 'grid';
+      room.style.gridTemplateColumns = '1fr auto 1fr';
+      room.style.columnGap = '12px';
+      room.style.alignItems = 'flex-start';
+      room.style.justifyItems = 'center';
+      card.style.width = cardW + 'px';
+      card.style.maxWidth = cardW + 'px';
+      card.style.margin = '0';
+      if (side){
+        side.style.position = '';
+        side.style.top = '';
+        side.style.right = '';
+        side.style.maxWidth = '';
+        side.style.width = '';
+        side.style.marginLeft = '';
+        side.style.marginRight = '';
+        side.style.textAlign = '';
+        side.style.whiteSpace = '';
+      }
+      [ctrl, tools, ans].forEach(function(el){
+        if (!el) return;
+        el.style.maxWidth = cardW + 'px';
+        el.style.width = '100%';
+        el.style.marginLeft = 'auto';
+        el.style.marginRight = 'auto';
+        el.style.display = 'flex';
+        el.style.justifyContent = 'center';
+      });
+    }
+  }
+    } else {
+      // Desktop grid with centered card and left sidebar
+      room.style.display = 'grid';
+      room.style.gridTemplateColumns = '1fr auto 1fr';
+      room.style.columnGap = '12px';
+      room.style.alignItems = 'flex-start';
+      room.style.justifyItems = 'center';
+      card.style.width = cardW + 'px';
+      card.style.maxWidth = cardW + 'px';
+      card.style.margin = '0';
+      if (side){
+        side.style.position = '';
+        side.style.top = '';
+        side.style.right = '';
+        side.style.maxWidth = '';
+        side.style.width = '';
+        side.style.alignSelf = '';
+        side.style.justifySelf = 'end';
+        side.style.textAlign = '';
+      }
+      [ctrl, tools, ans].forEach(function(el){
+        if (!el) return;
+        el.style.maxWidth = cardW + 'px';
+        el.style.width = '100%';
+        el.style.marginLeft = 'auto';
+        el.style.marginRight = 'auto';
+        el.style.display = 'flex';
+        el.style.justifyContent = 'center';
+      });
+    }
+  }
+      [ctrl, tools, ans].forEach(function(el){
+        if (!el) return;
+        el.style.maxWidth = card.style.width;
+        el.style.width = '100%';
+        el.style.marginLeft = 'auto';
+        el.style.marginRight = 'auto';
+        el.style.display = 'flex';
+        el.style.justifyContent = 'center';
+      });
+    } else {
+      // Desktop grid with centered card and left sidebar
+      room.style.display = 'grid';
+      room.style.gridTemplateColumns = '1fr auto 1fr';
+      room.style.columnGap = '12px';
+      room.style.alignItems = 'flex-start';
+      room.style.justifyItems = 'center';
+      card.style.width = '220px';
+      card.style.maxWidth = '220px';
+      card.style.margin = '0';
+      if (side){
+        side.style.width = '';
+        side.style.maxWidth = '';
+        side.style.alignSelf = '';
+        side.style.justifySelf = 'end';
+      }
+      [ctrl, tools, ans].forEach(function(el){
+        if (!el) return;
+        el.style.maxWidth = card.style.width;
+        el.style.width = '100%';
+        el.style.marginLeft = 'auto';
+        el.style.marginRight = 'auto';
+        el.style.display = 'flex';
+        el.style.justifyContent = 'center';
+      });
+    }
+  }
+
+  _ms_applyGameLayout(); window.addEventListener('resize', _ms_applyGameLayout);
   // Responsive: fixed 220px on desktop, min(90vw, 220px) on small screens
   function _ms_setCardWidth(){
     var c = document.getElementById('mainCard');
