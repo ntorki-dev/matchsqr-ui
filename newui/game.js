@@ -107,18 +107,18 @@ const Game = {
     }catch{}
   },
   render(forceFull){
-    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow');
+    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
     if (!main || !controls) return;
-    if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; }
+    if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; }
 
     let topRight=$('#msTopRight');
-    if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.style.cssText='position:absolute; top:16px; right:16px; font-weight:800; display:flex; gap:12px; align-items:center;'; main.appendChild(topRight); }
+    if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.style.cssText='position:absolute; top:16px; right:16px; font-weight:800; display:flex; gap:12px; align-items:center;'; main.appendChild(topRight); } main.style.margin='0 auto';
     topRight.innerHTML = (s.status==='running' ? `⏱ <span id="roomTimer">--:--</span>` : '');
 
     if (s.status==='lobby'){
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.style.cssText='display:flex;flex-direction:column;align-items:center;gap:10px; text-align:center; max-width:640px;';
-        const plist=document.createElement('div'); plist.id='msPlist'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); wrap.appendChild(plist);
+        const plist=document.createElement('div'); plist.id='msPlist'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); (side||document.getElementById('sideLeft')||wrap).appendChild(plist);
 
         const role=getRole(this.code);
         if (role==='host'){
@@ -156,14 +156,14 @@ const Game = {
         q.innerHTML = `<h3 style="margin:0 0 8px 0;">${s.question?.title || 'Question'}</h3><p class="help" style="margin:0;">${s.question?.text || ''}</p>`;
         main.appendChild(q);
 
-        const plist=document.createElement('div'); plist.id='msPlistRun'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); plist.style.marginTop = '6px'; main.appendChild(plist);
+        const plist=document.createElement('div'); plist.id='msPlistRun'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); plist.style.marginTop = '6px'; (side||document.getElementById('sideLeft')||main).appendChild(plist);
 
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
         actRow.innerHTML=`
           <button id="micBtn" class="kb-mic-btn" ${can?'':'disabled'}><img src="./assets/mic.png" alt="mic"/> <span>Mic</span></button>
           <button id="kbBtn" class="kb-mic-btn" ${can?'':'disabled'}><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>`;
-        main.appendChild(actRow);
+        (tools||main).appendChild(actRow);
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
       }else{
@@ -182,7 +182,7 @@ const Game = {
             <div class="row" style="gap:8px;margin-top:6px;">
               <button id="submitBtn" class="btn"${this.canAnswer()?'':' disabled'}>Submit</button>
             </div>`;
-          if (answer) answer.appendChild(ans); else main.appendChild(ans);
+          (answer||main).appendChild(ans);
           const box=$('#msBox'); if (box){ box.value = this.ui.draft||''; box.addEventListener('input', ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
           const submit=$('#submitBtn'); if (submit) submit.onclick=async()=>{
             const box=$('#msBox'); const text=(box.value||'').trim(); if(!text) return;
@@ -233,36 +233,56 @@ export async function render(ctx){
     <div class="offline-banner">You are offline. Trying to reconnect…</div>
     <div class="room-wrap">
       <div class="controls-row" id="controlsRow"></div>
-      <div class="card main-card" id="mainCard"></div>
+      <div id="roomMain" style="display:grid;grid-template-columns:1fr auto 1fr;column-gap:12px;align-items:flex-start;justify-items:center;width:100%;">
+        <div id="sideLeft" style="min-width:220px;justify-self:end;"></div>
+        <div class="card main-card" id="mainCard"></div>
+      </div>
+      <div class="controls-row" id="toolsRow"></div>
       <div class="answer-row" id="answerRow"></div>
     </div>`;
-  
-  _ms_applyLayout();
-  window.addEventListener('resize', _ms_applyLayout);await renderHeader(); ensureDebugTray();
-  // Apply game theme via body class, and clean it when leaving
-  function _ms_applyLayout() {
+  await renderHeader(); ensureDebugTray();
+  function _ms_applyGameLayout(){
     var room = document.getElementById('roomMain');
     var side = document.getElementById('sideLeft');
     if (!room) return;
-    if (window.innerWidth < 768) {
+    if (window.innerWidth < 768){
       room.style.display = 'flex';
       room.style.flexDirection = 'column';
       room.style.alignItems = 'center';
-      room.style.rowGap = '8px';
-      if (side) side.style.justifySelf = 'center';
+      if (side) side.style.alignSelf = 'stretch';
     } else {
       room.style.display = 'grid';
       room.style.gridTemplateColumns = '1fr auto 1fr';
       room.style.columnGap = '12px';
       room.style.alignItems = 'flex-start';
       room.style.justifyItems = 'center';
-      if (side) side.style.justifySelf = 'end';
     }
   }
 
+  _ms_applyGameLayout(); window.addEventListener('resize', _ms_applyGameLayout);
+  // Apply game theme via body class, and clean it when leaving
   try{ document.body.classList.add('is-game'); }catch{}
   const _ms_onHash = () => { if (!location.hash.startsWith('#/game/')) { try{ document.body.classList.remove('is-game'); }catch{} window.removeEventListener('hashchange', _ms_onHash); } };
   window.addEventListener('hashchange', _ms_onHash);
-await renderHeader(); ensureDebugTray();// Make header/footer black only in game room, without touching global CSS
+await renderHeader(); ensureDebugTray();
+  function _ms_applyGameLayout(){
+    var room = document.getElementById('roomMain');
+    var side = document.getElementById('sideLeft');
+    if (!room) return;
+    if (window.innerWidth < 768){
+      room.style.display = 'flex';
+      room.style.flexDirection = 'column';
+      room.style.alignItems = 'center';
+      if (side) side.style.alignSelf = 'stretch';
+    } else {
+      room.style.display = 'grid';
+      room.style.gridTemplateColumns = '1fr auto 1fr';
+      room.style.columnGap = '12px';
+      room.style.alignItems = 'flex-start';
+      room.style.justifyItems = 'center';
+    }
+  }
+
+  _ms_applyGameLayout(); window.addEventListener('resize', _ms_applyGameLayout);// Make header/footer black only in game room, without touching global CSS
   if (code){ Game.mount(code); }
 }
