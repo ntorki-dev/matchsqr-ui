@@ -67,7 +67,7 @@ export async function renderHeader(){
   // Build initial right content based on cache to avoid Login flash
   const rightInitial = (()=>{
     if (cached && cached.id){
-      const name = (cached.user_metadata?.name) || (cached.email ? cached.email.split('@')[0] : 'Account');
+      const name = (cached.user_metadata?.name) || (cached.name) || 'Account';
       return `<a class="avatar-link" href="#/account" title="${name}"><img class="avatar" src="${cached.user_metadata?.avatar_url || './assets/profile.png'}" alt="profile"/></a>
               <a class="btn-help" href="#/help" aria-label="Help">?</a>`;
     }
@@ -92,7 +92,7 @@ export async function renderHeader(){
     const right = document.getElementById('hdrRight');
     if (right){
       if (user){
-        const name = user.user_metadata?.name || (user.email? user.email.split('@')[0] : 'Account');
+        const name = user.user_metadata?.name || (function(){ try{ return (__msGetCachedUser && __msGetCachedUser())?.name || null; }catch(_){ return null; } })() || 'Account';
         right.innerHTML = `
           <a class="avatar-link" href="#/account" title="${name}"><img class="avatar" src="${user.user_metadata?.avatar_url || './assets/profile.png'}" alt="profile"/></a>
           <a class="btn-help" href="#/help" aria-label="Help">?</a>`;
@@ -124,13 +124,10 @@ export async function shareRoom(code){
 }
 
 export function participantsListHTML(ppl, curPid){
-  const cachedCU = (function(){ try{ return __msGetCachedUser && __msGetCachedUser(); }catch(_){ return null; } })();
   if (!Array.isArray(ppl) || ppl.length===0) return '<ul id="participantsList"><li class="meta">No one yet</li></ul>';
   const li = ppl.map(p=>{
     const pid = p?.participant_id || p?.id || '';
-    const uid = p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || '';
-    const isCurrent = !!(cachedCU && uid && String(uid)===String(cachedCU.id||''));
-    const name = (isCurrent ? (cachedCU?.user_metadata?.name || cachedCU?.name) : (p?.profile_name || p?.nickname || p?.name)) || 'Guest';
+    const name = p?.nickname || p?.name || 'Guest';
     const role = p?.role || (p?.is_host ? 'host' : '');
     const bold = (curPid && String(curPid)===String(pid)) ? ' style="font-weight:700;"' : '';
     const pidAttr = pid ? ` data-pid="${pid}"` : '';
