@@ -67,7 +67,7 @@ export async function renderHeader(){
   // Build initial right content based on cache to avoid Login flash
   const rightInitial = (()=>{
     if (cached && cached.id){
-      const name = (cached.user_metadata?.name) || (cached.name) || 'Account';
+      const name = (cached?.name) || (cached?.user_metadata?.full_name) || (cached?.user_metadata?.name) || 'Account';
       return `<a class="avatar-link" href="#/account" title="${name}"><img class="avatar" src="${cached.user_metadata?.avatar_url || './assets/profile.png'}" alt="profile"/></a>
               <a class="btn-help" href="#/help" aria-label="Help">?</a>`;
     }
@@ -92,7 +92,7 @@ export async function renderHeader(){
     const right = document.getElementById('hdrRight');
     if (right){
       if (user){
-        const name = user.user_metadata?.name || (function(){ try{ return (__msGetCachedUser && __msGetCachedUser())?.name || null; }catch(_){ return null; } })() || 'Account';
+        const name = (user?.user_metadata?.full_name) || (user?.user_metadata?.name) || (function(){ try { return (__msGetCachedUser && __msGetCachedUser())?.name || null; } catch(_){ return null; } })() || 'Account';
         right.innerHTML = `
           <a class="avatar-link" href="#/account" title="${name}"><img class="avatar" src="${user.user_metadata?.avatar_url || './assets/profile.png'}" alt="profile"/></a>
           <a class="btn-help" href="#/help" aria-label="Help">?</a>`;
