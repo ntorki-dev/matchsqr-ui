@@ -55,7 +55,7 @@ const Game = {
   },
   remainingSeconds(){ if (!this.state.endsAt) return null; const diff=Math.floor((new Date(this.state.endsAt).getTime()-Date.now())/1000); return Math.max(0,diff); },
   renderTimer(){
-    const t=this.remainingSeconds(), el=document.getElementById('roomTimer'); if(!el) return;
+    const t=this.remainingSeconds(), el=document.getElementById('roomTimer'); if(!el) _ms_syncWidths(); return;
     if (t==null) { el.textContent='--:--'; return; }
     const m=String(Math.floor(t/60)).padStart(2,'0'), s=String(t%60).padStart(2,'0');
     el.textContent=`${m}:${s}`;
@@ -205,7 +205,7 @@ const Game = {
         $('#endAnalyze').onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
       }else if (!isHost){ controls.innerHTML=''; }
 
-      this.renderTimer();
+      this.renderTimer(); _ms_syncWidths();
       return;
     }
 
@@ -221,7 +221,7 @@ const Game = {
           </div>
         </div>`;
       $('#shareBtn').onclick=()=>{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); };
-      return;
+      _ms_syncWidths(); return;
     }
   }
 };
@@ -241,6 +241,25 @@ export async function render(ctx){
       <div class="answer-row" id="answerRow"></div>
     </div>`;
   await renderHeader(); ensureDebugTray();
+  function _ms_syncWidths(){
+    var card = document.getElementById('mainCard');
+    var rows = [document.getElementById('controlsRow'), document.getElementById('toolsRow'), document.getElementById('answerRow')];
+    if (!card) return;
+    var w = card.getBoundingClientRect().width;
+    for (var i=0;i<rows.length;i++){
+      var r = rows[i];
+      if (!r) continue;
+      r.style.maxWidth = w + 'px';
+      r.style.width = '100%';
+      r.style.marginLeft = 'auto';
+      r.style.marginRight = 'auto';
+      r.style.display = r.style.display || 'flex';
+      r.style.justifyContent = 'center';
+      r.style.gap = '10px';
+    }
+  }
+
+  _ms_syncWidths(); window.addEventListener('resize', _ms_syncWidths);
   function _ms_applyGameLayout(){
     var room = document.getElementById('roomMain');
     var side = document.getElementById('sideLeft');
@@ -265,6 +284,25 @@ export async function render(ctx){
   const _ms_onHash = () => { if (!location.hash.startsWith('#/game/')) { try{ document.body.classList.remove('is-game'); }catch{} window.removeEventListener('hashchange', _ms_onHash); } };
   window.addEventListener('hashchange', _ms_onHash);
 await renderHeader(); ensureDebugTray();
+  function _ms_syncWidths(){
+    var card = document.getElementById('mainCard');
+    var rows = [document.getElementById('controlsRow'), document.getElementById('toolsRow'), document.getElementById('answerRow')];
+    if (!card) return;
+    var w = card.getBoundingClientRect().width;
+    for (var i=0;i<rows.length;i++){
+      var r = rows[i];
+      if (!r) continue;
+      r.style.maxWidth = w + 'px';
+      r.style.width = '100%';
+      r.style.marginLeft = 'auto';
+      r.style.marginRight = 'auto';
+      r.style.display = r.style.display || 'flex';
+      r.style.justifyContent = 'center';
+      r.style.gap = '10px';
+    }
+  }
+
+  _ms_syncWidths(); window.addEventListener('resize', _ms_syncWidths);
   function _ms_applyGameLayout(){
     var room = document.getElementById('roomMain');
     var side = document.getElementById('sideLeft');
