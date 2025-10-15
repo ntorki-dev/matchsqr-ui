@@ -58,7 +58,7 @@ const Game = {
     const t=this.remainingSeconds(), el=document.getElementById('roomTimer'); if(!el) return;
     if (t==null) { el.textContent='--:--'; return; }
     const m=String(Math.floor(t/60)).padStart(2,'0'), s=String(t%60).padStart(2,'0');
-    el.textContent=`${m}:${s}`;
+    el.textContent=m+':'+s;
   },
   canAnswer(){
     const code=this.code; const pid = JSON.parse(localStorage.getItem(msPidKey(code))||'null');
@@ -67,11 +67,9 @@ const Game = {
   },
   async backfillPidIfMissing(){
     const code=this.code;
-    // If we already have a pid, nothing to do
     let pidRaw = localStorage.getItem(msPidKey(code));
     if (pidRaw) return;
     const participants = Array.isArray(this.state.participants)? this.state.participants : [];
-    // Try host match by auth user id or is_host flag
     try{
       const sess = await getSession();
       const myUid = sess?.user?.id || null;
@@ -82,7 +80,6 @@ const Game = {
           return;
         }
       }
-      // If role indicates we are host, try the is_host participant
       const hostP = participants.find(p => p.is_host || p.role==='host');
       if (hostP && (hostP.participant_id || hostP.id)){
         if (getRole(code)==='host'){
@@ -91,9 +88,8 @@ const Game = {
         }
       }
     }catch{}
-    // Guest nickname fallback: map by stored nickname
     try{
-      const nick = localStorage.getItem(`ms_nick_${code}`);
+      const nick = localStorage.getItem('ms_nick_'+code);
       if (nick){
         const cand = participants.find(p => {
           const nm = (p.nickname || p.name || '').trim().toLowerCase();
@@ -113,12 +109,12 @@ const Game = {
 
     let topRight=$('#msTopRight');
     if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.style.cssText='position:absolute; top:16px; right:16px; font-weight:800; display:flex; gap:12px; align-items:center;'; main.appendChild(topRight); }
-    topRight.innerHTML = (s.status==='running' ? `⏱ <span id="roomTimer">--:--</span>` : '');
+    topRight.innerHTML = (s.status==='running' ? '<span>⏱</span> <span id=\"roomTimer\">--:--</span>' : '');
 
     if (s.status==='lobby'){
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.style.cssText='display:flex;flex-direction:column;align-items:center;gap:10px; text-align:center; max-width:640px;';
-        const plist=document.createElement('div'); plist.id='msPlist'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); (side||document.getElementById('sideLeft')||wrap).appendChild(plist);
+        const plist=document.createElement('div'); plist.id='msPlist'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); (side||wrap).appendChild(plist);
 
         const role=getRole(this.code);
         if (role==='host'){
@@ -147,22 +143,23 @@ const Game = {
         const plist=$('#msPlist'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
         const startBtn=$('#startGame'); if (startBtn){ const enough = Array.isArray(s.participants) && s.participants.length>=2; startBtn.disabled=!enough; }
       }
+      this.renderTimer();
       return;
     }
 
     if (s.status==='running'){
       if (forceFull){
-        const q=document.createElement('div'); q.id='msQ'; q.style.cssText='text-align:center; max-width:640px; padding:8px; margin-top:8px;';
-        q.innerHTML = `<h3 style="margin:0 0 8px 0;">${s.question?.title || 'Question'}</h3><p class="help" style="margin:0;">${s.question?.text || ''}</p>`;
+        const q=document.createElement('div'); q.id='msQ'; q.style.cssText='text-align:center; max-width:640px; padding:8px; margin-top:8px; position:relative;';
+        q.innerHTML = '<h3 style=\"margin:0 0 8px 0;\">'+(s.question?.title || 'Question')+'</h3><p class=\"help\" style=\"margin:0;\">'+(s.question?.text || '')+'</p>';
         main.appendChild(q);
 
-        const plist=document.createElement('div'); plist.id='msPlistRun'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); plist.style.marginTop = '6px'; (side||document.getElementById('sideLeft')||main).appendChild(plist);
+        const plist=document.createElement('div'); plist.id='msPlistRun'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); plist.style.marginTop = '6px'; (side||main).appendChild(plist);
 
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
-        actRow.innerHTML=`
-          <button id="micBtn" class="kb-mic-btn" ${can?'':'disabled'}><img src="./assets/mic.png" alt="mic"/> <span>Mic</span></button>
-          <button id="kbBtn" class="kb-mic-btn" ${can?'':'disabled'}><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>`;
+        actRow.innerHTML=
+          '<button id=\"micBtn\" class=\"kb-mic-btn\" '+(can?'':'disabled')+'><img src=\"./assets/mic.png\" alt=\"mic\"/> <span>Mic</span></button>'+
+          '<button id=\"kbBtn\" class=\"kb-mic-btn\" '+(can?'':'disabled')+'><img src=\"./assets/keyboard.png\" alt=\"kb\"/> <span>Keyboard</span></button>';
         (tools||main).appendChild(actRow);
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
@@ -176,12 +173,13 @@ const Game = {
         let ans=$('#msAns');
         if (!ans){
           ans=document.createElement('div'); ans.className='card'; ans.id='msAns'; ans.style.marginTop='8px';
-          ans.innerHTML = `
-            <div class="meta">Your answer</div>
-            <textarea id="msBox" class="input" rows="3" placeholder="${this.canAnswer()?'Type here…':'Wait for your turn'}"></textarea>
-            <div class="row" style="gap:8px;margin-top:6px;">
-              <button id="submitBtn" class="btn"${this.canAnswer()?'':' disabled'}>Submit</button>
-            </div>`;
+          const placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn';
+          ans.innerHTML =
+            '<div class=\"meta\">Your answer</div>'+
+            '<textarea id=\"msBox\" class=\"input\" rows=\"3\" placeholder=\"'+placeholder+'\"></textarea>'+
+            '<div class=\"row\" style=\"gap:8px;margin-top:6px;\">'+
+              '<button id=\"submitBtn\" class=\"btn\"'+(this.canAnswer()?'':' disabled')+'>Submit</button>'+
+            '</div>';
           (answer||main).appendChild(ans);
           const box=$('#msBox'); if (box){ box.value = this.ui.draft||''; box.addEventListener('input', ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
           const submit=$('#submitBtn'); if (submit) submit.onclick=async()=>{
@@ -189,37 +187,37 @@ const Game = {
             try{ submit.disabled=true; await API.submit_answer({ text }); box.value=''; this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} await this.refresh(); }catch(e){ submit.disabled=false; toast(e.message||'Submit failed'); }
           };
         }else{
-          const box=$('#msBox'); if (box){ box.placeholder = this.canAnswer()? 'Type here…' : 'Wait for your turn'; box.toggleAttribute('disabled', !this.canAnswer()); }
+          const box=$('#msBox'); if (box){ box.placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn'; box.toggleAttribute('disabled', !this.canAnswer()); }
           const submit=$('#submitBtn'); if (submit){ submit.toggleAttribute('disabled', !this.canAnswer()); }
         }
       }
 
       const role=getRole(this.code); const isHost = role==='host';
       if (isHost && forceFull){
-        controls.innerHTML=`
-          <button id="nextCard" class="btn">Reveal next card</button>
-          <button id="extendBtn" class="btn secondary" disabled>Extend</button>
-          <button id="endAnalyze" class="btn danger">End and analyze</button>`;
+        controls.innerHTML=
+          '<button id=\"nextCard\" class=\"btn\">Reveal next card</button>'+
+          '<button id=\"extendBtn\" class=\"btn secondary\" disabled>Extend</button>'+
+          '<button id=\"endAnalyze\" class=\"btn danger\">End and analyze</button>';
         $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
         $('#extendBtn').onclick=()=>{ location.hash='#/billing'; };
         $('#endAnalyze').onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
       }else if (!isHost){ controls.innerHTML=''; }
 
-      this.renderTimer(); _ms_applyGameLayout();
+      this.renderTimer();
       return;
     }
 
     if (s.status==='ended'){
       controls.innerHTML='';
-      main.innerHTML = `
-        <div style="text-align:center; max-width:640px;">
-          <h3>Summary</h3>
-          <p class="help">The game has ended. You can start a new one from Host page.</p>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
-            <a class="btn" href="#/host">Host a new game</a>
-            <button id="shareBtn" class="btn secondary">Share</button>
-          </div>
-        </div>`;
+      main.innerHTML =
+        '<div style=\"text-align:center; max-width:640px;\">'+
+          '<h3>Summary</h3>'+
+          '<p class=\"help\">The game has ended. You can start a new one from Host page.</p>'+
+          '<div style=\"display:flex;gap:10px;flex-wrap:wrap;justify-content:center;\">'+
+            '<a class=\"btn\" href=\"#/host\">Host a new game</a>'+
+            '<button id=\"shareBtn\" class=\"btn secondary\">Share</button>'+
+          '</div>'+
+        '</div>';
       $('#shareBtn').onclick=()=>{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); };
       return;
     }
@@ -229,184 +227,22 @@ const Game = {
 export async function render(ctx){
   const code = ctx?.code || null;
   const app=document.getElementById('app');
-  app.innerHTML=`
-<div class="offline-banner">You are offline. Trying to reconnect…</div>
-    <div class="room-wrap">
-      <div class="controls-row" id="controlsRow"></div>
-      <div class="room-main" id="roomMain" style="display:grid;grid-template-columns:1fr auto 1fr;column-gap:12px;align-items:flex-start;justify-items:center;width:100%;">
-        <div id="sideLeft" style="min-width:220px;justify-self:end;"></div>
-        <div class="card main-card" id="mainCard" style="width:220px;max-width:220px;"></div>
-      </div>
-      <div class="controls-row" id="toolsRow"></div>
-      <div class="answer-row" id="answerRow"></div>
-    </div>
-`;
+  app.innerHTML=
+    '<div class=\"offline-banner\">You are offline. Trying to reconnect…</div>'+
+    '<div class=\"room-wrap\">'+
+      '<div class=\"controls-row\" id=\"controlsRow\"></div>'+
+      '<div id=\"roomMain\" style=\"display:grid;grid-template-columns:1fr auto 1fr;column-gap:12px;align-items:flex-start;justify-items:center;width:100%;\">'+
+        '<div id=\"sideLeft\" style=\"min-width:220px;justify-self:end;\"></div>'+
+        '<div class=\"card main-card\" id=\"mainCard\" style=\"width:220px;max-width:220px;position:relative;\"></div>'+
+      '</div>'+
+      '<div class=\"controls-row\" id=\"toolsRow\"></div>'+
+      '<div class=\"answer-row\" id=\"answerRow\"></div>'+
+    '</div>';
   await renderHeader(); ensureDebugTray();
-  
-  
-  function _ms_applyGameLayout(){
-    var room = document.getElementById('roomMain');
-    var side = document.getElementById('sideLeft');
-    var card = document.getElementById('mainCard');
-    var ctrl = document.getElementById('controlsRow');
-    var tools = document.getElementById('toolsRow');
-    var ans = document.getElementById('answerRow');
-    if (!room || !card) return;
-    var cardW = 220;
-    var vw = window.innerWidth || document.documentElement.clientWidth || 360;
-    if (vw < 768){
-      room.style.display = 'block';
-      room.style.position = 'relative';
-      var targetW = Math.min(vw*0.9, cardW);
-      card.style.width = targetW + 'px';
-      card.style.maxWidth = cardW + 'px';
-      card.style.margin = '0 auto';
-      [ctrl, tools, ans].forEach(function(el){
-        if (!el) return;
-        el.style.maxWidth = targetW + 'px';
-        el.style.width = '100%';
-        el.style.marginLeft = 'auto';
-        el.style.marginRight = 'auto';
-        el.style.display = 'flex';
-        el.style.justifyContent = 'center';
-      });
-      if (side){
-        var leftSpace = (vw - targetW) / 2 - 12;
-        if (leftSpace >= 160){
-          side.style.position = 'absolute';
-          side.style.top = '0';
-          side.style.right = 'calc(50% + ' + (targetW/2) + 'px + 12px)';
-          side.style.maxWidth = Math.floor(leftSpace) + 'px';
-          side.style.width = 'auto';
-          side.style.display = '';
-          side.style.textAlign = 'left';
-          side.style.overflow = 'hidden';
-          side.style.whiteSpace = 'normal';
-        } else {
-          side.style.display = 'none';
-        }
-      }
-    } else {
-      room.style.display = 'grid';
-      room.style.gridTemplateColumns = '1fr auto 1fr';
-      room.style.columnGap = '12px';
-      room.style.alignItems = 'flex-start';
-      room.style.justifyItems = 'center';
-      card.style.width = cardW + 'px';
-      card.style.maxWidth = cardW + 'px';
-      card.style.margin = '0';
-      if (side){
-        side.style.position = '';
-        side.style.top = '';
-        side.style.right = '';
-        side.style.maxWidth = '';
-        side.style.width = '';
-        side.style.display = '';
-        side.style.textAlign = '';
-      }
-      [ctrl, tools, ans].forEach(function(el){
-        if (!el) return;
-        el.style.maxWidth = cardW + 'px';
-        el.style.width = '100%';
-        el.style.marginLeft = 'auto';
-        el.style.marginRight = 'auto';
-        el.style.display = 'flex';
-        el.style.justifyContent = 'center';
-      });
-    }
-  }
-    } else {
-      // Desktop grid with centered card and left sidebar
-      room.style.display = 'grid';
-      room.style.gridTemplateColumns = '1fr auto 1fr';
-      room.style.columnGap = '12px';
-      room.style.alignItems = 'flex-start';
-      room.style.justifyItems = 'center';
-      card.style.width = cardW + 'px';
-      card.style.maxWidth = cardW + 'px';
-      card.style.margin = '0';
-      if (side){
-        side.style.position = '';
-        side.style.top = '';
-        side.style.right = '';
-        side.style.maxWidth = '';
-        side.style.width = '';
-        side.style.alignSelf = '';
-        side.style.justifySelf = 'end';
-        side.style.textAlign = '';
-      }
-      [ctrl, tools, ans].forEach(function(el){
-        if (!el) return;
-        el.style.maxWidth = cardW + 'px';
-        el.style.width = '100%';
-        el.style.marginLeft = 'auto';
-        el.style.marginRight = 'auto';
-        el.style.display = 'flex';
-        el.style.justifyContent = 'center';
-      });
-    }
-  }
-      [ctrl, tools, ans].forEach(function(el){
-        if (!el) return;
-        el.style.maxWidth = card.style.width;
-        el.style.width = '100%';
-        el.style.marginLeft = 'auto';
-        el.style.marginRight = 'auto';
-        el.style.display = 'flex';
-        el.style.justifyContent = 'center';
-      });
-    } else {
-      // Desktop grid with centered card and left sidebar
-      room.style.display = 'grid';
-      room.style.gridTemplateColumns = '1fr auto 1fr';
-      room.style.columnGap = '12px';
-      room.style.alignItems = 'flex-start';
-      room.style.justifyItems = 'center';
-      card.style.width = '220px';
-      card.style.maxWidth = '220px';
-      card.style.margin = '0';
-      if (side){
-        side.style.width = '';
-        side.style.maxWidth = '';
-        side.style.alignSelf = '';
-        side.style.justifySelf = 'end';
-      }
-      [ctrl, tools, ans].forEach(function(el){
-        if (!el) return;
-        el.style.maxWidth = card.style.width;
-        el.style.width = '100%';
-        el.style.marginLeft = 'auto';
-        el.style.marginRight = 'auto';
-        el.style.display = 'flex';
-        el.style.justifyContent = 'center';
-      });
-    }
-  }
-
-  _ms_applyGameLayout(); window.addEventListener('resize', _ms_applyGameLayout);
-  // Responsive: fixed 220px on desktop, min(90vw, 220px) on small screens
-  function _ms_setCardWidth(){
-    var c = document.getElementById('mainCard');
-    if (!c) return;
-    var isSmall = window.innerWidth < 768;
-    if (isSmall){
-      c.style.width = Math.min(window.innerWidth*0.9, 220) + 'px';
-      c.style.maxWidth = '220px';
-    } else {
-      c.style.width = '220px';
-      c.style.maxWidth = '220px';
-    }
-  }
-  _ms_setCardWidth();
-  window.addEventListener('resize', _ms_setCardWidth);
-
-  // Apply game theme via body class, and clean it when leaving
   try{ document.body.classList.add('is-game'); }catch{}
   const _ms_onHash = () => { if (!location.hash.startsWith('#/game/')) { try{ document.body.classList.remove('is-game'); }catch{} window.removeEventListener('hashchange', _ms_onHash); } };
   window.addEventListener('hashchange', _ms_onHash);
-await renderHeader(); ensureDebugTray();
-  
-  
+
   function _ms_applyGameLayout(){
     var room = document.getElementById('roomMain');
     var side = document.getElementById('sideLeft');
@@ -478,90 +314,9 @@ await renderHeader(); ensureDebugTray();
       });
     }
   }
-    } else {
-      // Desktop grid with centered card and left sidebar
-      room.style.display = 'grid';
-      room.style.gridTemplateColumns = '1fr auto 1fr';
-      room.style.columnGap = '12px';
-      room.style.alignItems = 'flex-start';
-      room.style.justifyItems = 'center';
-      card.style.width = cardW + 'px';
-      card.style.maxWidth = cardW + 'px';
-      card.style.margin = '0';
-      if (side){
-        side.style.position = '';
-        side.style.top = '';
-        side.style.right = '';
-        side.style.maxWidth = '';
-        side.style.width = '';
-        side.style.alignSelf = '';
-        side.style.justifySelf = 'end';
-        side.style.textAlign = '';
-      }
-      [ctrl, tools, ans].forEach(function(el){
-        if (!el) return;
-        el.style.maxWidth = cardW + 'px';
-        el.style.width = '100%';
-        el.style.marginLeft = 'auto';
-        el.style.marginRight = 'auto';
-        el.style.display = 'flex';
-        el.style.justifyContent = 'center';
-      });
-    }
-  }
-      [ctrl, tools, ans].forEach(function(el){
-        if (!el) return;
-        el.style.maxWidth = card.style.width;
-        el.style.width = '100%';
-        el.style.marginLeft = 'auto';
-        el.style.marginRight = 'auto';
-        el.style.display = 'flex';
-        el.style.justifyContent = 'center';
-      });
-    } else {
-      // Desktop grid with centered card and left sidebar
-      room.style.display = 'grid';
-      room.style.gridTemplateColumns = '1fr auto 1fr';
-      room.style.columnGap = '12px';
-      room.style.alignItems = 'flex-start';
-      room.style.justifyItems = 'center';
-      card.style.width = '220px';
-      card.style.maxWidth = '220px';
-      card.style.margin = '0';
-      if (side){
-        side.style.width = '';
-        side.style.maxWidth = '';
-        side.style.alignSelf = '';
-        side.style.justifySelf = 'end';
-      }
-      [ctrl, tools, ans].forEach(function(el){
-        if (!el) return;
-        el.style.maxWidth = card.style.width;
-        el.style.width = '100%';
-        el.style.marginLeft = 'auto';
-        el.style.marginRight = 'auto';
-        el.style.display = 'flex';
-        el.style.justifyContent = 'center';
-      });
-    }
-  }
 
-  _ms_applyGameLayout(); window.addEventListener('resize', _ms_applyGameLayout);
-  // Responsive: fixed 220px on desktop, min(90vw, 220px) on small screens
-  function _ms_setCardWidth(){
-    var c = document.getElementById('mainCard');
-    if (!c) return;
-    var isSmall = window.innerWidth < 768;
-    if (isSmall){
-      c.style.width = Math.min(window.innerWidth*0.9, 220) + 'px';
-      c.style.maxWidth = '220px';
-    } else {
-      c.style.width = '220px';
-      c.style.maxWidth = '220px';
-    }
-  }
-  _ms_setCardWidth();
-  window.addEventListener('resize', _ms_setCardWidth);
-// Make header/footer black only in game room, without touching global CSS
+  _ms_applyGameLayout();
+  window.addEventListener('resize', _ms_applyGameLayout);
+
   if (code){ Game.mount(code); }
 }
