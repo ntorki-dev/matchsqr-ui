@@ -335,3 +335,32 @@ body.is-game #answerRow{
   .side-left{ display:none; }
   .main-card{ margin: 0 auto; }
 }
+
+
+/* === Mobile centering fix === */
+@media (max-width: 767px){
+  /* Stack and center the whole game area */
+  .room-wrap{ display:flex; flex-direction:column; align-items:center; }
+
+  /* Ensure the main wrapper is centered */
+  .room-main{ display:flex; flex-direction:column; align-items:center; width:100%; }
+
+  /* Constrain rows to the exact card width and center them */
+  #controlsRow, #toolsRow, #answerRow{
+    width:100%;
+    max-width: var(--cardw) !important;
+    margin-left:auto;
+    margin-right:auto;
+    display:flex;
+    justify-content:center !important;
+    gap:10px;
+  }
+
+  /* Keep the card centered and matching --cardw */
+  .main-card{
+    width: var(--cardw) !important;
+    max-width: var(--cardw) !important;
+    margin-left:auto;
+    margin-right:auto;
+  }
+}
