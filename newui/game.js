@@ -8,11 +8,10 @@ function msRenderStacks(sideLeftEl, sideRightEl, participants, currentTurnPid, h
     var n = (p.nickname || p.name || 'Player');
     var isHost = !!(p.is_host || p.role==='host' || (hostUserId && String(p.user_id||p.auth_user_id||p.owner_id||'')===String(hostUserId)));
     var isTurn = currentTurnPid && String(currentTurnPid)===String(p.participant_id || p.id || '');
-    var cls = 'pname'+(isHost?' is-host':'')+(isTurn?' is-turn':'');
+    var cls = 'pitem'+(isHost?' is-host':'')+(isTurn?' is-turn':'');
     return '<li class="'+cls+'">'+n+(isHost?' (host)':'')+'</li>';
   }
   var list = Array.isArray(participants)? participants.slice(0,8) : [];
-  // host first
   list.sort(function(a,b){
     var ah = a.is_host || a.role==='host' || (hostUserId && String(a.user_id||a.auth_user_id||a.owner_id||'')===String(hostUserId));
     var bh = b.is_host || b.role==='host' || (hostUserId && String(b.user_id||b.auth_user_id||b.owner_id||'')===String(hostUserId));
@@ -129,9 +128,9 @@ const Game = {
     }catch{}
   },
   render(forceFull){
-    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const sideL=$('#sideLeft'); const sideR=$('#sideRight');
+    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const sideL=$('#sideLeft'); const sideR=$('#sideRight'); const tools=$('#toolsRow'); const side=$('#sideLeft');
     if (!main || !controls) return;
-    if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(sideL) sideL.innerHTML=''; if(sideR) sideR.innerHTML=''; const t=$('#toolsRow'); if(t) t.innerHTML=''; }
+    if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; }
 
     let topRight=$('#msTopRight');
     if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.style.cssText='position:absolute; top:16px; right:16px; font-weight:800; display:flex; gap:12px; align-items:center;'; main.appendChild(topRight); }
@@ -178,14 +177,14 @@ const Game = {
         q.innerHTML = `<h3 style="margin:0 0 8px 0;">${s.question?.title || 'Question'}</h3><p class="help" style="margin:0;">${s.question?.text || ''}</p>`;
         main.appendChild(q);
 
-        const plist=document.createElement('div'); plist.id='msPlistRun'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); plist.style.marginTop = '6px'; main.appendChild(plist);
+        const plist=document.createElement('div'); plist.id='msPlistRun'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); plist.style.marginTop = '6px'; const sideEl = side || document.getElementById('sideLeft'); (sideEl||main).appendChild(plist);
 
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
         actRow.innerHTML=`
           <button id="micBtn" class="kb-mic-btn" ${can?'':'disabled'}><img src="./assets/mic.png" alt="mic"/> <span>Mic</span></button>
           <button id="kbBtn" class="kb-mic-btn" ${can?'':'disabled'}><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>`;
-        ($('#toolsRow')||main).appendChild(actRow);
+        (tools||main).appendChild(actRow);
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
       }else{
@@ -255,10 +254,9 @@ export async function render(ctx){
     <div class="offline-banner">You are offline. Trying to reconnect…</div>
     <div class="room-wrap">
       <div class="controls-row" id="controlsRow"></div>
-      <div class="room-main" id="roomMain">
-        <div class="side-left" id="sideLeft"></div>
+      <div class="room-main" id="roomMain" style="display:flex;gap:12px;align-items:flex-start;justify-content:center;">
+        <div id="sideLeft" style="min-width:220px;"></div>
         <div class="card main-card" id="mainCard"></div>
-        <div class="side-right" id="sideRight"></div>
       </div>
       <div class="controls-row" id="toolsRow"></div>
       <div class="answer-row" id="answerRow"></div>
