@@ -3,31 +3,26 @@ import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey
 import { renderHeader, ensureDebugTray, $, toast, participantsListHTML } from './ui.js';
 
 
-  function msRenderStacks(containerLeft, containerRight, participants, currentTurnPid, hostUserId){
-    function liHTML(p){
-      var name = (p.nickname || p.name || 'Player');
-      var isHost = !!(p.is_host || p.role==='host' || (hostUserId && String(p.user_id||p.auth_user_id||p.owner_id||'')===String(hostUserId)));
-      var isTurn = currentTurnPid && String(currentTurnPid)===String(p.participant_id || p.id || '');
-      return '<li'+(isTurn?' class="is-turn"':'')+'>'+(isHost?'<strong class="is-host">'+name+' (host)</strong>':name)+'</li>';
-    }
-    var list = Array.isArray(participants)? participants.slice(0,8) : [];
-    // Ensure host first
-    list.sort(function(a,b){
-      var ah = a.is_host || a.role==='host' || (hostUserId && String(a.user_id||a.auth_user_id||a.owner_id||'')===String(hostUserId));
-      var bh = b.is_host || b.role==='host' || (hostUserId && String(b.user_id||b.auth_user_id||b.owner_id||'')===String(hostUserId));
-      if (ah && !bh) return -1; if (!ah && bh) return 1; return 0;
-    });
-    var left = [], right = [];
-    for (var i=0;i<list.length;i++){
-      (i%2===0 ? left : right).push(list[i]);
-    }
-    if (containerLeft){
-      containerLeft.innerHTML = '<ul class="participants-small">'+ left.map(liHTML).join('') +'</ul>';
-    }
-    if (containerRight){
-      containerRight.innerHTML = '<ul class="participants-small">'+ right.map(liHTML).join('') +'</ul>';
-    }
+function msRenderStacks(sideLeftEl, sideRightEl, participants, currentTurnPid, hostUserId){
+  function nameHTML(p){
+    var n = (p.nickname || p.name || 'Player');
+    var isHost = !!(p.is_host || p.role==='host' || (hostUserId && String(p.user_id||p.auth_user_id||p.owner_id||'')===String(hostUserId)));
+    var isTurn = currentTurnPid && String(currentTurnPid)===String(p.participant_id || p.id || '');
+    var cls = 'pname'+(isHost?' is-host':'')+(isTurn?' is-turn':'');
+    return '<li class="'+cls+'">'+n+(isHost?' (host)':'')+'</li>';
   }
+  var list = Array.isArray(participants)? participants.slice(0,8) : [];
+  // host first
+  list.sort(function(a,b){
+    var ah = a.is_host || a.role==='host' || (hostUserId && String(a.user_id||a.auth_user_id||a.owner_id||'')===String(hostUserId));
+    var bh = b.is_host || b.role==='host' || (hostUserId && String(b.user_id||b.auth_user_id||b.owner_id||'')===String(hostUserId));
+    if (ah && !bh) return -1; if (!ah && bh) return 1; return 0;
+  });
+  var L=[], R=[];
+  for (var i=0;i<list.length;i++){ (i%2===0?L:R).push(list[i]); }
+  if (sideLeftEl)  sideLeftEl.innerHTML  = '<ul class="participants-small">'+L.map(nameHTML).join('')+'</ul>';
+  if (sideRightEl) sideRightEl.innerHTML = '<ul class="participants-small">'+R.map(nameHTML).join('')+'</ul>';
+}
 
 const Game = {
   code:null, poll:null, tick:null, hbH:null, hbG:null,
@@ -134,9 +129,9 @@ const Game = {
     }catch{}
   },
   render(forceFull){
-    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const sideR=$('#sideRight');
+    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const sideL=$('#sideLeft'); const sideR=$('#sideRight');
     if (!main || !controls) return;
-    if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; const sl=$('#sideLeft'); if(sl) sl.innerHTML=''; if(sideR) sideR.innerHTML=''; }
+    if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(sideL) sideL.innerHTML=''; if(sideR) sideR.innerHTML=''; const t=$('#toolsRow'); if(t) t.innerHTML=''; }
 
     let topRight=$('#msTopRight');
     if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.style.cssText='position:absolute; top:16px; right:16px; font-weight:800; display:flex; gap:12px; align-items:center;'; main.appendChild(topRight); }
@@ -145,7 +140,7 @@ const Game = {
     if (s.status==='lobby'){
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.style.cssText='display:flex;flex-direction:column;align-items:center;gap:10px; text-align:center; max-width:640px;';
-        const plist=document.createElement('div'); plist.id='msPlist'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); wrap.appendChild(plist);
+        msRenderStacks(sideL, sideR, s.participants, s.current_turn?.participant_id||null, s.host_user_id);
 
         const role=getRole(this.code);
         if (role==='host'){
@@ -171,7 +166,7 @@ const Game = {
         }
         main.appendChild(wrap);
       }else{
-        msRenderStacks($('#sideLeft'), $('#sideRight'), s.participants, s.current_turn?.participant_id||null, s.host_user_id);
+        msRenderStacks(sideL, sideR, s.participants, s.current_turn?.participant_id||null, s.host_user_id);
         const startBtn=$('#startGame'); if (startBtn){ const enough = Array.isArray(s.participants) && s.participants.length>=2; startBtn.disabled=!enough; }
       }
       return;
@@ -183,19 +178,18 @@ const Game = {
         q.innerHTML = `<h3 style="margin:0 0 8px 0;">${s.question?.title || 'Question'}</h3><p class="help" style="margin:0;">${s.question?.text || ''}</p>`;
         main.appendChild(q);
 
-        msRenderStacks($('#sideLeft'), $('#sideRight'), s.participants, s.current_turn?.participant_id||null, s.host_user_id);
-        const plist=document.createElement('div'); plist.id='msPlistRun'; plist.style.marginTop = '6px'; main.appendChild(plist);
+        const plist=document.createElement('div'); plist.id='msPlistRun'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); plist.style.marginTop = '6px'; main.appendChild(plist);
 
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
         actRow.innerHTML=`
           <button id="micBtn" class="kb-mic-btn" ${can?'':'disabled'}><img src="./assets/mic.png" alt="mic"/> <span>Mic</span></button>
           <button id="kbBtn" class="kb-mic-btn" ${can?'':'disabled'}><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>`;
-        main.appendChild(actRow);
+        ($('#toolsRow')||main).appendChild(actRow);
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
       }else{
-        msRenderStacks($('#sideLeft'), $('#sideRight'), s.participants, s.current_turn?.participant_id||null, s.host_user_id);
+        msRenderStacks(sideL, sideR, s.participants, s.current_turn?.participant_id||null, s.host_user_id);
         const can=this.canAnswer(); const mic=$('#micBtn'); const kb=$('#kbBtn');
         if (mic) mic.toggleAttribute('disabled', !can); if (kb) kb.toggleAttribute('disabled', !can);
       }
@@ -210,7 +204,7 @@ const Game = {
             <div class="row" style="gap:8px;margin-top:6px;">
               <button id="submitBtn" class="btn"${this.canAnswer()?'':' disabled'}>Submit</button>
             </div>`;
-          if (answer) answer.appendChild(ans); else main.appendChild(ans);
+          (answer||main).appendChild(ans);
           const box=$('#msBox'); if (box){ box.value = this.ui.draft||''; box.addEventListener('input', ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
           const submit=$('#submitBtn'); if (submit) submit.onclick=async()=>{
             const box=$('#msBox'); const text=(box.value||'').trim(); if(!text) return;
@@ -261,7 +255,12 @@ export async function render(ctx){
     <div class="offline-banner">You are offline. Trying to reconnect…</div>
     <div class="room-wrap">
       <div class="controls-row" id="controlsRow"></div>
-      <div class="card main-card" id="mainCard"></div>
+      <div class="room-main" id="roomMain">
+        <div class="side-left" id="sideLeft"></div>
+        <div class="card main-card" id="mainCard"></div>
+        <div class="side-right" id="sideRight"></div>
+      </div>
+      <div class="controls-row" id="toolsRow"></div>
       <div class="answer-row" id="answerRow"></div>
     </div>`;
   await renderHeader(); ensureDebugTray();
