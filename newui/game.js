@@ -2,6 +2,33 @@
 import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey, inferAndPersistHostRole, getSession } from './api.js';
 import { renderHeader, ensureDebugTray, $, toast, participantsListHTML } from './ui.js';
 
+
+  function msRenderStacks(containerLeft, containerRight, participants, currentTurnPid, hostUserId){
+    function liHTML(p){
+      var name = (p.nickname || p.name || 'Player');
+      var isHost = !!(p.is_host || p.role==='host' || (hostUserId && String(p.user_id||p.auth_user_id||p.owner_id||'')===String(hostUserId)));
+      var isTurn = currentTurnPid && String(currentTurnPid)===String(p.participant_id || p.id || '');
+      return '<li'+(isTurn?' class="is-turn"':'')+'>'+(isHost?'<strong class="is-host">'+name+' (host)</strong>':name)+'</li>';
+    }
+    var list = Array.isArray(participants)? participants.slice(0,8) : [];
+    // Ensure host first
+    list.sort(function(a,b){
+      var ah = a.is_host || a.role==='host' || (hostUserId && String(a.user_id||a.auth_user_id||a.owner_id||'')===String(hostUserId));
+      var bh = b.is_host || b.role==='host' || (hostUserId && String(b.user_id||b.auth_user_id||b.owner_id||'')===String(hostUserId));
+      if (ah && !bh) return -1; if (!ah && bh) return 1; return 0;
+    });
+    var left = [], right = [];
+    for (var i=0;i<list.length;i++){
+      (i%2===0 ? left : right).push(list[i]);
+    }
+    if (containerLeft){
+      containerLeft.innerHTML = '<ul class="participants-small">'+ left.map(liHTML).join('') +'</ul>';
+    }
+    if (containerRight){
+      containerRight.innerHTML = '<ul class="participants-small">'+ right.map(liHTML).join('') +'</ul>';
+    }
+  }
+
 const Game = {
   code:null, poll:null, tick:null, hbH:null, hbG:null,
   state:{ status:'lobby', endsAt:null, participants:[], question:null, current_turn:null, host_user_id:null },
@@ -58,7 +85,7 @@ const Game = {
     const t=this.remainingSeconds(), el=document.getElementById('roomTimer'); if(!el) return;
     if (t==null) { el.textContent='--:--'; return; }
     const m=String(Math.floor(t/60)).padStart(2,'0'), s=String(t%60).padStart(2,'0');
-    el.textContent=m+':'+s;
+    el.textContent=`${m}:${s}`;
   },
   canAnswer(){
     const code=this.code; const pid = JSON.parse(localStorage.getItem(msPidKey(code))||'null');
@@ -67,9 +94,11 @@ const Game = {
   },
   async backfillPidIfMissing(){
     const code=this.code;
+    // If we already have a pid, nothing to do
     let pidRaw = localStorage.getItem(msPidKey(code));
     if (pidRaw) return;
     const participants = Array.isArray(this.state.participants)? this.state.participants : [];
+    // Try host match by auth user id or is_host flag
     try{
       const sess = await getSession();
       const myUid = sess?.user?.id || null;
@@ -80,6 +109,7 @@ const Game = {
           return;
         }
       }
+      // If role indicates we are host, try the is_host participant
       const hostP = participants.find(p => p.is_host || p.role==='host');
       if (hostP && (hostP.participant_id || hostP.id)){
         if (getRole(code)==='host'){
@@ -88,8 +118,9 @@ const Game = {
         }
       }
     }catch{}
+    // Guest nickname fallback: map by stored nickname
     try{
-      const nick = localStorage.getItem('ms_nick_'+code);
+      const nick = localStorage.getItem(`ms_nick_${code}`);
       if (nick){
         const cand = participants.find(p => {
           const nm = (p.nickname || p.name || '').trim().toLowerCase();
@@ -103,18 +134,18 @@ const Game = {
     }catch{}
   },
   render(forceFull){
-    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
+    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const sideR=$('#sideRight');
     if (!main || !controls) return;
-    if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; }
+    if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; const sl=$('#sideLeft'); if(sl) sl.innerHTML=''; if(sideR) sideR.innerHTML=''; }
 
     let topRight=$('#msTopRight');
-    if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.className='top-right'; main.appendChild(topRight); }
-    topRight.innerHTML = (s.status==='running' ? '<span>⏱</span> <span id=\"roomTimer\">--:--</span>' : '');
+    if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.style.cssText='position:absolute; top:16px; right:16px; font-weight:800; display:flex; gap:12px; align-items:center;'; main.appendChild(topRight); }
+    topRight.innerHTML = (s.status==='running' ? `⏱ <span id="roomTimer">--:--</span>` : '');
 
     if (s.status==='lobby'){
       if (forceFull){
-        const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.className='lobby-wrap';
-        const plist=document.createElement('div'); plist.id='msPlist'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); (side||wrap).appendChild(plist);
+        const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.style.cssText='display:flex;flex-direction:column;align-items:center;gap:10px; text-align:center; max-width:640px;';
+        const plist=document.createElement('div'); plist.id='msPlist'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); wrap.appendChild(plist);
 
         const role=getRole(this.code);
         if (role==='host'){
@@ -140,31 +171,31 @@ const Game = {
         }
         main.appendChild(wrap);
       }else{
-        const plist=$('#msPlist'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
+        msRenderStacks($('#sideLeft'), $('#sideRight'), s.participants, s.current_turn?.participant_id||null, s.host_user_id);
         const startBtn=$('#startGame'); if (startBtn){ const enough = Array.isArray(s.participants) && s.participants.length>=2; startBtn.disabled=!enough; }
       }
-      this.renderTimer();
       return;
     }
 
     if (s.status==='running'){
       if (forceFull){
-        const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
-        q.innerHTML = '<h3 style=\"margin:0 0 8px 0;\">'+(s.question?.title || 'Question')+'</h3><p class=\"help\" style=\"margin:0;\">'+(s.question?.text || '')+'</p>';
+        const q=document.createElement('div'); q.id='msQ'; q.style.cssText='text-align:center; max-width:640px; padding:8px; margin-top:8px;';
+        q.innerHTML = `<h3 style="margin:0 0 8px 0;">${s.question?.title || 'Question'}</h3><p class="help" style="margin:0;">${s.question?.text || ''}</p>`;
         main.appendChild(q);
 
-        const plist=document.createElement('div'); plist.id='msPlistRun'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); (side||main).appendChild(plist);
+        msRenderStacks($('#sideLeft'), $('#sideRight'), s.participants, s.current_turn?.participant_id||null, s.host_user_id);
+        const plist=document.createElement('div'); plist.id='msPlistRun'; plist.style.marginTop = '6px'; main.appendChild(plist);
 
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
-        actRow.innerHTML=
-          '<button id=\"micBtn\" class=\"kb-mic-btn\" '+(can?'':'disabled')+'><img src=\"./assets/mic.png\" alt=\"mic\"/> <span>Mic</span></button>'+
-          '<button id=\"kbBtn\" class=\"kb-mic-btn\" '+(can?'':'disabled')+'><img src=\"./assets/keyboard.png\" alt=\"kb\"/> <span>Keyboard</span></button>';
-        (tools||main).appendChild(actRow);
+        actRow.innerHTML=`
+          <button id="micBtn" class="kb-mic-btn" ${can?'':'disabled'}><img src="./assets/mic.png" alt="mic"/> <span>Mic</span></button>
+          <button id="kbBtn" class="kb-mic-btn" ${can?'':'disabled'}><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>`;
+        main.appendChild(actRow);
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
       }else{
-        const plist=$('#msPlistRun'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
+        msRenderStacks($('#sideLeft'), $('#sideRight'), s.participants, s.current_turn?.participant_id||null, s.host_user_id);
         const can=this.canAnswer(); const mic=$('#micBtn'); const kb=$('#kbBtn');
         if (mic) mic.toggleAttribute('disabled', !can); if (kb) kb.toggleAttribute('disabled', !can);
       }
@@ -172,32 +203,31 @@ const Game = {
       if (this.ui.ansVisible){
         let ans=$('#msAns');
         if (!ans){
-          ans=document.createElement('div'); ans.className='card answer-card'; ans.id='msAns';
-          const placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn';
-          ans.innerHTML =
-            '<div class=\"meta\">Your answer</div>'+
-            '<textarea id=\"msBox\" class=\"input\" rows=\"3\" placeholder=\"'+placeholder+'\"></textarea>'+
-            '<div class=\"row actions-row\">'+
-              '<button id=\"submitBtn\" class=\"btn\"'+(this.canAnswer()?'':' disabled')+'>Submit</button>'+
-            '</div>';
-          (answer||main).appendChild(ans);
+          ans=document.createElement('div'); ans.className='card'; ans.id='msAns'; ans.style.marginTop='8px';
+          ans.innerHTML = `
+            <div class="meta">Your answer</div>
+            <textarea id="msBox" class="input" rows="3" placeholder="${this.canAnswer()?'Type here…':'Wait for your turn'}"></textarea>
+            <div class="row" style="gap:8px;margin-top:6px;">
+              <button id="submitBtn" class="btn"${this.canAnswer()?'':' disabled'}>Submit</button>
+            </div>`;
+          if (answer) answer.appendChild(ans); else main.appendChild(ans);
           const box=$('#msBox'); if (box){ box.value = this.ui.draft||''; box.addEventListener('input', ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
           const submit=$('#submitBtn'); if (submit) submit.onclick=async()=>{
             const box=$('#msBox'); const text=(box.value||'').trim(); if(!text) return;
             try{ submit.disabled=true; await API.submit_answer({ text }); box.value=''; this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} await this.refresh(); }catch(e){ submit.disabled=false; toast(e.message||'Submit failed'); }
           };
         }else{
-          const box=$('#msBox'); if (box){ box.placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn'; box.toggleAttribute('disabled', !this.canAnswer()); }
+          const box=$('#msBox'); if (box){ box.placeholder = this.canAnswer()? 'Type here…' : 'Wait for your turn'; box.toggleAttribute('disabled', !this.canAnswer()); }
           const submit=$('#submitBtn'); if (submit){ submit.toggleAttribute('disabled', !this.canAnswer()); }
         }
       }
 
       const role=getRole(this.code); const isHost = role==='host';
       if (isHost && forceFull){
-        controls.innerHTML=
-          '<button id=\"nextCard\" class=\"btn\">Reveal next card</button>'+
-          '<button id=\"extendBtn\" class=\"btn secondary\" disabled>Extend</button>'+
-          '<button id=\"endAnalyze\" class=\"btn danger\">End and analyze</button>';
+        controls.innerHTML=`
+          <button id="nextCard" class="btn">Reveal next card</button>
+          <button id="extendBtn" class="btn secondary" disabled>Extend</button>
+          <button id="endAnalyze" class="btn danger">End and analyze</button>`;
         $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
         $('#extendBtn').onclick=()=>{ location.hash='#/billing'; };
         $('#endAnalyze').onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
@@ -209,15 +239,15 @@ const Game = {
 
     if (s.status==='ended'){
       controls.innerHTML='';
-      main.innerHTML =
-        '<div style=\"text-align:center; max-width:640px;\">'+
-          '<h3>Summary</h3>'+
-          '<p class=\"help\">The game has ended. You can start a new one from Host page.</p>'+
-          '<div style=\"display:flex;gap:10px;flex-wrap:wrap;justify-content:center;\">'+
-            '<a class=\"btn\" href=\"#/host\">Host a new game</a>'+
-            '<button id=\"shareBtn\" class=\"btn secondary\">Share</button>'+
-          '</div>'+
-        '</div>';
+      main.innerHTML = `
+        <div style="text-align:center; max-width:640px;">
+          <h3>Summary</h3>
+          <p class="help">The game has ended. You can start a new one from Host page.</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
+            <a class="btn" href="#/host">Host a new game</a>
+            <button id="shareBtn" class="btn secondary">Share</button>
+          </div>
+        </div>`;
       $('#shareBtn').onclick=()=>{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); };
       return;
     }
@@ -227,20 +257,18 @@ const Game = {
 export async function render(ctx){
   const code = ctx?.code || null;
   const app=document.getElementById('app');
-  app.innerHTML=
-    '<div class=\"offline-banner\">You are offline. Trying to reconnect…</div>'+
-    '<div class=\"room-wrap\">'+
-      '<div class=\"controls-row\" id=\"controlsRow\"></div>'+
-      '<div id=\"roomMain\" style=\"display:grid;grid-template-columns:1fr auto 1fr;column-gap:12px;align-items:flex-start;justify-items:center;width:100%;\">'+
-        '<div id=\"sideLeft\" style=\"min-width:220px;justify-self:end;\"></div>'+
-        '<div class=\"card main-card\" id=\"mainCard\" style=\"width:220px;max-width:220px;position:relative;\"></div>'+
-      '</div>'+
-      '<div class=\"controls-row\" id=\"toolsRow\"></div>'+
-      '<div class=\"answer-row\" id=\"answerRow\"></div>'+
-    '</div>';
+  app.innerHTML=`
+    <div class="offline-banner">You are offline. Trying to reconnect…</div>
+    <div class="room-wrap">
+      <div class="controls-row" id="controlsRow"></div>
+      <div class="card main-card" id="mainCard"></div>
+      <div class="answer-row" id="answerRow"></div>
+    </div>`;
   await renderHeader(); ensureDebugTray();
+  // Apply game theme via body class, and clean it when leaving
   try{ document.body.classList.add('is-game'); }catch{}
   const _ms_onHash = () => { if (!location.hash.startsWith('#/game/')) { try{ document.body.classList.remove('is-game'); }catch{} window.removeEventListener('hashchange', _ms_onHash); } };
   window.addEventListener('hashchange', _ms_onHash);
-if (code){ Game.mount(code); }
+await renderHeader(); ensureDebugTray();// Make header/footer black only in game room, without touching global CSS
+  if (code){ Game.mount(code); }
 }
