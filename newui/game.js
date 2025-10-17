@@ -223,6 +223,149 @@ const Game = {
     }
   }
 };
+// === Seating layout hook and rendering ===
+(function(){
+  const origRender = Game.render ? Game.render.bind(Game) : null;
+  Game.render = function(forceFull){
+    if (origRender) origRender(forceFull);
+    try{ this.renderSeating(forceFull); }catch(e){ /* no-op */ }
+  };
+  Game.renderSeating = function(forceFull){
+    const s=this.state;
+    const $ = (sel)=>document.querySelector(sel);
+    const main = $('#mainCard');
+    if (!main) return;
+
+    // Hide old participant lists if present
+    const old1 = $('#msPlist'); if (old1) old1.style.display='none';
+    const old2 = $('#msPlistRun'); if (old2) old2.style.display='none';
+
+    // Ensure stage container with left seats, card wrap, right seats
+    let stage = $('#msStageRow');
+    if (!stage){
+      stage = document.createElement('div');
+      stage.id='msStageRow';
+      stage.style.display='flex';
+      stage.style.alignItems='center';
+      stage.style.justifyContent='center';
+      stage.style.gap='16px';
+      stage.style.width='100%';
+      const left = document.createElement('div'); left.id='msSeatsLeft';
+      const center = document.createElement('div'); center.id='msCardWrap';
+      const right = document.createElement('div'); right.id='msSeatsRight';
+      for (const col of [left,right]){
+        col.style.width='140px';
+        col.style.display='flex';
+        col.style.flexDirection='column';
+        col.style.justifyContent='space-between';
+        col.style.gap='8px';
+      }
+      center.style.display='flex';
+      center.style.alignItems='center';
+      center.style.justifyContent='center';
+
+      // Insert stage into DOM and move the question block inside the center
+      const q = $('#msQ');
+      if (q && q.parentElement === main){
+        main.replaceChild(stage, q);
+        stage.appendChild(left); stage.appendChild(center); stage.appendChild(right);
+        center.appendChild(q);
+      }else{
+        // Append once
+        if (!$('#msSeatsLeft')){
+          stage.appendChild(left); stage.appendChild(center); stage.appendChild(right);
+          main.appendChild(stage);
+        }
+        const q2 = $('#msQ');
+        if (q2 && q2.parentElement !== center){
+          center.appendChild(q2);
+        }
+      }
+    }
+
+    // Size the question block to 220x260 on desktop and proportional on mobile
+    const q = $('#msQ');
+    if (q){
+      q.style.aspectRatio='220 / 260';
+      q.style.width='clamp(180px, 60vw, 220px)';
+      q.style.margin='0';
+    }
+
+    const left = $('#msSeatsLeft');
+    const right = $('#msSeatsRight');
+    if (!left || !right) return;
+
+    // Helpers
+    function labelBase(){
+      const div = document.createElement('div');
+      div.className = 'msSeat';
+      div.style.fontSize='clamp(11px, 1.6vw, 12px)';
+      div.style.lineHeight='1.2';
+      div.style.opacity='0.95';
+      div.style.whiteSpace='nowrap';
+      div.style.overflow='hidden';
+      div.style.textOverflow='ellipsis';
+      return div;
+    }
+    function labelLeft(p, highlight){
+      const el = labelBase();
+      el.style.textAlign='right';
+      el.style.padding='2px 4px 2px 0';
+      el.textContent = p.display_name || p.name || p.nickname || ('Player '+(p.id||''));
+      if (highlight) el.style.opacity='1';
+      return el;
+    }
+    function labelRight(p, highlight){
+      const el = labelBase();
+      el.style.textAlign='left';
+      el.style.padding='2px 0 2px 4px';
+      el.textContent = p.display_name || p.name || p.nickname || ('Player '+(p.id||''));
+      if (highlight) el.style.opacity='1';
+      return el;
+    }
+
+    // Build ordered seats: host first, then guests in join order, cap at 8
+    const parts = Array.isArray(s.participants)? s.participants.slice() : [];
+    if (!parts.length){ left.innerHTML=''; right.innerHTML=''; return; }
+    const hostUid = s.host_user_id ? String(s.host_user_id) : null;
+    let host = null;
+    for (const p of parts){
+      const uid = String(p.user_id||p.auth_user_id||p.owner_id||'');
+      if (hostUid && uid === hostUid){ host = p; break; }
+    }
+    if (!host) host = parts[0];
+    const guests = parts.filter(p => p !== host);
+    const ordered = [host, ...guests].slice(0,8);
+
+    // Split indices: left 0,2,4,6 and right 1,3,5,7
+    const leftIdx = new Set([0,2,4,6]);
+    const rightIdx = new Set([1,3,5,7]);
+    const leftItems = []; const rightItems = [];
+    ordered.forEach((p,i)=>{ (leftIdx.has(i)? leftItems : rightItems).push(p); });
+
+    // Equal height distribution: always render 4 rows with space-between, pad with spacers
+    function fill(col, items, rightSide){
+      col.innerHTML='';
+      col.style.minHeight = '260px';
+      col.style.height = 'clamp(212px, 60vw, 260px)';
+      col.style.justifyContent = 'space-between';
+      for (let i=0;i<items.length;i++){
+        const p = items[i];
+        const isCur = String(s.current_turn?.participant_id||'') === String(p.id||p.participant_id||'');
+        const node = rightSide? labelRight(p, isCur) : labelLeft(p, isCur);
+        col.appendChild(node);
+      }
+      for (let i=items.length; i<4; i++){
+        const spacer = document.createElement('div');
+        spacer.style.height='1px';
+        spacer.style.visibility='hidden';
+        col.appendChild(spacer);
+      }
+    }
+    fill(left, leftItems, false);
+    fill(right, rightItems, true);
+  };
+})();
 
 export async function render(ctx){
   const code = ctx?.code || null;
