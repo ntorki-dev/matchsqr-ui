@@ -106,22 +106,66 @@ const Game = {
   // --- seating helpers ---
   seatOrder(hostId, ppl){
     const all = Array.isArray(ppl)? [...ppl] : [];
-    // normalize ids
-    const normPid = p => p?.participant_id || p?.id || null;
-    const normUid = p => p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || null;
-    // find host first
+    const pidOf = p => p?.participant_id || p?.id || null;
+    const uidOf = p => p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || null;
+    const keyOf = p => String(pidOf(p) || uidOf(p) || '');
+
+    if (!this.ui) this.ui = {};
+    if (!this.ui.seatMap) this.ui.seatMap = {};
+    if (typeof this.ui.nextSeat !== 'number') this.ui.nextSeat = 1;
+
+    const presentKeys = new Set(all.map(keyOf).filter(k=>k));
+
     let host = null;
     if (hostId){
-      host = all.find(p=> String(normUid(p))===String(hostId) || (p?.is_host===true) || (p?.role==='host'));
+      host = all.find(p=> String(uidOf(p))===String(hostId) || p?.is_host===true || p?.role==='host') || null;
     }
     if (!host && all.length>0){
       host = all.find(p=> p?.is_host===true || p?.role==='host') || all[0];
     }
-    // build ordered list: host first, then guests by join order
-    const rest = all.filter(p=> p!==host);
-    const ordered = [host, ...rest].filter(Boolean).slice(0,8);
-    // map to seats with index
-    return ordered.map((p, idx)=>({ idx, p }));
+
+    if (host){
+      const hk = keyOf(host) || 'h';
+      this.ui.seatMap[hk] = 0;
+    }
+
+    const occupied = new Set(
+      Object.entries(this.ui.seatMap)
+        .filter(([k,v])=> presentKeys.has(k) && typeof v==='number' && v>=1 && v<=7)
+        .map(([k,v])=> v)
+    );
+
+    const guests = all.filter(p=> p!==host);
+    const lowestFree = () => {
+      for (let s=1; s<=7; s++){
+        if (!occupied.has(s)) return s;
+      }
+      return null;
+    };
+
+    for (const g of guests){
+      const k = keyOf(g);
+      if (!k) continue;
+      let seat = this.ui.seatMap[k];
+      if (seat == null){
+        const free = lowestFree();
+        if (free!=null){
+          this.ui.seatMap[k] = free;
+          occupied.add(free);
+        }
+      }
+    }
+
+    const entries = [];
+    for (const p of all){
+      const k = keyOf(p);
+      const seat = this.ui.seatMap[k];
+      if (typeof seat === 'number' && seat <= 7){
+        entries.push({ idx: seat, p });
+      }
+    }
+    entries.sort((a,b)=>a.idx-b.idx);
+    return entries;
   },
   renderSeats(){
 
