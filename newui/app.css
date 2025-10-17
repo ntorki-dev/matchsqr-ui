@@ -366,7 +366,7 @@ body.is-game #answerRow{
 }
 
 
-/* === Game room seating layout v2 === */
+/* === Game room seating layout v4 === */
 :root{
   --ms-gap: 12px;
   --ms-seat-font: 12px;
@@ -378,22 +378,18 @@ body.is-game #answerRow{
   :root{
     --ms-gap: 2vw;
     --ms-seat-font: clamp(10px, 3.2vw, 12px);
-    /* Fit within viewport width: 22vw + 56vw + 22vw = 100vw */
     --ms-side-w: 22vw;
     --ms-card-w: 56vw;
     --ms-card-h: calc(var(--ms-card-w) * 1.18182);
   }
 }
-
-/* Hide legacy lists next to the card layout */
+#msStage{ max-width: 100vw; margin: 0 auto; }
 #msPlist, #msPlistRun { display:none !important; }
-
 .ms-card-row{
   display:flex;
   align-items:center;
   justify-content:center;
   gap: var(--ms-gap);
-  max-width: 100vw;
   overflow: hidden;
 }
 .ms-seats-col{
@@ -405,7 +401,6 @@ body.is-game #answerRow{
 }
 .ms-seats-col.left{ text-align:right; }
 .ms-seats-col.right{ text-align:left; }
-
 .ms-seat{
   font-size: var(--ms-seat-font);
   line-height: 1.2;
@@ -414,7 +409,6 @@ body.is-game #answerRow{
   text-overflow: ellipsis;
   padding: 2px 4px;
 }
-
 .ms-card-center{
   display:flex;
   align-items:center;
@@ -434,4 +428,4 @@ body.is-game #answerRow{
 .ms-card-center > div:not(.question-block){
   min-height: var(--ms-card-h);
 }
-/* === End seating layout v2 === */
+/* === End layout v4 === */

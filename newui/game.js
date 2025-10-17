@@ -103,37 +103,41 @@ const Game = {
     }catch{}
   },
   
-  // Seating layout helpers
-  ensureSeatingLayout(){
+  // Seating layout helpers v4
+  ensureSeatingStage(){
     const host = document.getElementById('mainCard');
-    if (!host) return;
-    let row = document.getElementById('msCardRow');
-    let center = document.getElementById('msCardCenter');
+    if (!host) return null;
+    let stage = document.getElementById('msStage');
     let left = document.getElementById('msSeatsLeft');
+    let center = document.getElementById('msCardSlot');
     let right = document.getElementById('msSeatsRight');
-    if (!row){
-      row = document.createElement('div'); row.id='msCardRow'; row.className='ms-card-row';
+    if (!stage){
+      stage = document.createElement('div'); stage.id='msStage'; stage.className='ms-card-row';
       left = document.createElement('div'); left.id='msSeatsLeft'; left.className='ms-seats-col left';
-      center = document.createElement('div'); center.id='msCardCenter'; center.className='ms-card-center';
+      center = document.createElement('div'); center.id='msCardSlot'; center.className='ms-card-center';
       right = document.createElement('div'); right.id='msSeatsRight'; right.className='ms-seats-col right';
-      // move existing children into center once
+      // Move existing children into center once
       const kids = Array.from(host.childNodes);
       kids.forEach(k => center.appendChild(k));
-      row.appendChild(left); row.appendChild(center); row.appendChild(right);
-      host.appendChild(row);
+      stage.appendChild(left); stage.appendChild(center); stage.appendChild(right);
+      host.appendChild(stage);
     }
+    return document.getElementById('msCardSlot');
   },
   seatPlayersOrdered(){
     const s = this.state || {};
     const ppl = Array.isArray(s.participants) ? s.participants.slice(0) : [];
     const hostId = s.host_user_id || null;
+    // locate host
     let hostP = null;
     if (hostId){
       hostP = ppl.find(p => String(p.user_id||p.auth_user_id||p.owner_id||p.userId||p.uid||'') === String(hostId)) || null;
     }
     if (!hostP) hostP = ppl.find(p => p.role==='host' || p.is_host) || null;
     const guests = ppl.filter(p => p !== hostP);
+    // fixed ordered seats
     const seats = [hostP, ...guests].filter(Boolean).slice(0,8);
+    // split to sides by fixed indices
     const leftIdx = new Set([0,2,4,6]);
     const left = []; const right = [];
     seats.forEach((p,i)=> (leftIdx.has(i)? left : right).push(p));
@@ -168,23 +172,22 @@ const Game = {
       const name = this.__seatName(p);
       return `<div class="ms-seat" data-pid="${pid}"${bold}>${name}${isHost?' <span class="meta">(host)</span>':''}</div>`;
     };
-    // Minimal DOM churn: only replace innerHTML when content changed
     const htmlL = left.map(cell).join('') || '<div class="ms-seat meta">No one yet</div>';
     const htmlR = right.map(cell).join('');
     if (L.__lastHTML !== htmlL){ L.innerHTML = htmlL; L.__lastHTML = htmlL; }
     if (R.__lastHTML !== htmlR){ R.innerHTML = htmlR; R.__lastHTML = htmlR; }
   },
 render(forceFull){
-    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
+    const s=this.state; let main=$('#mainCard'); let hostMain=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
     if (!main || !controls) return;
     if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; }
-    // Seating layout ensured and first update
-    try{ this.ensureSeatingLayout(); }catch(_){}
+    try{ const slot = this.ensureSeatingStage(); if (slot) main = slot; }catch(_){}
     try{ this.updateSeatingColumns(); }catch(_){}
     
 
+    try{ const slot2 = this.ensureSeatingStage(); if (slot2) main = slot2; }catch(_){ }
     let topRight=$('#msTopRight');
-    if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.className='top-right'; main.appendChild(topRight); }
+    if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.className='top-right'; (hostMain||main).appendChild(topRight); }
     topRight.innerHTML = (s.status==='running' ? '<span>⏱</span> <span id=\"roomTimer\">--:--</span>' : '');
 
     if (s.status==='lobby'){
@@ -216,7 +219,7 @@ render(forceFull){
         }
         main.appendChild(wrap);
       }else{
-        const plist=$('#msPlist'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
+        const plist=$('#msPlist'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); try{ this.updateSeatingColumns(); }catch(_){}
         const startBtn=$('#startGame'); if (startBtn){ const enough = Array.isArray(s.participants) && s.participants.length>=2; startBtn.disabled=!enough; }
       }
       this.renderTimer();
@@ -240,7 +243,7 @@ render(forceFull){
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
       }else{
-        const plist=$('#msPlistRun'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
+        const plist=$('#msPlistRun'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); try{ this.updateSeatingColumns(); }catch(_){}
         const can=this.canAnswer(); const mic=$('#micBtn'); const kb=$('#kbBtn');
         if (mic) mic.toggleAttribute('disabled', !can); if (kb) kb.toggleAttribute('disabled', !can);
       }
