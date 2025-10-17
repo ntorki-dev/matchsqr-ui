@@ -1,11 +1,11 @@
 // game.js
 import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey, inferAndPersistHostRole, getSession } from './api.js';
-import { renderHeader, ensureDebugTray, $, toast, participantsListHTML } from './ui.js';
+import {renderHeader ensureDebugTray $ toast} from './ui.js';
 
 const Game = {
   code:null, poll:null, tick:null, hbH:null, hbG:null,
   state:{ status:'lobby', endsAt:null, participants:[], question:null, current_turn:null, host_user_id:null },
-  ui:{ lastSig:'', ansVisible:false, draft:'' },
+  ui:{ lastSig:'', ansVisible:false, draft:'', seatMap:{}, nextSeat:1 },
   async mount(code){
     this.code=code;
     try{ this.ui.draft = localStorage.getItem(draftKey(code)) || ''; }catch{ this.ui.draft=''; }
@@ -104,26 +104,57 @@ const Game = {
   },
   
   // --- seating helpers ---
+  
   seatOrder(hostId, ppl){
     const all = Array.isArray(ppl)? [...ppl] : [];
-    // normalize ids
-    const normPid = p => p?.participant_id || p?.id || null;
-    const normUid = p => p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || null;
-    // find host first
+    const pidOf = p => p?.participant_id || p?.id || null;
+    const uidOf = p => p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || null;
+
+    if (!this.ui) this.ui = {};
+    if (!this.ui.seatMap) this.ui.seatMap = {};
+    if (typeof this.ui.nextSeat !== 'number') this.ui.nextSeat = 1; // 1..7 for guests, 0 for host
+
     let host = null;
     if (hostId){
-      host = all.find(p=> String(normUid(p))===String(hostId) || (p?.is_host===true) || (p?.role==='host'));
+      host = all.find(p=> String(uidOf(p))===String(hostId) || p?.is_host===true || p?.role==='host') || null;
     }
     if (!host && all.length>0){
       host = all.find(p=> p?.is_host===true || p?.role==='host') || all[0];
     }
-    // build ordered list: host first, then guests by join order
-    const rest = all.filter(p=> p!==host);
-    const ordered = [host, ...rest].filter(Boolean).slice(0,8);
-    // map to seats with index
-    return ordered.map((p, idx)=>({ idx, p }));
+
+    if (host){
+      const key = String(pidOf(host)||uidOf(host)||'h');
+      this.ui.seatMap[key] = 0;
+    }
+
+    const guests = all.filter(p=> p!==host);
+    for (const g of guests){
+      const key = String(pidOf(g)||uidOf(g)||'');
+      if (!key) continue;
+      if (this.ui.seatMap[key] == null){
+        while (this.ui.nextSeat <= 7 && Object.values(this.ui.seatMap).includes(this.ui.nextSeat)){
+          this.ui.nextSeat++;
+        }
+        if (this.ui.nextSeat <= 7){
+          this.ui.seatMap[key] = this.ui.nextSeat;
+          this.ui.nextSeat++;
+        }
+      }
+    }
+
+    const entries = [];
+    for (const p of all){
+      const key = String(pidOf(p)||uidOf(p)||'');
+      const seat = this.ui.seatMap[key];
+      if (seat != null && seat <= 7){
+        entries.push({ idx: seat, p });
+      }
+    }
+    entries.sort((a,b)=>a.idx-b.idx);
+    return entries;
   },
-  renderSeats(){
+  renderSeats(
+){
     const s=this.state;
     const leftEl = document.getElementById('sideLeft');
     const rightEl = document.getElementById('sideRight');
@@ -175,7 +206,7 @@ render(forceFull){
     if (s.status==='lobby'){
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.className='lobby-wrap';
-        const plist=document.createElement('div'); plist.id='msPlist'; (side||wrap).appendChild(plist); this.renderSeats();
+        this.renderSeats();
 
         const role=getRole(this.code);
         if (role==='host'){
@@ -225,7 +256,7 @@ render(forceFull){
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
       }else{
-        const plist=$('#msPlistRun'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
+        this.renderSeats();
         const can=this.canAnswer(); const mic=$('#micBtn'); const kb=$('#kbBtn');
         if (mic) mic.toggleAttribute('disabled', !can); if (kb) kb.toggleAttribute('disabled', !can);
       }
