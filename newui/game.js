@@ -103,97 +103,79 @@ const Game = {
     }catch{}
   },
   
-  // Seating layout helpers v4
-  ensureSeatingStage(){
-    const host = document.getElementById('mainCard');
-    if (!host) return null;
-    let stage = document.getElementById('msStage');
-    let left = document.getElementById('msSeatsLeft');
-    let center = document.getElementById('msCardSlot');
-    let right = document.getElementById('msSeatsRight');
-    if (!stage){
-      stage = document.createElement('div'); stage.id='msStage'; stage.className='ms-card-row';
-      left = document.createElement('div'); left.id='msSeatsLeft'; left.className='ms-seats-col left';
-      center = document.createElement('div'); center.id='msCardSlot'; center.className='ms-card-center';
-      right = document.createElement('div'); right.id='msSeatsRight'; right.className='ms-seats-col right';
-      // Move existing children into center once
-      const kids = Array.from(host.childNodes);
-      kids.forEach(k => center.appendChild(k));
-      stage.appendChild(left); stage.appendChild(center); stage.appendChild(right);
-      host.appendChild(stage);
-    }
-    return document.getElementById('msCardSlot');
-  },
-  seatPlayersOrdered(){
-    const s = this.state || {};
-    const ppl = Array.isArray(s.participants) ? s.participants.slice(0) : [];
-    const hostId = s.host_user_id || null;
-    // locate host
-    let hostP = null;
+  // --- seating helpers ---
+  seatOrder(hostId, ppl){
+    const all = Array.isArray(ppl)? [...ppl] : [];
+    // normalize ids
+    const normPid = p => p?.participant_id || p?.id || null;
+    const normUid = p => p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || null;
+    // find host first
+    let host = null;
     if (hostId){
-      hostP = ppl.find(p => String(p.user_id||p.auth_user_id||p.owner_id||p.userId||p.uid||'') === String(hostId)) || null;
+      host = all.find(p=> String(normUid(p))===String(hostId) || (p?.is_host===true) || (p?.role==='host'));
     }
-    if (!hostP) hostP = ppl.find(p => p.role==='host' || p.is_host) || null;
-    const guests = ppl.filter(p => p !== hostP);
-    // fixed ordered seats
-    const seats = [hostP, ...guests].filter(Boolean).slice(0,8);
-    // split to sides by fixed indices
-    const leftIdx = new Set([0,2,4,6]);
-    const left = []; const right = [];
-    seats.forEach((p,i)=> (leftIdx.has(i)? left : right).push(p));
-    return { seats, left, right };
+    if (!host && all.length>0){
+      host = all.find(p=> p?.is_host===true || p?.role==='host') || all[0];
+    }
+    // build ordered list: host first, then guests by join order
+    const rest = all.filter(p=> p!==host);
+    const ordered = [host, ...rest].filter(Boolean).slice(0,8);
+    // map to seats with index
+    return ordered.map((p, idx)=>({ idx, p }));
   },
-  __seatName(p){
-    if (!p || typeof p!=='object') return 'Guest';
-    let name = p.profile_name || p.nickname || p.name || 'Guest';
-    try{
-      let __cu = null; try { __cu = (__msGetCachedUser && __msGetCachedUser()) || null; } catch(_) { __cu = null; }
-      const __cuEmailName = (__cu && typeof __cu.email==='string') ? (__cu.email.split('@')[0]||null) : null;
-      const uid = p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || '';
-      const isMe = !!(__cu && ((uid && String(uid)===String(__cu.id||'')) || (__cuEmailName && typeof p?.name==='string' && p.name===__cuEmailName)));
-      const __cuDisplay = (__cu?.user_metadata?.name) || (__cu?.name) || null;
-      if (isMe && __cuDisplay){ name = __cuDisplay; }
-    }catch(_){}
-    return name;
-  },
-  updateSeatingColumns(){
-    const curPid = this.state?.current_turn?.participant_id || null;
-    const hostId = this.state?.host_user_id || null;
-    const L = document.getElementById('msSeatsLeft');
-    const R = document.getElementById('msSeatsRight');
+  renderSeats(){
+    const s=this.state;
+    const leftEl = document.getElementById('sideLeft');
+    const rightEl = document.getElementById('sideRight');
+    if (!leftEl || !rightEl) return;
+    // containers
+    leftEl.innerHTML = '<div class="seats seats-left" id="seatsLeft"></div>';
+    rightEl.innerHTML = '<div class="seats seats-right" id="seatsRight"></div>';
+    const L = document.getElementById('seatsLeft');
+    const R = document.getElementById('seatsRight');
     if (!L || !R) return;
-    const { left, right } = this.seatPlayersOrdered();
-    const cell = (p)=>{
-      if (!p) return '';
-      const pid = p?.participant_id || p?.id || '';
+    const curPid = s.current_turn?.participant_id || null;
+    const seats = this.seatOrder(s.host_user_id, s.participants);
+    const leftIdx = new Set([0,2,4,6]);
+    const rightIdx = new Set([1,3,5,7]);
+    // helpers to derive name and badge
+    let __cu = null; try { __cu = (__msGetCachedUser && __msGetCachedUser()) || null; } catch(_) { __cu = null; }
+    const __cuEmailName = (__cu && typeof __cu?.email==='string') ? (__cu.email.split('@')[0]||null) : null;
+    const __cuDisplay = (__cu?.user_metadata?.name) || (__cu?.name) || null;
+    const displayName = (p)=>{
       const uid = p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || '';
-      const isHost = !!(p?.role==='host' || p?.is_host || (hostId && String(uid)===String(hostId)));
-      const bold = (curPid && String(curPid)===String(pid)) ? ' style="font-weight:700;"' : '';
-      const name = this.__seatName(p);
-      return `<div class="ms-seat" data-pid="${pid}"${bold}>${name}${isHost?' <span class="meta">(host)</span>':''}</div>`;
+      let name = p?.profile_name || p?.nickname || p?.name || 'Guest';
+      const isMe = !!(__cu && (
+        (uid && String(uid)===String(__cu.id||'')) ||
+        (__cuEmailName && typeof p?.name==='string' && p.name===__cuEmailName)
+      ));
+      if (isMe && __cuDisplay){ name = __cuDisplay; }
+      return name;
     };
-    const htmlL = left.map(cell).join('') || '<div class="ms-seat meta">No one yet</div>';
-    const htmlR = right.map(cell).join('');
-    if (L.__lastHTML !== htmlL){ L.innerHTML = htmlL; L.__lastHTML = htmlL; }
-    if (R.__lastHTML !== htmlR){ R.innerHTML = htmlR; R.__lastHTML = htmlR; }
+    seats.forEach(({idx, p})=>{
+      const pid = p?.participant_id || p?.id || '';
+      const role = p?.role || (p?.is_host ? 'host' : '');
+      const el = document.createElement('div');
+      el.className = 'seat-item' + ((curPid && String(curPid)===String(pid)) ? ' is-turn' : '');
+      if (pid) el.dataset.pid = String(pid);
+      el.textContent = displayName(p) + (role==='host' ? ' (host)' : '');
+      if (leftIdx.has(idx)) L.appendChild(el);
+      if (rightIdx.has(idx)) R.appendChild(el);
+    });
   },
 render(forceFull){
-    const s=this.state; let main=$('#mainCard'); let hostMain=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
+    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
     if (!main || !controls) return;
     if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; }
-    try{ const slot = this.ensureSeatingStage(); if (slot) main = slot; }catch(_){}
-    try{ this.updateSeatingColumns(); }catch(_){}
-    
 
-    try{ const slot2 = this.ensureSeatingStage(); if (slot2) main = slot2; }catch(_){ }
     let topRight=$('#msTopRight');
-    if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.className='top-right'; (hostMain||main).appendChild(topRight); }
+    if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.className='top-right'; main.appendChild(topRight); }
     topRight.innerHTML = (s.status==='running' ? '<span>⏱</span> <span id=\"roomTimer\">--:--</span>' : '');
 
     if (s.status==='lobby'){
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.className='lobby-wrap';
-        const plist=document.createElement('div'); plist.id='msPlist'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); (side||wrap).appendChild(plist);
+        const plist=document.createElement('div'); plist.id='msPlist'; (side||wrap).appendChild(plist); this.renderSeats();
 
         const role=getRole(this.code);
         if (role==='host'){
@@ -219,7 +201,7 @@ render(forceFull){
         }
         main.appendChild(wrap);
       }else{
-        const plist=$('#msPlist'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); try{ this.updateSeatingColumns(); }catch(_){}
+        this.renderSeats();
         const startBtn=$('#startGame'); if (startBtn){ const enough = Array.isArray(s.participants) && s.participants.length>=2; startBtn.disabled=!enough; }
       }
       this.renderTimer();
@@ -243,7 +225,7 @@ render(forceFull){
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
       }else{
-        const plist=$('#msPlistRun'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); try{ this.updateSeatingColumns(); }catch(_){}
+        const plist=$('#msPlistRun'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
         const can=this.canAnswer(); const mic=$('#micBtn'); const kb=$('#kbBtn');
         if (mic) mic.toggleAttribute('disabled', !can); if (kb) kb.toggleAttribute('disabled', !can);
       }
@@ -287,9 +269,11 @@ render(forceFull){
     }
 
     if (s.status==='ended'){
-      controls.innerHTML='';
-      main.innerHTML =
-        '<div style=\"text-align:center; max-width:640px;\">'+
+  controls.innerHTML='';
+  // Render seats around the card
+  this.renderSeats();
+  // Put summary inside the main card instead of replacing the whole grid
+  main.innerHTML = '<div style=\"text-align:center; max-width:640px;\">'+
           '<h3>Summary</h3>'+
           '<p class=\"help\">The game has ended. You can start a new one from Host page.</p>'+
           '<div style=\"display:flex;gap:10px;flex-wrap:wrap;justify-content:center;\">'+
@@ -297,11 +281,10 @@ render(forceFull){
             '<button id=\"shareBtn\" class=\"btn secondary\">Share</button>'+
           '</div>'+
         '</div>';
-      $('#shareBtn').onclick=()=>{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); };
-      return;
-    }
-  
-    try{ this.updateSeatingColumns(); }catch(_){}
+      $('#shareBtn').onclick=()=>{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); };;
+  const shareBtn = document.getElementById('shareBtn'); if (shareBtn){ shareBtn.onclick=()=>{ try{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); }catch(_){} }; }
+  return;
+}
   }
 };
 
@@ -314,7 +297,8 @@ export async function render(ctx){
       '<div class=\"controls-row\" id=\"controlsRow\"></div>'+
       '<div id=\"roomMain\" style=\"display:grid;grid-template-columns:1fr auto 1fr;column-gap:12px;align-items:flex-start;justify-items:center;width:100%;\">'+
         '<div id=\"sideLeft\" style=\"min-width:220px;justify-self:end;\"></div>'+
-        '<div class=\"card main-card\" id=\"mainCard\" style=\"width:220px;max-width:220px;position:relative;\"></div>'+
+        '<div class=\"card main-card\" id=\"mainCard\" style=\"width:220px;max-width:220px;height:260px;position:relative;\"></div>'+
+        '<div id=\"sideRight\" style=\"min-width:120px;justify-self:start;\"></div>'+
       '</div>'+
       '<div class=\"controls-row\" id=\"toolsRow\"></div>'+
       '<div class=\"answer-row\" id=\"answerRow\"></div>'+
