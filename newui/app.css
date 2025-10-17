@@ -364,3 +364,74 @@ body.is-game #answerRow{
     margin-right:auto;
   }
 }
+
+
+/* === Game room seating layout === */
+:root{
+  --ms-card-w: 220px;
+  --ms-card-h: 260px;
+  --ms-seat-font: 12px;
+  --ms-side-gap: 12px;
+  --ms-side-col-w: 96px;
+}
+@media (max-width: 640px){
+  :root{
+    --ms-card-w: clamp(160px, 72vw, 220px);
+    --ms-card-h: calc(var(--ms-card-w) * 1.18182); /* 260/220 */
+    --ms-seat-font: clamp(10px, 3.2vw, 12px);
+    --ms-side-col-w: clamp(72px, 22vw, 96px);
+  }
+}
+
+/* Hide legacy participants lists when seating columns are active */
+#msPlist, #msPlistRun { display:none !important; }
+
+.ms-card-row{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap: var(--ms-side-gap);
+}
+.ms-seats-col{
+  width: var(--ms-side-col-w);
+  height: var(--ms-card-h);
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+}
+.ms-seats-col.left{ text-align:right; }
+.ms-seats-col.right{ text-align:left; }
+
+.ms-seat{
+  font-size: var(--ms-seat-font);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 2px 4px;
+}
+
+.ms-card-center{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-width: var(--ms-card-w);
+  width: var(--ms-card-w);
+  min-height: var(--ms-card-h);
+  height: var(--ms-card-h);
+}
+
+/* Ensure blocks inside the center respect sizing */
+.ms-card-center .question-block{
+  width: var(--ms-card-w);
+  height: var(--ms-card-h);
+  overflow:auto;
+}
+
+/* Reserve consistent height for lobby and summary blocks */
+.ms-card-center > .lobby-wrap,
+.ms-card-center > .summary-wrap,
+.ms-card-center > div:not(.question-block){
+  min-height: var(--ms-card-h);
+}
+/* === End seating layout === */

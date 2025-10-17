@@ -54,6 +54,7 @@ const Game = {
     }catch(e){}
   },
   remainingSeconds(){ if (!this.state.endsAt) return null; const diff=Math.floor((new Date(this.state.endsAt).getTime()-Date.now())/1000); return Math.max(0,diff); },
+  updateSeating();
   renderTimer(){
     const t=this.remainingSeconds(), el=document.getElementById('roomTimer'); if(!el) return;
     if (t==null) { el.textContent='--:--'; return; }
@@ -102,10 +103,83 @@ const Game = {
       }
     }catch{}
   },
-  render(forceFull){
-    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
+  
+  ensureSeatingLayout(){
+    const host = document.getElementById('mainCard');
+    if (!host) return;
+    let row = document.getElementById('msCardRow');
+    let center = document.getElementById('msCardCenter');
+    let left = document.getElementById('msSeatsLeft');
+    let right = document.getElementById('msSeatsRight');
+    if (!row){
+      row = document.createElement('div'); row.id='msCardRow'; row.className='ms-card-row';
+      left = document.createElement('div'); left.id='msSeatsLeft'; left.className='ms-seats-col left';
+      center = document.createElement('div'); center.id='msCardCenter'; center.className='ms-card-center';
+      right = document.createElement('div'); right.id='msSeatsRight'; right.className='ms-seats-col right';
+      row.appendChild(left); row.appendChild(center); row.appendChild(right);
+      const kids = Array.from(host.childNodes);
+      kids.forEach(k => center.appendChild(k));
+      host.appendChild(row);
+    }else{
+      if (!left){ left = document.createElement('div'); left.id='msSeatsLeft'; left.className='ms-seats-col left'; row.insertBefore(left, row.firstChild); }
+      if (!center){ center = document.createElement('div'); center.id='msCardCenter'; center.className='ms-card-center'; row.insertBefore(center, left.nextSibling); }
+      if (!right){ right = document.createElement('div'); right.id='msSeatsRight'; right.className='ms-seats-col right'; row.appendChild(right); }
+    }
+  },
+  seatPlayers(){
+    const s = this.state || {};
+    const ppl = Array.isArray(s.participants) ? s.participants.slice(0) : [];
+    const hostId = s.host_user_id || null;
+    let hostP = null;
+    if (hostId){
+      hostP = ppl.find(p => String(p.user_id||p.auth_user_id||p.owner_id||p.userId||p.uid||'') === String(hostId)) || null;
+    }
+    if (!hostP){ hostP = ppl.find(p => p.role==='host' || p.is_host) || null; }
+    let guests = ppl.filter(p => p !== hostP);
+    const seats = [hostP, ...guests].filter(Boolean).slice(0,8);
+    const left = []; const right = [];
+    seats.forEach((p, i) => { if ([0,2,4,6].includes(i)) left.push(p); else right.push(p); });
+    return { seats, left, right };
+  },
+  __nameFor(p){
+    if (!p || typeof p!=='object') return 'Guest';
+    let name = p.profile_name || p.nickname || p.name || 'Guest';
+    try{
+      let __cu = null; try { __cu = (__msGetCachedUser && __msGetCachedUser()) || null; } catch(_) { __cu = null; }
+      const __cuEmailName = (__cu && typeof __cu.email==='string') ? (__cu.email.split('@')[0]||null) : null;
+      const uid = p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || '';
+      const isMe = !!(__cu && ((uid && String(uid)===String(__cu.id||'')) || (__cuEmailName && typeof p?.name==='string' && p.name===__cuEmailName)));
+      const __cuDisplay = (__cu?.user_metadata?.name) || (__cu?.name) || null;
+      if (isMe && __cuDisplay){ name = __cuDisplay; }
+    }catch(_){}
+    return name;
+  },
+  updateSeating(){
+    try{
+      this.ensureSeatingLayout();
+      const { left, right } = this.seatPlayers();
+      const hostId = this.state?.host_user_id || null;
+      const l = document.getElementById('msSeatsLeft'); const r = document.getElementById('msSeatsRight');
+      if (!l || !r) return;
+      const itemHTML = (p) => {
+        if (!p) return '';
+        const pid = p?.participant_id || p?.id || '';
+        const uid = p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || '';
+        const isHost = !!(p?.role==='host' || p?.is_host || (hostId && String(uid)===String(hostId)));
+        const name = this.__nameFor(p);
+        return `<div class="ms-seat" data-pid="${pid}">${name}${isHost?' <span class="meta">(host)</span>':''}</div>`;
+      };
+      l.innerHTML = left.map(itemHTML).join('') || '<div class="ms-seat meta">No one yet</div>';
+      r.innerHTML = right.map(itemHTML).join('');
+    }catch(_){}
+  },
+render(forceFull){
+    const s=this.state; let main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
     if (!main || !controls) return;
     if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; }
+    try{ this.ensureSeatingLayout(); }catch(_){}
+    try{ const __center = document.getElementById('msCardCenter'); if (__center) { main = __center; } }catch(_){}
+    
 
     let topRight=$('#msTopRight');
     if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.className='top-right'; main.appendChild(topRight); }
@@ -223,160 +297,6 @@ const Game = {
     }
   }
 };
-// === Seating layout hook and rendering ===
-(function(){
-  const $ = (sel)=>document.querySelector(sel);
-  function getDisplayName(p){
-    try{
-      const cu = (typeof __msGetCachedUser==='function') ? __msGetCachedUser() : null;
-      const cuEmailName = cu && cu.email && typeof cu.email==='string' ? (cu.email.split('@')[0]||null) : null;
-      let name = p?.profile_name || p?.nickname || p?.name || 'Guest';
-      const uid = String(p?.user_id||p?.auth_user_id||p?.owner_id||p?.userId||p?.uid||'');
-      const isMe = !!(cu && (
-        (uid && String(uid)===String(cu.id||'')) ||
-        (cuEmailName && typeof p?.name==='string' && p.name===cuEmailName)
-      ));
-      const cuDisplay = (cu && (cu.user_metadata?.name || cu.name)) || null;
-      if (isMe && cuDisplay) name = cuDisplay;
-      return name;
-    }catch(_){ return p?.nickname || p?.name || 'Guest'; }
-  }
-  function isHost(p){ return !!(p?.is_host || p?.role==='host'); }
-  function pidOf(p){ return p?.participant_id || p?.id || p?.pid || null; }
-
-  const origRender = Game.render ? Game.render.bind(Game) : null;
-  Game.render = function(forceFull){
-    if (origRender) origRender(forceFull);
-    try{ this.renderSeating(forceFull); }catch(_){}
-  };
-
-  Game.renderSeating = function(forceFull){
-    const s=this.state;
-    const main = $('#mainCard');
-    if (!main) return;
-
-    // Hide legacy lists gently to avoid layout collision
-    const oldLobby = $('#msPlist'); if (oldLobby) oldLobby.style.display='none';
-    const oldRun = $('#msPlistRun'); if (oldRun) oldRun.style.display='none';
-
-    // Ensure stage once per render tree
-    let stage = $('#msStageRow');
-    if (!stage){
-      stage = document.createElement('div');
-      stage.id='msStageRow';
-      stage.style.display='flex';
-      stage.style.alignItems='center';
-      stage.style.justifyContent='center';
-      stage.style.gap='16px';
-      stage.style.width='100%';
-      const left = document.createElement('div'); left.id='msSeatsLeft';
-      const center = document.createElement('div'); center.id='msCardWrap';
-      const right = document.createElement('div'); right.id='msSeatsRight';
-      for (const col of [left,right]){
-        col.style.width='140px';
-        col.style.display='flex';
-        col.style.flexDirection='column';
-        col.style.justifyContent='space-between';
-        col.style.gap='8px';
-      }
-      center.style.display='flex';
-      center.style.alignItems='center';
-      center.style.justifyContent='center';
-
-      // Try to place adjacent to existing question or lobby wrap
-      const q = $('#msQ');
-      const lobby = $('#msLobby');
-      if (q && q.parentElement){
-        q.parentElement.replaceChild(stage, q);
-        stage.appendChild(left); stage.appendChild(center); stage.appendChild(right);
-        center.appendChild(q);
-      }else if (lobby && lobby.parentElement){
-        lobby.parentElement.insertBefore(stage, lobby);
-        stage.appendChild(left); stage.appendChild(center); stage.appendChild(right);
-        // Create placeholder card in lobby state
-        let ph = $('#msLobbyCard');
-        if (!ph){
-          ph = document.createElement('div'); ph.id='msLobbyCard'; ph.className='question-block';
-          ph.innerHTML = '<h3 style="margin:0 0 8px 0;">Waiting</h3><p class="help" style="margin:0;">Waiting for the host to start</p>';
-        }
-        center.appendChild(ph);
-      }else{
-        // Fallback attach to main
-        main.appendChild(stage);
-        stage.appendChild(left); stage.appendChild(center); stage.appendChild(right);
-        const q2 = $('#msQ'); if (q2 && q2.parentElement !== center) center.appendChild(q2);
-      }
-    }
-
-    // Card sizing 220x260 desktop, proportional mobile
-    const card = $('#msQ') || $('#msLobbyCard');
-    if (card){
-      card.style.aspectRatio='220 / 260';
-      card.style.width='clamp(180px, 60vw, 220px)';
-      card.style.margin='0';
-    }
-
-    const left = $('#msSeatsLeft');
-    const right = $('#msSeatsRight');
-    if (!left || !right) return;
-
-    // Build ordered seats: host first, then join order guests, cap 8
-    const parts = Array.isArray(s.participants)? s.participants.slice() : [];
-    if (!parts.length){ left.innerHTML=''; right.innerHTML=''; return; }
-
-    // Identify host
-    let host = parts.find(isHost);
-    if (!host && s.host_user_id){
-      host = parts.find(p => String(p.user_id||p.auth_user_id||p.owner_id||'') === String(s.host_user_id));
-    }
-    if (!host) host = parts[0];
-    const guests = parts.filter(p => p !== host);
-    const ordered = [host, ...guests].slice(0,8);
-
-    // Distribute indices: left 0,2,4,6 and right 1,3,5,7
-    const leftIdx = new Set([0,2,4,6]);
-    const rightIdx = new Set([1,3,5,7]);
-    const leftItems=[]; const rightItems=[];
-    ordered.forEach((p,i)=>{ (leftIdx.has(i)? leftItems : rightItems).push(p); });
-
-    function makeLabel(text, side, highlight){
-      const el = document.createElement('div');
-      el.className='msSeat';
-      el.style.fontSize='clamp(11px, 1.6vw, 12px)';
-      el.style.lineHeight='1.2';
-      el.style.opacity= highlight ? '1' : '0.95';
-      el.style.whiteSpace='nowrap';
-      el.style.overflow='hidden';
-      el.style.textOverflow='ellipsis';
-      el.style.textAlign = side==='left' ? 'right' : 'left';
-      el.style.padding = side==='left' ? '2px 4px 2px 0' : '2px 0 2px 4px';
-      el.textContent = text;
-      return el;
-    }
-
-    function fill(col, items, side){
-      col.innerHTML='';
-      col.style.minHeight = '260px';
-      col.style.height = 'clamp(212px, 60vw, 260px)';
-      col.style.justifyContent = 'space-between';
-      for (const p of items){
-        const curPid = String(s.current_turn?.participant_id||'');
-        const thisPid = String(pidOf(p)||'');
-        const label = getDisplayName(p);
-        const node = makeLabel(label, side, curPid && thisPid && curPid===thisPid);
-        col.appendChild(node);
-      }
-      for (let i=items.length; i<4; i++){
-        const spacer = document.createElement('div');
-        spacer.style.height='1px'; spacer.style.visibility='hidden';
-        col.appendChild(spacer);
-      }
-    }
-
-    fill(left, leftItems, 'left');
-    fill(right, rightItems, 'right');
-  };
-})();
 
 export async function render(ctx){
   const code = ctx?.code || null;
