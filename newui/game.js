@@ -2,26 +2,6 @@
 import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey, inferAndPersistHostRole, getSession } from './api.js';
 import { renderHeader, ensureDebugTray, $, toast, participantsListHTML } from './ui.js';
 
-
-function msRenderStacks(sideLeftEl, sideRightEl, participants, currentTurnPid, hostUserId){
-  function nameHTML(p){
-    var n = (p.nickname || p.name || 'Player');
-    var isHost = !!(p.is_host || p.role==='host' || (hostUserId && String(p.user_id||p.auth_user_id||p.owner_id||'')===String(hostUserId)));
-    var isTurn = currentTurnPid && String(currentTurnPid)===String(p.participant_id || p.id || '');
-    var cls = 'pitem'+(isHost?' is-host':'')+(isTurn?' is-turn':'');
-    return '<li class="'+cls+'">'+n+(isHost?' (host)':'')+'</li>';
-  }
-  var list = Array.isArray(participants)? participants.slice(0,8) : [];
-  list.sort(function(a,b){
-    var ah = a.is_host || a.role==='host' || (hostUserId && String(a.user_id||a.auth_user_id||a.owner_id||'')===String(hostUserId));
-    var bh = b.is_host || b.role==='host' || (hostUserId && String(b.user_id||b.auth_user_id||b.owner_id||'')===String(hostUserId));
-    if (ah && !bh) return -1; if (!ah && bh) return 1; return 0;
-  });
-  var L=[], R=[]; for (var i=0;i<list.length;i++){ (i%2===0?L:R).push(list[i]); }
-  if (sideLeftEl)  sideLeftEl.innerHTML  = '<ul class="participants-small">'+L.map(nameHTML).join('')+'</ul>';
-  if (sideRightEl) sideRightEl.innerHTML = '<ul class="participants-small">'+R.map(nameHTML).join('')+'</ul>';
-}
-
 const Game = {
   code:null, poll:null, tick:null, hbH:null, hbG:null,
   state:{ status:'lobby', endsAt:null, participants:[], question:null, current_turn:null, host_user_id:null },
@@ -123,20 +103,44 @@ const Game = {
     }catch{}
   },
   render(forceFull){
-    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const sideL=$('#sideLeft'); const sideR=$('#sideRight'); const tools=$('#toolsRow'); const side=$('#sideLeft');
+    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
     if (!main || !controls) return;
     if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; }
 
     let topRight=$('#msTopRight');
-    if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.style.cssText='position:absolute; top:16px; right:16px; font-weight:800; display:flex; gap:12px; align-items:center;'; main.appendChild(topRight); }
+    if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.className='top-right'; main.appendChild(topRight); }
     topRight.innerHTML = (s.status==='running' ? '<span>⏱</span> <span id=\"roomTimer\">--:--</span>' : '');
 
     if (s.status==='lobby'){
       if (forceFull){
-        const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.style.cssText='display:flex;flex-direction:column;align-items:center;gap:10px; text-align:center; max-width:640px;';
-        msRenderStacks($('#sideLeft'), $('#sideRight'), s.participants, s.current_turn?.participant_id||null, s.host_user_id);
+        const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.className='lobby-wrap';
+        const plist=document.createElement('div'); plist.id='msPlist'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); (side||wrap).appendChild(plist);
+
+        const role=getRole(this.code);
+        if (role==='host'){
+          const startBtn=document.createElement('button'); startBtn.className='start-round'; startBtn.id='startGame'; startBtn.textContent='Start';
+          const enough = Array.isArray(s.participants) && s.participants.length>=2;
+          startBtn.disabled = !enough;
+          startBtn.onclick=async()=>{
+            try{
+              const out = await API.start_game();
+              const g = out?.game || out || {};
+              if (g && (g.status || g.phase)){
+                this.state.status = g.status || g.phase;
+                this.state.endsAt = g.ends_at || g.endsAt || null;
+              }
+              await this.refresh();
+            }catch(e){ toast(e.message||'Start failed'); }
+          };
+          const help=document.createElement('div'); help.className='help'; help.id='msLobbyHelp'; help.textContent = enough ? 'Ready to start.' : 'Need at least 2 players to start.';
+          wrap.appendChild(startBtn); wrap.appendChild(help);
+        }else{
+          const wait=document.createElement('div'); wait.className='help'; wait.textContent='Waiting for the host to start';
+          wrap.appendChild(wait);
+        }
+        main.appendChild(wrap);
       }else{
-        msRenderStacks($('#sideLeft'), $('#sideRight'), s.participants, s.current_turn?.participant_id||null, s.host_user_id);
+        const plist=$('#msPlist'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
         const startBtn=$('#startGame'); if (startBtn){ const enough = Array.isArray(s.participants) && s.participants.length>=2; startBtn.disabled=!enough; }
       }
       this.renderTimer();
@@ -145,11 +149,11 @@ const Game = {
 
     if (s.status==='running'){
       if (forceFull){
-        const q=document.createElement('div'); q.id='msQ'; q.style.cssText='text-align:center; max-width:640px; padding:8px; margin-top:8px; position:relative;';
+        const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
         q.innerHTML = '<h3 style=\"margin:0 0 8px 0;\">'+(s.question?.title || 'Question')+'</h3><p class=\"help\" style=\"margin:0;\">'+(s.question?.text || '')+'</p>';
         main.appendChild(q);
 
-        const plist=document.createElement('div'); plist.id='msPlistRun'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); plist.style.marginTop = '6px'; (side||main).appendChild(plist);
+        const plist=document.createElement('div'); plist.id='msPlistRun'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); (side||main).appendChild(plist);
 
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
@@ -160,7 +164,7 @@ const Game = {
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
       }else{
-        msRenderStacks($('#sideLeft'), $('#sideRight'), s.participants, s.current_turn?.participant_id||null, s.host_user_id);
+        const plist=$('#msPlistRun'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
         const can=this.canAnswer(); const mic=$('#micBtn'); const kb=$('#kbBtn');
         if (mic) mic.toggleAttribute('disabled', !can); if (kb) kb.toggleAttribute('disabled', !can);
       }
@@ -168,12 +172,12 @@ const Game = {
       if (this.ui.ansVisible){
         let ans=$('#msAns');
         if (!ans){
-          ans=document.createElement('div'); ans.className='card'; ans.id='msAns'; ans.style.marginTop='8px';
+          ans=document.createElement('div'); ans.className='card answer-card'; ans.id='msAns';
           const placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn';
           ans.innerHTML =
             '<div class=\"meta\">Your answer</div>'+
             '<textarea id=\"msBox\" class=\"input\" rows=\"3\" placeholder=\"'+placeholder+'\"></textarea>'+
-            '<div class=\"row\" style=\"gap:8px;margin-top:6px;\">'+
+            '<div class=\"row actions-row\">'+
               '<button id=\"submitBtn\" class=\"btn\"'+(this.canAnswer()?'':' disabled')+'>Submit</button>'+
             '</div>';
           (answer||main).appendChild(ans);
@@ -203,7 +207,7 @@ const Game = {
       return;
     }
 
-    if (s.status==='ended'){ const sl=$('#sideLeft'); if(sl) sl.innerHTML=''; const sr=$('#sideRight'); if(sr) sr.innerHTML=''; const tr=$('#toolsRow'); if(tr) tr.innerHTML=''; const ar=$('#answerRow'); if(ar) ar.innerHTML='';
+    if (s.status==='ended'){
       controls.innerHTML='';
       main.innerHTML =
         '<div style=\"text-align:center; max-width:640px;\">'+
@@ -238,81 +242,5 @@ export async function render(ctx){
   try{ document.body.classList.add('is-game'); }catch{}
   const _ms_onHash = () => { if (!location.hash.startsWith('#/game/')) { try{ document.body.classList.remove('is-game'); }catch{} window.removeEventListener('hashchange', _ms_onHash); } };
   window.addEventListener('hashchange', _ms_onHash);
-
-  function _ms_applyGameLayout(){
-    var room = document.getElementById('roomMain');
-    var side = document.getElementById('sideLeft');
-    var card = document.getElementById('mainCard');
-    var ctrl = document.getElementById('controlsRow');
-    var tools = document.getElementById('toolsRow');
-    var ans = document.getElementById('answerRow');
-    if (!room || !card) return;
-    var cardW = 220;
-    var vw = window.innerWidth || document.documentElement.clientWidth || 360;
-    if (vw < 768){
-      room.style.display = 'block';
-      room.style.position = 'relative';
-      var targetW = Math.min(vw*0.9, cardW);
-      card.style.width = targetW + 'px';
-      card.style.maxWidth = cardW + 'px';
-      card.style.margin = '0 auto';
-      [ctrl, tools, ans].forEach(function(el){
-        if (!el) return;
-        el.style.maxWidth = targetW + 'px';
-        el.style.width = '100%';
-        el.style.marginLeft = 'auto';
-        el.style.marginRight = 'auto';
-        el.style.display = 'flex';
-        el.style.justifyContent = 'center';
-      });
-      if (side){
-        var leftSpace = (vw - targetW) / 2 - 12;
-        if (leftSpace >= 160){
-          side.style.position = 'absolute';
-          side.style.top = '0';
-          side.style.right = 'calc(50% + ' + (targetW/2) + 'px + 12px)';
-          side.style.maxWidth = Math.floor(leftSpace) + 'px';
-          side.style.width = 'auto';
-          side.style.display = '';
-          side.style.textAlign = 'left';
-          side.style.overflow = 'hidden';
-          side.style.whiteSpace = 'normal';
-        } else {
-          side.style.display = 'none';
-        }
-      }
-    } else {
-      room.style.display = 'grid';
-      room.style.gridTemplateColumns = '1fr auto 1fr';
-      room.style.columnGap = '12px';
-      room.style.alignItems = 'flex-start';
-      room.style.justifyItems = 'center';
-      card.style.width = cardW + 'px';
-      card.style.maxWidth = cardW + 'px';
-      card.style.margin = '0';
-      if (side){
-        side.style.position = '';
-        side.style.top = '';
-        side.style.right = '';
-        side.style.maxWidth = '';
-        side.style.width = '';
-        side.style.display = '';
-        side.style.textAlign = '';
-      }
-      [ctrl, tools, ans].forEach(function(el){
-        if (!el) return;
-        el.style.maxWidth = cardW + 'px';
-        el.style.width = '100%';
-        el.style.marginLeft = 'auto';
-        el.style.marginRight = 'auto';
-        el.style.display = 'flex';
-        el.style.justifyContent = 'center';
-      });
-    }
-  }
-
-  _ms_applyGameLayout();
-  window.addEventListener('resize', _ms_applyGameLayout);
-
-  if (code){ Game.mount(code); }
+if (code){ Game.mount(code); }
 }
