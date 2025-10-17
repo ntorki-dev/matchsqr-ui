@@ -1,6 +1,6 @@
 // game.js
 import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey, inferAndPersistHostRole, getSession } from './api.js';
-import {renderHeader ensureDebugTray $ toast} from './ui.js';
+import { renderHeader, ensureDebugTray, $, toast, participantsListHTML } from './ui.js';
 
 const Game = {
   code:null, poll:null, tick:null, hbH:null, hbG:null,
@@ -112,8 +112,9 @@ const Game = {
 
     if (!this.ui) this.ui = {};
     if (!this.ui.seatMap) this.ui.seatMap = {};
-    if (typeof this.ui.nextSeat !== 'number') this.ui.nextSeat = 1; // 1..7 for guests, 0 for host
+    if (typeof this.ui.nextSeat !== 'number') this.ui.nextSeat = 1; // seats 1..7 for guests, 0 for host
 
+    // resolve host
     let host = null;
     if (hostId){
       host = all.find(p=> String(uidOf(p))===String(hostId) || p?.is_host===true || p?.role==='host') || null;
@@ -122,26 +123,29 @@ const Game = {
       host = all.find(p=> p?.is_host===true || p?.role==='host') || all[0];
     }
 
+    // seat 0 for host
     if (host){
-      const key = String(pidOf(host)||uidOf(host)||'h');
-      this.ui.seatMap[key] = 0;
+      const hKey = String(pidOf(host) || uidOf(host) || 'h');
+      this.ui.seatMap[hKey] = 0;
     }
 
+    // assign guests in appearance order, stable
     const guests = all.filter(p=> p!==host);
     for (const g of guests){
       const key = String(pidOf(g)||uidOf(g)||'');
       if (!key) continue;
       if (this.ui.seatMap[key] == null){
-        while (this.ui.nextSeat <= 7 && Object.values(this.ui.seatMap).includes(this.ui.nextSeat)){
-          this.ui.nextSeat++;
-        }
-        if (this.ui.nextSeat <= 7){
-          this.ui.seatMap[key] = this.ui.nextSeat;
-          this.ui.nextSeat++;
+        // find next free seat from 1 to 7
+        let s = this.ui.nextSeat || 1;
+        while (s <= 7 && Object.values(this.ui.seatMap).includes(s)) s++;
+        if (s <= 7){
+          this.ui.seatMap[key] = s;
+          this.ui.nextSeat = s + 1;
         }
       }
     }
 
+    // build list sorted by seat index
     const entries = [];
     for (const p of all){
       const key = String(pidOf(p)||uidOf(p)||'');
@@ -206,7 +210,7 @@ render(forceFull){
     if (s.status==='lobby'){
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.className='lobby-wrap';
-        this.renderSeats();
+        const plist=document.createElement('div'); plist.id='msPlist'; (side||wrap).appendChild(plist); this.renderSeats();
 
         const role=getRole(this.code);
         if (role==='host'){
