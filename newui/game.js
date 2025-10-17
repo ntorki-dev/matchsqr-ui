@@ -230,7 +230,7 @@ const Game = {
       return;
     }
 
-    if (s.status==='ended'){
+    if (s.status==='ended'){ const sl=$('#sideLeft'); if(sl) sl.innerHTML=''; const sr=$('#sideRight'); if(sr) sr.innerHTML=''; const tr=$('#toolsRow'); if(tr) tr.innerHTML=''; const ar=$('#answerRow'); if(ar) ar.innerHTML='';
       controls.innerHTML='';
       main.innerHTML = `
         <div style="text-align:center; max-width:640px;">
@@ -267,6 +267,6 @@ export async function render(ctx){
   try{ document.body.classList.add('is-game'); }catch{}
   const _ms_onHash = () => { if (!location.hash.startsWith('#/game/')) { try{ document.body.classList.remove('is-game'); }catch{} window.removeEventListener('hashchange', _ms_onHash); } };
   window.addEventListener('hashchange', _ms_onHash);
-await renderHeader(); ensureDebugTray();// Make header/footer black only in game room, without touching global CSS
+/* duplicate header removed */// Make header/footer black only in game room, without touching global CSS
   if (code){ Game.mount(code); }
 }

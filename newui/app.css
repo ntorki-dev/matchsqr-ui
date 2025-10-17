@@ -276,3 +276,42 @@ body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
   .room-main{display:grid;grid-template-columns:auto var(--cardw) auto;column-gap:12px;align-items:flex-start;justify-content:center;width:100%;}
   .participants-small{ font-size: .85rem; }
 }
+
+
+/* === Game layout sizing === */
+body.is-game{ --cardw:220px; --cardh:260px; }
+
+.room-main{
+  display:grid;
+  grid-template-columns:auto var(--cardw) auto;
+  column-gap:12px;
+  align-items:flex-start;
+  justify-content:center;
+  width:100%;
+}
+
+.side-left{ align-self:start; justify-self:end; max-width:220px; text-align:right; }
+.side-right{ align-self:start; justify-self:start; max-width:220px; text-align:left; }
+
+.main-card{ width:var(--cardw); max-width:var(--cardw); height:var(--cardh); position:relative; }
+
+#controlsRow,#toolsRow,#answerRow{
+  max-width:var(--cardw);
+  margin-left:auto;
+  margin-right:auto;
+  display:flex;
+  justify-content:center;
+}
+
+/* participants look */
+.participants-small{ font-size:.95rem; line-height:1.2; list-style:none; margin:0; padding:0; }
+.participants-small li{ margin:4px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.participants-small .is-host{ font-weight:600; }
+.participants-small .is-turn{ outline:2px solid rgba(0,0,0,.12); border-radius:8px; padding:2px 6px; }
+
+/* mobile: keep grid visible and proportional */
+@media (max-width: 767px){
+  body.is-game{ --cardw:min(90vw,220px); --cardh:calc(var(--cardw) * 1.182); }
+  .room-main{ grid-template-columns:minmax(40px,1fr) var(--cardw) minmax(40px,1fr); }
+  .participants-small{ font-size:.85rem; }
+}
