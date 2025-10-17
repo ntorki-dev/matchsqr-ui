@@ -103,6 +103,7 @@ const Game = {
     }catch{}
   },
   
+  // Seating layout helpers
   ensureSeatingLayout(){
     const host = document.getElementById('mainCard');
     if (!host) return;
@@ -115,17 +116,14 @@ const Game = {
       left = document.createElement('div'); left.id='msSeatsLeft'; left.className='ms-seats-col left';
       center = document.createElement('div'); center.id='msCardCenter'; center.className='ms-card-center';
       right = document.createElement('div'); right.id='msSeatsRight'; right.className='ms-seats-col right';
-      row.appendChild(left); row.appendChild(center); row.appendChild(right);
+      // move existing children into center once
       const kids = Array.from(host.childNodes);
       kids.forEach(k => center.appendChild(k));
+      row.appendChild(left); row.appendChild(center); row.appendChild(right);
       host.appendChild(row);
-    }else{
-      if (!left){ left = document.createElement('div'); left.id='msSeatsLeft'; left.className='ms-seats-col left'; row.insertBefore(left, row.firstChild); }
-      if (!center){ center = document.createElement('div'); center.id='msCardCenter'; center.className='ms-card-center'; row.insertBefore(center, left.nextSibling); }
-      if (!right){ right = document.createElement('div'); right.id='msSeatsRight'; right.className='ms-seats-col right'; row.appendChild(right); }
     }
   },
-  seatPlayers(){
+  seatPlayersOrdered(){
     const s = this.state || {};
     const ppl = Array.isArray(s.participants) ? s.participants.slice(0) : [];
     const hostId = s.host_user_id || null;
@@ -133,14 +131,15 @@ const Game = {
     if (hostId){
       hostP = ppl.find(p => String(p.user_id||p.auth_user_id||p.owner_id||p.userId||p.uid||'') === String(hostId)) || null;
     }
-    if (!hostP){ hostP = ppl.find(p => p.role==='host' || p.is_host) || null; }
-    let guests = ppl.filter(p => p !== hostP);
+    if (!hostP) hostP = ppl.find(p => p.role==='host' || p.is_host) || null;
+    const guests = ppl.filter(p => p !== hostP);
     const seats = [hostP, ...guests].filter(Boolean).slice(0,8);
+    const leftIdx = new Set([0,2,4,6]);
     const left = []; const right = [];
-    seats.forEach((p, i) => { if ([0,2,4,6].includes(i)) left.push(p); else right.push(p); });
+    seats.forEach((p,i)=> (leftIdx.has(i)? left : right).push(p));
     return { seats, left, right };
   },
-  __nameFor(p){
+  __seatName(p){
     if (!p || typeof p!=='object') return 'Guest';
     let name = p.profile_name || p.nickname || p.name || 'Guest';
     try{
@@ -153,35 +152,39 @@ const Game = {
     }catch(_){}
     return name;
   },
-  updateSeating(){
-    try{
-      this.ensureSeatingLayout();
-      const { left, right } = this.seatPlayers();
-      const hostId = this.state?.host_user_id || null;
-      const l = document.getElementById('msSeatsLeft'); const r = document.getElementById('msSeatsRight');
-      if (!l || !r) return;
-      const itemHTML = (p) => {
-        if (!p) return '';
-        const pid = p?.participant_id || p?.id || '';
-        const uid = p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || '';
-        const isHost = !!(p?.role==='host' || p?.is_host || (hostId && String(uid)===String(hostId)));
-        const name = this.__nameFor(p);
-        return `<div class="ms-seat" data-pid="${pid}">${name}${isHost?' <span class="meta">(host)</span>':''}</div>`;
-      };
-      l.innerHTML = left.map(itemHTML).join('') || '<div class="ms-seat meta">No one yet</div>';
-      r.innerHTML = right.map(itemHTML).join('');
-    }catch(_){}
+  updateSeatingColumns(){
+    const curPid = this.state?.current_turn?.participant_id || null;
+    const hostId = this.state?.host_user_id || null;
+    const L = document.getElementById('msSeatsLeft');
+    const R = document.getElementById('msSeatsRight');
+    if (!L || !R) return;
+    const { left, right } = this.seatPlayersOrdered();
+    const cell = (p)=>{
+      if (!p) return '';
+      const pid = p?.participant_id || p?.id || '';
+      const uid = p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || '';
+      const isHost = !!(p?.role==='host' || p?.is_host || (hostId && String(uid)===String(hostId)));
+      const bold = (curPid && String(curPid)===String(pid)) ? ' style="font-weight:700;"' : '';
+      const name = this.__seatName(p);
+      return `<div class="ms-seat" data-pid="${pid}"${bold}>${name}${isHost?' <span class="meta">(host)</span>':''}</div>`;
+    };
+    // Minimal DOM churn: only replace innerHTML when content changed
+    const htmlL = left.map(cell).join('') || '<div class="ms-seat meta">No one yet</div>';
+    const htmlR = right.map(cell).join('');
+    if (L.__lastHTML !== htmlL){ L.innerHTML = htmlL; L.__lastHTML = htmlL; }
+    if (R.__lastHTML !== htmlR){ R.innerHTML = htmlR; R.__lastHTML = htmlR; }
   },
 render(forceFull){
-    const s=this.state; let hostMain=$('#mainCard'); let main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
+    const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
     if (!main || !controls) return;
     if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; }
+    // Seating layout ensured and first update
     try{ this.ensureSeatingLayout(); }catch(_){}
-    try{ const __center = document.getElementById('msCardCenter'); if (__center) { main = __center; } }catch(_){}
+    try{ this.updateSeatingColumns(); }catch(_){}
     
 
     let topRight=$('#msTopRight');
-    if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.className='top-right'; (hostMain||main).appendChild(topRight); }
+    if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.className='top-right'; main.appendChild(topRight); }
     topRight.innerHTML = (s.status==='running' ? '<span>⏱</span> <span id=\"roomTimer\">--:--</span>' : '');
 
     if (s.status==='lobby'){
@@ -213,7 +216,7 @@ render(forceFull){
         }
         main.appendChild(wrap);
       }else{
-        const plist=$('#msPlist'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); try{ this.updateSeating(); }catch(_){}
+        const plist=$('#msPlist'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
         const startBtn=$('#startGame'); if (startBtn){ const enough = Array.isArray(s.participants) && s.participants.length>=2; startBtn.disabled=!enough; }
       }
       this.renderTimer();
@@ -237,7 +240,7 @@ render(forceFull){
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
       }else{
-        const plist=$('#msPlistRun'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); try{ this.updateSeating(); }catch(_){}
+        const plist=$('#msPlistRun'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
         const can=this.canAnswer(); const mic=$('#micBtn'); const kb=$('#kbBtn');
         if (mic) mic.toggleAttribute('disabled', !can); if (kb) kb.toggleAttribute('disabled', !can);
       }
@@ -295,7 +298,7 @@ render(forceFull){
       return;
     }
   
-    try{ this.updateSeating(); }catch(_){}
+    try{ this.updateSeatingColumns(); }catch(_){}
   }
 };
 
