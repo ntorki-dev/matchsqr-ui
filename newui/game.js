@@ -225,22 +225,41 @@ const Game = {
 };
 // === Seating layout hook and rendering ===
 (function(){
+  const $ = (sel)=>document.querySelector(sel);
+  function getDisplayName(p){
+    try{
+      const cu = (typeof __msGetCachedUser==='function') ? __msGetCachedUser() : null;
+      const cuEmailName = cu && cu.email && typeof cu.email==='string' ? (cu.email.split('@')[0]||null) : null;
+      let name = p?.profile_name || p?.nickname || p?.name || 'Guest';
+      const uid = String(p?.user_id||p?.auth_user_id||p?.owner_id||p?.userId||p?.uid||'');
+      const isMe = !!(cu && (
+        (uid && String(uid)===String(cu.id||'')) ||
+        (cuEmailName && typeof p?.name==='string' && p.name===cuEmailName)
+      ));
+      const cuDisplay = (cu && (cu.user_metadata?.name || cu.name)) || null;
+      if (isMe && cuDisplay) name = cuDisplay;
+      return name;
+    }catch(_){ return p?.nickname || p?.name || 'Guest'; }
+  }
+  function isHost(p){ return !!(p?.is_host || p?.role==='host'); }
+  function pidOf(p){ return p?.participant_id || p?.id || p?.pid || null; }
+
   const origRender = Game.render ? Game.render.bind(Game) : null;
   Game.render = function(forceFull){
     if (origRender) origRender(forceFull);
-    try{ this.renderSeating(forceFull); }catch(e){ /* no-op */ }
+    try{ this.renderSeating(forceFull); }catch(_){}
   };
+
   Game.renderSeating = function(forceFull){
     const s=this.state;
-    const $ = (sel)=>document.querySelector(sel);
     const main = $('#mainCard');
     if (!main) return;
 
-    // Hide old participant lists if present
-    const old1 = $('#msPlist'); if (old1) old1.style.display='none';
-    const old2 = $('#msPlistRun'); if (old2) old2.style.display='none';
+    // Hide legacy lists gently to avoid layout collision
+    const oldLobby = $('#msPlist'); if (oldLobby) oldLobby.style.display='none';
+    const oldRun = $('#msPlistRun'); if (oldRun) oldRun.style.display='none';
 
-    // Ensure stage container with left seats, card wrap, right seats
+    // Ensure stage once per render tree
     let stage = $('#msStageRow');
     if (!stage){
       stage = document.createElement('div');
@@ -264,106 +283,98 @@ const Game = {
       center.style.alignItems='center';
       center.style.justifyContent='center';
 
-      // Insert stage into DOM and move the question block inside the center
+      // Try to place adjacent to existing question or lobby wrap
       const q = $('#msQ');
-      if (q && q.parentElement === main){
-        main.replaceChild(stage, q);
+      const lobby = $('#msLobby');
+      if (q && q.parentElement){
+        q.parentElement.replaceChild(stage, q);
         stage.appendChild(left); stage.appendChild(center); stage.appendChild(right);
         center.appendChild(q);
+      }else if (lobby && lobby.parentElement){
+        lobby.parentElement.insertBefore(stage, lobby);
+        stage.appendChild(left); stage.appendChild(center); stage.appendChild(right);
+        // Create placeholder card in lobby state
+        let ph = $('#msLobbyCard');
+        if (!ph){
+          ph = document.createElement('div'); ph.id='msLobbyCard'; ph.className='question-block';
+          ph.innerHTML = '<h3 style="margin:0 0 8px 0;">Waiting</h3><p class="help" style="margin:0;">Waiting for the host to start</p>';
+        }
+        center.appendChild(ph);
       }else{
-        // Append once
-        if (!$('#msSeatsLeft')){
-          stage.appendChild(left); stage.appendChild(center); stage.appendChild(right);
-          main.appendChild(stage);
-        }
-        const q2 = $('#msQ');
-        if (q2 && q2.parentElement !== center){
-          center.appendChild(q2);
-        }
+        // Fallback attach to main
+        main.appendChild(stage);
+        stage.appendChild(left); stage.appendChild(center); stage.appendChild(right);
+        const q2 = $('#msQ'); if (q2 && q2.parentElement !== center) center.appendChild(q2);
       }
     }
 
-    // Size the question block to 220x260 on desktop and proportional on mobile
-    const q = $('#msQ');
-    if (q){
-      q.style.aspectRatio='220 / 260';
-      q.style.width='clamp(180px, 60vw, 220px)';
-      q.style.margin='0';
+    // Card sizing 220x260 desktop, proportional mobile
+    const card = $('#msQ') || $('#msLobbyCard');
+    if (card){
+      card.style.aspectRatio='220 / 260';
+      card.style.width='clamp(180px, 60vw, 220px)';
+      card.style.margin='0';
     }
 
     const left = $('#msSeatsLeft');
     const right = $('#msSeatsRight');
     if (!left || !right) return;
 
-    // Helpers
-    function labelBase(){
-      const div = document.createElement('div');
-      div.className = 'msSeat';
-      div.style.fontSize='clamp(11px, 1.6vw, 12px)';
-      div.style.lineHeight='1.2';
-      div.style.opacity='0.95';
-      div.style.whiteSpace='nowrap';
-      div.style.overflow='hidden';
-      div.style.textOverflow='ellipsis';
-      return div;
-    }
-    function labelLeft(p, highlight){
-      const el = labelBase();
-      el.style.textAlign='right';
-      el.style.padding='2px 4px 2px 0';
-      el.textContent = p.display_name || p.name || p.nickname || ('Player '+(p.id||''));
-      if (highlight) el.style.opacity='1';
-      return el;
-    }
-    function labelRight(p, highlight){
-      const el = labelBase();
-      el.style.textAlign='left';
-      el.style.padding='2px 0 2px 4px';
-      el.textContent = p.display_name || p.name || p.nickname || ('Player '+(p.id||''));
-      if (highlight) el.style.opacity='1';
-      return el;
-    }
-
-    // Build ordered seats: host first, then guests in join order, cap at 8
+    // Build ordered seats: host first, then join order guests, cap 8
     const parts = Array.isArray(s.participants)? s.participants.slice() : [];
     if (!parts.length){ left.innerHTML=''; right.innerHTML=''; return; }
-    const hostUid = s.host_user_id ? String(s.host_user_id) : null;
-    let host = null;
-    for (const p of parts){
-      const uid = String(p.user_id||p.auth_user_id||p.owner_id||'');
-      if (hostUid && uid === hostUid){ host = p; break; }
+
+    // Identify host
+    let host = parts.find(isHost);
+    if (!host && s.host_user_id){
+      host = parts.find(p => String(p.user_id||p.auth_user_id||p.owner_id||'') === String(s.host_user_id));
     }
     if (!host) host = parts[0];
     const guests = parts.filter(p => p !== host);
     const ordered = [host, ...guests].slice(0,8);
 
-    // Split indices: left 0,2,4,6 and right 1,3,5,7
+    // Distribute indices: left 0,2,4,6 and right 1,3,5,7
     const leftIdx = new Set([0,2,4,6]);
     const rightIdx = new Set([1,3,5,7]);
-    const leftItems = []; const rightItems = [];
+    const leftItems=[]; const rightItems=[];
     ordered.forEach((p,i)=>{ (leftIdx.has(i)? leftItems : rightItems).push(p); });
 
-    // Equal height distribution: always render 4 rows with space-between, pad with spacers
-    function fill(col, items, rightSide){
+    function makeLabel(text, side, highlight){
+      const el = document.createElement('div');
+      el.className='msSeat';
+      el.style.fontSize='clamp(11px, 1.6vw, 12px)';
+      el.style.lineHeight='1.2';
+      el.style.opacity= highlight ? '1' : '0.95';
+      el.style.whiteSpace='nowrap';
+      el.style.overflow='hidden';
+      el.style.textOverflow='ellipsis';
+      el.style.textAlign = side==='left' ? 'right' : 'left';
+      el.style.padding = side==='left' ? '2px 4px 2px 0' : '2px 0 2px 4px';
+      el.textContent = text;
+      return el;
+    }
+
+    function fill(col, items, side){
       col.innerHTML='';
       col.style.minHeight = '260px';
       col.style.height = 'clamp(212px, 60vw, 260px)';
       col.style.justifyContent = 'space-between';
-      for (let i=0;i<items.length;i++){
-        const p = items[i];
-        const isCur = String(s.current_turn?.participant_id||'') === String(p.id||p.participant_id||'');
-        const node = rightSide? labelRight(p, isCur) : labelLeft(p, isCur);
+      for (const p of items){
+        const curPid = String(s.current_turn?.participant_id||'');
+        const thisPid = String(pidOf(p)||'');
+        const label = getDisplayName(p);
+        const node = makeLabel(label, side, curPid && thisPid && curPid===thisPid);
         col.appendChild(node);
       }
       for (let i=items.length; i<4; i++){
         const spacer = document.createElement('div');
-        spacer.style.height='1px';
-        spacer.style.visibility='hidden';
+        spacer.style.height='1px'; spacer.style.visibility='hidden';
         col.appendChild(spacer);
       }
     }
-    fill(left, leftItems, false);
-    fill(right, rightItems, true);
+
+    fill(left, leftItems, 'left');
+    fill(right, rightItems, 'right');
   };
 })();
 
