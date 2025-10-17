@@ -5,7 +5,7 @@ import { renderHeader, ensureDebugTray, $, toast, participantsListHTML } from '.
 const Game = {
   code:null, poll:null, tick:null, hbH:null, hbG:null,
   state:{ status:'lobby', endsAt:null, participants:[], question:null, current_turn:null, host_user_id:null },
-  ui:{ lastSig:'', ansVisible:false, draft:'', seatMap:{}, nextSeat:1 },
+  ui:{ lastSig:'', ansVisible:false, draft:'' },
   async mount(code){
     this.code=code;
     try{ this.ui.draft = localStorage.getItem(draftKey(code)) || ''; }catch{ this.ui.draft=''; }
@@ -104,78 +104,94 @@ const Game = {
   },
   
   // --- seating helpers ---
-  
   seatOrder(hostId, ppl){
     const all = Array.isArray(ppl)? [...ppl] : [];
-    const pidOf = p => p?.participant_id || p?.id || null;
-    const uidOf = p => p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || null;
-
-    // initialize persistent seat map
-    if (!this.ui) this.ui = {};
-    if (!this.ui.seatMap) this.ui.seatMap = {};
-    if (typeof this.ui.nextSeat !== 'number') this.ui.nextSeat = 1; // guests get seats 1..7, 0 is host
-
-    // resolve host
+    // normalize ids
+    const normPid = p => p?.participant_id || p?.id || null;
+    const normUid = p => p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || null;
+    // find host first
     let host = null;
     if (hostId){
-      host = all.find(p=> String(uidOf(p))===String(hostId) || p?.is_host===true || p?.role==='host') || null;
+      host = all.find(p=> String(normUid(p))===String(hostId) || (p?.is_host===true) || (p?.role==='host'));
     }
     if (!host && all.length>0){
       host = all.find(p=> p?.is_host===true || p?.role==='host') || all[0];
     }
+    // build ordered list: host first, then guests by join order
+    const rest = all.filter(p=> p!==host);
+    const ordered = [host, ...rest].filter(Boolean).slice(0,8);
+    // map to seats with index
+    return ordered.map((p, idx)=>({ idx, p }));
+  },
+  renderSeats(){
 
-    // ensure host sits at seat 0
-    if (host){
-      const hKey = String(pidOf(host) || uidOf(host) || 'h');
-      this.ui.seatMap[hKey] = 0;
-    }
-
-    // assign guests in join order only once, never reshuffle
-    const guests = all.filter(p=> p!==host);
-    for (const g of guests){
-      const key = String(pidOf(g)||uidOf(g)||'');
-      if (!key) continue;
-      if (this.ui.seatMap[key] == null){
-        // next free seat from 1 to 7
-        let s = this.ui.nextSeat || 1;
-        while (s <= 7 && Object.values(this.ui.seatMap).includes(s)) s++;
-        if (s <= 7){
-          this.ui.seatMap[key] = s;
-          this.ui.nextSeat = s + 1;
+    const s=this.state;
+    // Ensure containers exist
+    let leftEl = document.getElementById('sideLeft');
+    let rightEl = document.getElementById('sideRight');
+    const mainCard = document.getElementById('mainCard');
+    const roomMain = document.getElementById('roomMain');
+    if (!leftEl || !rightEl){
+      if (roomMain && mainCard){
+        if (!leftEl){
+          leftEl = document.createElement('div');
+          leftEl.id = 'sideLeft';
+          leftEl.style.minWidth = '120px';
+          leftEl.style.justifySelf = 'end';
+          roomMain.insertBefore(leftEl, mainCard);
+        }
+        if (!rightEl){
+          rightEl = document.createElement('div');
+          rightEl.id = 'sideRight';
+          rightEl.style.minWidth = '120px';
+          rightEl.style.justifySelf = 'start';
+          if (mainCard.nextSibling){
+            roomMain.insertBefore(rightEl, mainCard.nextSibling);
+          }else{
+            roomMain.appendChild(rightEl);
+          }
         }
       }
     }
-
-    // produce ordered array by fixed seat index
-    const entries = [];
-    for (const p of all){
-      const key = String(pidOf(p)||uidOf(p)||'');
-      const seat = this.ui.seatMap[key];
-      if (seat != null && seat <= 7){
-        entries.push({ idx: seat, p });
-      }
-    }
-    entries.sort((a,b)=>a.idx-b.idx);
-    return entries;
-  },
-  renderSeats(
-){
-    const s=this.state;
-    const leftEl = document.getElementById('sideLeft');
-    const rightEl = document.getElementById('sideRight');
     if (!leftEl || !rightEl) return;
-    // containers
+
     leftEl.innerHTML = '<div class="seats seats-left" id="seatsLeft"></div>';
     rightEl.innerHTML = '<div class="seats seats-right" id="seatsRight"></div>';
     const L = document.getElementById('seatsLeft');
     const R = document.getElementById('seatsRight');
     if (!L || !R) return;
+
     const curPid = s.current_turn?.participant_id || null;
     const seats = this.seatOrder(s.host_user_id, s.participants);
     const leftIdx = new Set([0,2,4,6]);
     const rightIdx = new Set([1,3,5,7]);
-    // helpers to derive name and badge
+
     let __cu = null; try { __cu = (__msGetCachedUser && __msGetCachedUser()) || null; } catch(_) { __cu = null; }
+    const __cuEmailName = (__cu && typeof __cu?.email==='string') ? (__cu.email.split('@')[0]||null) : null;
+    const __cuDisplay = (__cu?.user_metadata?.name) || (__cu?.name) || null;
+    const displayName = (p)=>{
+      const uid = p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || '';
+      let name = p?.profile_name || p?.nickname || p?.name || 'Guest';
+      const isMe = !!(__cu && (
+        (uid && String(uid)===String(__cu.id||'')) ||
+        (__cuEmailName && typeof p?.name==='string' && p.name===__cuEmailName)
+      ));
+      if (isMe && __cuDisplay){ name = __cuDisplay; }
+      return name;
+    };
+
+    seats.forEach(({idx, p})=>{
+      const pid = p?.participant_id || p?.id || '';
+      const role = p?.role || (p?.is_host ? 'host' : '');
+      const el = document.createElement('div');
+      el.className = 'seat-item' + ((curPid && String(curPid)===String(pid)) ? ' is-turn' : '');
+      if (pid) el.dataset.pid = String(pid);
+      el.textContent = displayName(p) + (role==='host' ? ' (host)' : '');
+      if (leftIdx.has(idx)) L.appendChild(el);
+      if (rightIdx.has(idx)) R.appendChild(el);
+    });
+    
+} catch(_) { __cu = null; }
     const __cuEmailName = (__cu && typeof __cu?.email==='string') ? (__cu.email.split('@')[0]||null) : null;
     const __cuDisplay = (__cu?.user_metadata?.name) || (__cu?.name) || null;
     const displayName = (p)=>{
@@ -211,7 +227,7 @@ render(forceFull){
     if (s.status==='lobby'){
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.className='lobby-wrap';
-        this.renderSeats();
+        const plist=document.createElement('div'); plist.id='msPlist'; (side||wrap).appendChild(plist); this.renderSeats();
 
         const role=getRole(this.code);
         if (role==='host'){
@@ -250,7 +266,7 @@ render(forceFull){
         q.innerHTML = '<h3 style=\"margin:0 0 8px 0;\">'+(s.question?.title || 'Question')+'</h3><p class=\"help\" style=\"margin:0;\">'+(s.question?.text || '')+'</p>';
         main.appendChild(q);
 
-        this.renderSeats();
+        const plist=document.createElement('div'); plist.id='msPlistRun'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); (side||main).appendChild(plist);
 
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
@@ -261,7 +277,7 @@ render(forceFull){
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
       }else{
-        this.renderSeats();
+        const plist=$('#msPlistRun'); if (plist) plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null);
         const can=this.canAnswer(); const mic=$('#micBtn'); const kb=$('#kbBtn');
         if (mic) mic.toggleAttribute('disabled', !can); if (kb) kb.toggleAttribute('disabled', !can);
       }
