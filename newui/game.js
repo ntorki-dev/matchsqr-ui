@@ -54,7 +54,6 @@ const Game = {
     }catch(e){}
   },
   remainingSeconds(){ if (!this.state.endsAt) return null; const diff=Math.floor((new Date(this.state.endsAt).getTime()-Date.now())/1000); return Math.max(0,diff); },
-  updateSeating();
   renderTimer(){
     const t=this.remainingSeconds(), el=document.getElementById('roomTimer'); if(!el) return;
     if (t==null) { el.textContent='--:--'; return; }
@@ -295,6 +294,8 @@ render(forceFull){
       $('#shareBtn').onclick=()=>{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); };
       return;
     }
+  
+    try{ this.updateSeating(); }catch(_){}
   }
 };
 
