@@ -110,9 +110,10 @@ const Game = {
     const pidOf = p => p?.participant_id || p?.id || null;
     const uidOf = p => p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || null;
 
+    // initialize persistent seat map
     if (!this.ui) this.ui = {};
     if (!this.ui.seatMap) this.ui.seatMap = {};
-    if (typeof this.ui.nextSeat !== 'number') this.ui.nextSeat = 1; // seats 1..7 for guests, 0 for host
+    if (typeof this.ui.nextSeat !== 'number') this.ui.nextSeat = 1; // guests get seats 1..7, 0 is host
 
     // resolve host
     let host = null;
@@ -123,19 +124,19 @@ const Game = {
       host = all.find(p=> p?.is_host===true || p?.role==='host') || all[0];
     }
 
-    // seat 0 for host
+    // ensure host sits at seat 0
     if (host){
       const hKey = String(pidOf(host) || uidOf(host) || 'h');
       this.ui.seatMap[hKey] = 0;
     }
 
-    // assign guests in appearance order, stable
+    // assign guests in join order only once, never reshuffle
     const guests = all.filter(p=> p!==host);
     for (const g of guests){
       const key = String(pidOf(g)||uidOf(g)||'');
       if (!key) continue;
       if (this.ui.seatMap[key] == null){
-        // find next free seat from 1 to 7
+        // next free seat from 1 to 7
         let s = this.ui.nextSeat || 1;
         while (s <= 7 && Object.values(this.ui.seatMap).includes(s)) s++;
         if (s <= 7){
@@ -145,7 +146,7 @@ const Game = {
       }
     }
 
-    // build list sorted by seat index
+    // produce ordered array by fixed seat index
     const entries = [];
     for (const p of all){
       const key = String(pidOf(p)||uidOf(p)||'');
@@ -210,7 +211,7 @@ render(forceFull){
     if (s.status==='lobby'){
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.className='lobby-wrap';
-        const plist=document.createElement('div'); plist.id='msPlist'; (side||wrap).appendChild(plist); this.renderSeats();
+        this.renderSeats();
 
         const role=getRole(this.code);
         if (role==='host'){
@@ -249,7 +250,7 @@ render(forceFull){
         q.innerHTML = '<h3 style=\"margin:0 0 8px 0;\">'+(s.question?.title || 'Question')+'</h3><p class=\"help\" style=\"margin:0;\">'+(s.question?.text || '')+'</p>';
         main.appendChild(q);
 
-        const plist=document.createElement('div'); plist.id='msPlistRun'; plist.innerHTML=participantsListHTML(s.participants, s.current_turn?.participant_id||null); (side||main).appendChild(plist);
+        this.renderSeats();
 
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
