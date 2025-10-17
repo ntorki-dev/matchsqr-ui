@@ -191,29 +191,6 @@ const Game = {
       if (rightIdx.has(idx)) R.appendChild(el);
     });
     
-} catch(_) { __cu = null; }
-    const __cuEmailName = (__cu && typeof __cu?.email==='string') ? (__cu.email.split('@')[0]||null) : null;
-    const __cuDisplay = (__cu?.user_metadata?.name) || (__cu?.name) || null;
-    const displayName = (p)=>{
-      const uid = p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || '';
-      let name = p?.profile_name || p?.nickname || p?.name || 'Guest';
-      const isMe = !!(__cu && (
-        (uid && String(uid)===String(__cu.id||'')) ||
-        (__cuEmailName && typeof p?.name==='string' && p.name===__cuEmailName)
-      ));
-      if (isMe && __cuDisplay){ name = __cuDisplay; }
-      return name;
-    };
-    seats.forEach(({idx, p})=>{
-      const pid = p?.participant_id || p?.id || '';
-      const role = p?.role || (p?.is_host ? 'host' : '');
-      const el = document.createElement('div');
-      el.className = 'seat-item' + ((curPid && String(curPid)===String(pid)) ? ' is-turn' : '');
-      if (pid) el.dataset.pid = String(pid);
-      el.textContent = displayName(p) + (role==='host' ? ' (host)' : '');
-      if (leftIdx.has(idx)) L.appendChild(el);
-      if (rightIdx.has(idx)) R.appendChild(el);
-    });
   },
 render(forceFull){
     const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
