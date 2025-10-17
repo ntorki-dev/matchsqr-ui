@@ -1,6 +1,6 @@
 // game.js
 import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey, inferAndPersistHostRole, getSession } from './api.js';
-import {renderHeader ensureDebugTray $ toast} from './ui.js';
+import { renderHeader, ensureDebugTray, $, toast } from './ui.js';
 
 const Game = {
   code:null, poll:null, tick:null, hbH:null, hbG:null,
