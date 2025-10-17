@@ -254,9 +254,10 @@ export async function render(ctx){
     <div class="offline-banner">You are offline. Trying to reconnect…</div>
     <div class="room-wrap">
       <div class="controls-row" id="controlsRow"></div>
-      <div class="room-main" id="roomMain" style="display:flex;gap:12px;align-items:flex-start;justify-content:center;">
-        <div id="sideLeft" style="min-width:220px;"></div>
+      <div class="room-main" id="roomMain">
+        <div class="side-left" id="sideLeft"></div>
         <div class="card main-card" id="mainCard"></div>
+        <div class="side-right" id="sideRight"></div>
       </div>
       <div class="controls-row" id="toolsRow"></div>
       <div class="answer-row" id="answerRow"></div>

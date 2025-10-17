@@ -65,7 +65,7 @@ a{color:inherit;text-decoration:none}
 /* Game room */
 .room-wrap{max-width:860px;margin:24px auto;padding:0 16px}
 .timer{font-weight:800}
-.main-card{min-height:260px;display:flex;align-items:center;justify-content:center;position:relative}
+.main-card{width:var(--cardw);max-width:var(--cardw);position:relative;}
 
 /* Centered round Start (pre-start) */
 .start-round{width:120px;height:120px;border-radius:60px;background:var(--green);color:#fff;border:0;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 10px 30px rgba(34,164,71,.25)}
@@ -259,14 +259,20 @@ body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
 
 .answer-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:12px}
 
-.side-left{align-self:start;justify-self:end;min-width:140px;} .side-right{align-self:start;justify-self:start;min-width:140px;}
+.side-left{align-self:start;justify-self:end;max-width:220px;} .side-right{align-self:start;justify-self:start;max-width:220px;}
 
 #controlsRow,#toolsRow,#answerRow{max-width:var(--cardw,220px);margin-left:auto;margin-right:auto;display:flex;justify-content:center;}
 
 .participants-small{font-size:.95rem;line-height:1.2;list-style:none;margin:0;padding:0;} .participants-small li{margin:4px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;} .participants-small .is-host{font-weight:600;} .participants-small .is-turn{outline:2px solid rgba(0,0,0,.12);border-radius:8px;padding:2px 6px;}
 
+
 @media (max-width: 767px){
-  body.is-game{ --cardw: min(80vw, 220px); }
-  .room-main{ grid-template-columns: minmax(80px,1fr) var(--cardw) minmax(80px,1fr); }
+  body.is-game{ --cardw: min(90vw, 220px); }
+  .room-main{ grid-template-columns: minmax(40px,1fr) var(--cardw) minmax(40px,1fr); }
+  .side-left,.side-right{ max-width: 45vw; }
+  .participants-small{ font-size:.85rem; }
+}
+
+  .room-main{display:grid;grid-template-columns:auto var(--cardw) auto;column-gap:12px;align-items:flex-start;justify-content:center;width:100%;}
   .participants-small{ font-size: .85rem; }
 }
