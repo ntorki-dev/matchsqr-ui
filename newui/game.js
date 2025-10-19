@@ -6,6 +6,10 @@ const Game = {
   code:null, poll:null, tick:null, hbH:null, hbG:null,
   state:{ status:'lobby', endsAt:null, participants:[], question:null, current_turn:null, host_user_id:null },
   ui:{ lastSig:'', ansVisible:false, draft:'' },
+
+  // --- Heartbeat diagnostics state (added) ---
+  __hb:{ host:{fails:0,lastErr:null,lastStatus:null,lastAt:null}, guest:{fails:0,lastErr:null,lastStatus:null,lastAt:null}, logs:0, maxLogs:10 },
+
   async mount(code){
     this.code=code;
     try{ this.ui.draft = localStorage.getItem(draftKey(code)) || ''; }catch{ this.ui.draft=''; }
@@ -17,22 +21,85 @@ const Game = {
   },
   startPolling(){ if(this.poll) clearInterval(this.poll); this.poll=setInterval(()=>this.refresh(), 3000); },
   startTick(){ if(this.tick) clearInterval(this.tick); this.tick=setInterval(()=>this.renderTimer(), 1000); },
+
+  // --- New: centralized heartbeat failure handler (no breaking changes) ---
+  async _onHeartbeatFail(role, err, fn){
+    try {
+      const b = this.__hb[role] || (this.__hb[role] = {});
+      b.fails = (b.fails||0) + 1;
+      b.lastErr = (err && (err.message || String(err))) || 'unknown';
+      b.lastStatus = (err && err.status) || null;
+      b.lastAt = Date.now();
+      if (this.__hb.logs < this.__hb.maxLogs){
+        this.__hb.logs++;
+        // Rate-limited, concise console signal
+        console.warn(`[HB:${role}] heartbeat failed (#${b.fails})`, { status:b.lastStatus, msg:b.lastErr });
+      }
+
+      // One-time lightweight session refresh then retry once after 1s
+      try { await getSession(); } catch(_) {}
+      await new Promise(r=>setTimeout(r, 1000));
+
+      try {
+        await fn();
+        // recovered
+        b.fails = 0; b.lastStatus = 200; b.lastErr = null;
+        if (this.__hb.logs < this.__hb.maxLogs){
+          this.__hb.logs++;
+          console.warn(`[HB:${role}] heartbeat recovered`);
+        }
+      } catch(e2){
+        // keep failure count, let the regular interval try again next tick
+        if (this.__hb.logs < this.__hb.maxLogs){
+          this.__hb.logs++;
+          console.warn(`[HB:${role}] retry failed, will back off naturally`, { msg: e2?.message || String(e2) });
+        }
+      }
+      // Expose minimal debug surface for manual inspection if needed
+      try { window.__HB_DEBUG = this.__hb; } catch {}
+    } catch {}
+  },
+
   startHeartbeats(){
     const code=this.code; const gid=resolveGameId(null);
     if (this.hbH) { clearInterval(this.hbH); this.hbH=null; }
     if (this.hbG) { clearInterval(this.hbG); this.hbG=null; }
     const role = getRole(code);
+
+    // Host heartbeat every 20s with resilience
     if (role === 'host' && gid){
-      const beat=()=>API.heartbeat().catch(()=>{});
-      this.hbH = setInterval(beat, 20000); beat();
+      const beatHost = async () => {
+        try { await API.heartbeat(); this.__hb.host.fails = 0; }
+        catch(e){ await this._onHeartbeatFail('host', e, API.heartbeat); }
+      };
+      this.hbH = setInterval(beatHost, 20000);
+      // fire immediately
+      beatHost();
+
+      // Best-effort final beat on page exit
+      const finalBeat = () => { try { API.heartbeat(); } catch(_) {} };
+      try {
+        // Avoid multiple listeners if startHeartbeats runs again
+        if (!this.__finalBeatInstalled){
+          window.addEventListener('pagehide', finalBeat, { capture:true });
+          window.addEventListener('beforeunload', finalBeat, { capture:true });
+          this.__finalBeatInstalled = true;
+        }
+      } catch {}
     } else {
+      // Guest heartbeat every 25s with resilience
       const pid = JSON.parse(localStorage.getItem(msPidKey(code))||'null');
       if (pid && gid){
-        const beat=()=>API.participant_heartbeat().catch(()=>{});
-        this.hbG = setInterval(beat, 25000); beat();
+        const beatGuest = async () => {
+          try { await API.participant_heartbeat(); this.__hb.guest.fails = 0; }
+          catch(e){ await this._onHeartbeatFail('guest', e, API.participant_heartbeat); }
+        };
+        this.hbG = setInterval(beatGuest, 25000);
+        beatGuest();
       }
     }
   },
+
   stop(){ if(this.poll) clearInterval(this.poll); if(this.tick) clearInterval(this.tick); if(this.hbH) clearInterval(this.hbH); if(this.hbG) clearInterval(this.hbG); },
   async refresh(){
     try{
@@ -243,7 +310,7 @@ render(forceFull){
 
     let topRight=$('#msTopRight');
     if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.className='top-right'; main.appendChild(topRight); }
-    topRight.innerHTML = (s.status==='running' ? '<span>⏱</span> <span id=\"roomTimer\">--:--</span>' : '');
+    topRight.innerHTML = (s.status==='running' ? '<span>⏱</span> <span id="roomTimer">--:--</span>' : '');
 
     if (s.status==='lobby'){
       if (forceFull){
@@ -284,7 +351,7 @@ render(forceFull){
     if (s.status==='running'){
       if (forceFull){
         const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
-        q.innerHTML = '<h3 style=\"margin:0 0 8px 0;\">'+(s.question?.title || 'Question')+'</h3><p class=\"help\" style=\"margin:0;\">'+(s.question?.text || '')+'</p>';
+        q.innerHTML = '<h3 style="margin:0 0 8px 0;">'+(s.question?.title || 'Question')+'</h3><p class="help" style="margin:0;">'+(s.question?.text || '')+'</p>';
         main.appendChild(q);
 
         this.renderSeats();
@@ -292,8 +359,8 @@ render(forceFull){
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
         actRow.innerHTML=
-          '<button id=\"micBtn\" class=\"kb-mic-btn\" '+(can?'':'disabled')+'><img src=\"./assets/mic.png\" alt=\"mic\"/> <span>Mic</span></button>'+
-          '<button id=\"kbBtn\" class=\"kb-mic-btn\" '+(can?'':'disabled')+'><img src=\"./assets/keyboard.png\" alt=\"kb\"/> <span>Keyboard</span></button>';
+          '<button id="micBtn" class="kb-mic-btn" '+(can?'':'disabled')+'><img src="./assets/mic.png" alt="mic"/> <span>Mic</span></button>'+
+          '<button id="kbBtn" class="kb-mic-btn" '+(can?'':'disabled')+'><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>';
         (tools||main).appendChild(actRow);
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
@@ -309,10 +376,10 @@ render(forceFull){
           ans=document.createElement('div'); ans.className='card answer-card'; ans.id='msAns';
           const placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn';
           ans.innerHTML =
-            '<div class=\"meta\">Your answer</div>'+
-            '<textarea id=\"msBox\" class=\"input\" rows=\"3\" placeholder=\"'+placeholder+'\"></textarea>'+
-            '<div class=\"row actions-row\">'+
-              '<button id=\"submitBtn\" class=\"btn\"'+(this.canAnswer()?'':' disabled')+'>Submit</button>'+
+            '<div class="meta">Your answer</div>'+
+            '<textarea id="msBox" class="input" rows="3" placeholder="'+placeholder+'"></textarea>'+
+            '<div class="row actions-row">'+
+              '<button id="submitBtn" class="btn"'+(this.canAnswer()?'':' disabled')+'>Submit</button>'+
             '</div>';
           (answer||main).appendChild(ans);
           const box=$('#msBox'); if (box){ box.value = this.ui.draft||''; box.addEventListener('input', ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
@@ -329,9 +396,9 @@ render(forceFull){
       const role=getRole(this.code); const isHost = role==='host';
       if (isHost && forceFull){
         controls.innerHTML=
-          '<button id=\"nextCard\" class=\"btn\">Reveal next card</button>'+
-          '<button id=\"extendBtn\" class=\"btn secondary\" disabled>Extend</button>'+
-          '<button id=\"endAnalyze\" class=\"btn danger\">End and analyze</button>';
+          '<button id="nextCard" class="btn">Reveal next card</button>'+
+          '<button id="extendBtn" class="btn secondary" disabled>Extend</button>'+
+          '<button id="endAnalyze" class="btn danger">End and analyze</button>';
         $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
         $('#extendBtn').onclick=()=>{ location.hash='#/billing'; };
         $('#endAnalyze').onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
@@ -346,12 +413,12 @@ render(forceFull){
   // Render seats around the card
   this.renderSeats();
   // Put summary inside the main card instead of replacing the whole grid
-  main.innerHTML = '<div style=\"text-align:center; max-width:640px;\">'+
+  main.innerHTML = '<div style="text-align:center; max-width:640px;">'+
           '<h3>Summary</h3>'+
-          '<p class=\"help\">The game has ended. You can start a new one from Host page.</p>'+
-          '<div style=\"display:flex;gap:10px;flex-wrap:wrap;justify-content:center;\">'+
-            '<a class=\"btn\" href=\"#/host\">Host a new game</a>'+
-            '<button id=\"shareBtn\" class=\"btn secondary\">Share</button>'+
+          '<p class="help">The game has ended. You can start a new one from Host page.</p>'+
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">'+
+            '<a class="btn" href="#/host">Host a new game</a>'+
+            '<button id="shareBtn" class="btn secondary">Share</button>'+
           '</div>'+
         '</div>';
       $('#shareBtn').onclick=()=>{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); };;
@@ -365,16 +432,16 @@ export async function render(ctx){
   const code = ctx?.code || null;
   const app=document.getElementById('app');
   app.innerHTML=
-    '<div class=\"offline-banner\">You are offline. Trying to reconnect…</div>'+
-    '<div class=\"room-wrap\">'+
-      '<div class=\"controls-row\" id=\"controlsRow\"></div>'+
-      '<div id=\"roomMain\" style=\"display:grid;grid-template-columns:1fr auto 1fr;column-gap:12px;align-items:flex-start;justify-items:center;width:100%;\">'+
-        '<div id=\"sideLeft\" style=\"min-width:220px;justify-self:end;\"></div>'+
-        '<div class=\"card main-card\" id=\"mainCard\" style=\"width:220px;max-width:220px;height:260px;position:relative;\"></div>'+
-        '<div id=\"sideRight\" style=\"min-width:120px;justify-self:start;\"></div>'+
+    '<div class="offline-banner">You are offline. Trying to reconnect…</div>'+
+    '<div class="room-wrap">'+
+      '<div class="controls-row" id="controlsRow"></div>'+
+      '<div id="roomMain" style="display:grid;grid-template-columns:1fr auto 1fr;column-gap:12px;align-items:flex-start;justify-items:center;width:100%;">'+
+        '<div id="sideLeft" style="min-width:220px;justify-self:end;"></div>'+
+        '<div class="card main-card" id="mainCard" style="width:220px;max-width:220px;height:260px;position:relative;"></div>'+
+        '<div id="sideRight" style="min-width:120px;justify-self:start;"></div>'+
       '</div>'+
-      '<div class=\"controls-row\" id=\"toolsRow\"></div>'+
-      '<div class=\"answer-row\" id=\"answerRow\"></div>'+
+      '<div class="controls-row" id="toolsRow"></div>'+
+      '<div class="answer-row" id="answerRow"></div>'+
     '</div>';
   await renderHeader(); ensureDebugTray();
   try{ document.body.classList.add('is-game'); }catch{}
