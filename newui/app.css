@@ -410,3 +410,27 @@ body.is-game #answerRow{
 @media (max-width: 480px){
   #roomMain { justify-content: center; }
 }
+
+/* === Game grid centering and column anchoring, clean rewrite === */
+#roomMain {
+  width: 476px;
+  margin-left: auto;
+  margin-right: auto;
+  align-items: start;
+  grid-template-columns: 120px 220px 120px;
+  gap: 8px;
+}
+
+#sideLeft { display: block; justify-self: end; text-align: right; }
+#sideRight { display: block; justify-self: start; text-align: left; }
+
+@media (max-width: 480px){
+  #roomMain {
+    width: 332px;
+    margin-left: auto;
+    margin-right: auto;
+    grid-template-columns: 70px 180px 70px;
+    gap: 6px;
+    align-items: start;
+  }
+}
