@@ -371,19 +371,6 @@ body.is-game #answerRow{
 
 .card.main-card{ width: var(--card-w); height: var(--card-h); }
 
-#roomMain{
-  display: grid;
-  width: 476px;
-  margin-left: auto;
-  margin-right: auto;
-  grid-template-columns: 120px 220px 120px;
-  gap: 8px;
-  justify-items: center;
-  justify-content: center;
-  align-items: start;
-}
-
-
 .seats{ display:flex; flex-direction:column; justify-content:space-between; height: var(--card-h); }
 .seats-left{ align-items:flex-end; text-align:right; padding-right:8px; }
 .seats-right{ align-items:flex-start; text-align:left; padding-left:8px; }
@@ -393,53 +380,7 @@ body.is-game #answerRow{
 @media (max-width: 640px){
   :root{ --card-w: clamp(150px, 42vw, 220px); }
   .seat-item{ font-size:11px; }
-  #roomMain{
-  display: grid;
-  width: 476px;
-  margin-left: auto;
-  margin-right: auto;
-  grid-template-columns: 120px 220px 120px;
-  gap: 8px;
-  justify-items: center;
-  justify-content: center;
-  align-items: start;
-}
-
-}
-
-#sideLeft{
-  width: 120px;
-  max-width: 120px;
-  justify-self: end;
-  text-align: right;
-  box-sizing: border-box;
-  position: relative;
-  z-index: 2;
-  color: var(--text, #1f2937);
-  padding-right: 6px;
-}
-
-#sideRight{
-  width: 120px;
-  max-width: 120px;
-  justify-self: start;
-  text-align: left;
-  box-sizing: border-box;
-  position: relative;
-  z-index: 2;
-  color: var(--text, #1f2937);
-  padding-left: 6px;
-}
-
-#mainCard{
-  width: 220px;
-  max-width: 220px;
-  height: 260px;
-  position: relative;
-  box-sizing: border-box;
-  justify-self: center;
-  z-index: 1;
-}
+  }
 
 #sideLeft > *, #sideRight > * {
   display: block;
@@ -452,19 +393,47 @@ body.is-game #answerRow{
 
 @media (max-width: 480px){
   .room-wrap{ padding-left: 0; padding-right: 0; }
-  #roomMain{
-    width: 332px;
-    margin-left: auto;
-    margin-right: auto;
-    grid-template-columns: 70px 180px 70px;
-    gap: 6px;
-    align-items: start;
-  }
-  #sideLeft, #sideRight{ width: 70px; max-width: 70px; }
-  #mainCard{ width: 180px; max-width: 180px; height: 216px; }
+  #sideLeft, }
+
+/* === MatchSqr Game Layout, consolidated and scoped === */
+body.is-game #roomMain {
+  display: grid;
+  width: 476px;
+  margin-left: auto;
+  margin-right: auto;
+  grid-template-columns: 120px 220px 120px;
+  grid-template-areas: 'left card right';
+  gap: 8px;
+  justify-items: center;
+  align-items: start;
+  box-sizing: border-box;
 }
 
-@media (max-width: 480px){
-  #sideLeft, #sideRight { position: relative; z-index: 2; }
-  #mainCard { z-index: 1; }
+body.is-game #sideLeft { grid-area: left; width: 120px; max-width: 120px; justify-self: end; text-align: right; padding-right: 6px; position: relative; z-index: 2; box-sizing: border-box; }
+body.is-game #sideRight { grid-area: right; width: 120px; max-width: 120px; justify-self: start; text-align: left; padding-left: 6px; position: relative; z-index: 2; box-sizing: border-box; }
+body.is-game #mainCard { grid-area: card; width: 220px; max-width: 220px; height: 260px; position: relative; z-index: 1; box-sizing: border-box; justify-self: center; }
+
+/* Prevent side text from disappearing due to margins or nowrap */
+body.is-game #sideLeft > *, body.is-game #sideRight > * {
+  display: block;
+  margin: 0;
+  max-width: 100%;
+  line-height: 1.15;
+}
+
+/* Mobile breakpoint widened so it applies on typical device widths */
+@media (max-width: 640px){
+  body.is-game .room-wrap { padding-left: 0; padding-right: 0; }
+
+  body.is-game #roomMain {
+    width: 332px;
+    grid-template-columns: 70px 180px 70px;
+    grid-template-areas: 'left card right';
+    gap: 6px;
+  }
+
+  body.is-game #sideLeft,
+  body.is-game #sideRight { width: 70px; max-width: 70px; }
+
+  body.is-game #mainCard { width: 180px; max-width: 180px; height: 216px; }
 }
