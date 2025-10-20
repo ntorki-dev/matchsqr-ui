@@ -5,6 +5,14 @@
 a{color:inherit;text-decoration:none}
 .container{max-width:1080px;margin:0 auto;padding:16px}
 
+/* Restore base card styling */
+.card{
+  background:#ffffff;
+  border:1px solid var(--border);
+  border-radius: var(--radius);
+  padding:16px;
+}
+
 /* Header */
 .header{display:flex;align-items:center;justify-content:space-between;max-width:1200px;margin:20px auto 0;padding:0 24px}
 .header .brand{display:flex;align-items:center;gap:10px;font-weight:700}
