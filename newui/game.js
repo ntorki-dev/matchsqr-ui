@@ -247,16 +247,12 @@ const Game = {
         if (!leftEl){
           leftEl = document.createElement('div');
           leftEl.id = 'sideLeft';
-          leftEl.style.minWidth = '120px';
-          leftEl.style.justifySelf = 'end';
-          roomMain.insertBefore(leftEl, mainCard);
+                    roomMain.insertBefore(leftEl, mainCard);
         }
         if (!rightEl){
           rightEl = document.createElement('div');
           rightEl.id = 'sideRight';
-          rightEl.style.minWidth = '120px';
-          rightEl.style.justifySelf = 'start';
-          if (mainCard.nextSibling){
+                    if (mainCard.nextSibling){
             roomMain.insertBefore(rightEl, mainCard.nextSibling);
           }else{
             roomMain.appendChild(rightEl);
@@ -310,7 +306,7 @@ render(forceFull){
 
     let topRight=$('#msTopRight');
     if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.className='top-right'; main.appendChild(topRight); }
-    topRight.innerHTML = (s.status==='running' ? '<span>⏱</span> <span id="roomTimer">--:--</span>' : '');
+    topRight.innerHTML = (s.status==='running' ? '<span id="roomTimer">--:--</span>' : '');
 
     if (s.status==='lobby'){
       if (forceFull){
@@ -435,10 +431,10 @@ export async function render(ctx){
     '<div class="offline-banner">You are offline. Trying to reconnect…</div>'+
     '<div class="room-wrap">'+
       '<div class="controls-row" id="controlsRow"></div>'+
-      '<div id="roomMain" style="display:grid;grid-template-columns:1fr auto 1fr;column-gap:12px;align-items:flex-start;justify-items:center;width:100%;">'+
-        '<div id="sideLeft" style="min-width:220px;justify-self:end;"></div>'+
-        '<div class="card main-card" id="mainCard" style="width:220px;max-width:220px;height:260px;position:relative;"></div>'+
-        '<div id="sideRight" style="min-width:120px;justify-self:start;"></div>'+
+      '<div id="roomMain">'+
+        '<div id="sideLeft"></div>'+
+        '<div class="card main-card" id="mainCard"></div>'+
+        '<div id="sideRight"></div>'+
       '</div>'+
       '<div class="controls-row" id="toolsRow"></div>'+
       '<div class="answer-row" id="answerRow"></div>'+
