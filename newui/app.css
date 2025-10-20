@@ -382,58 +382,48 @@ body.is-game #answerRow{
   .seat-item{ font-size:11px; }
   }
 
-#sideLeft > *, #sideRight > * {
-  display: block;
-  margin: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* === Game layout, clean and unscoped so it always applies in game view === */
+#roomMain{
+  display:grid;
+  width:476px;
+  margin-left:auto;
+  margin-right:auto;
+  grid-template-columns:120px 220px 120px;
+  gap:8px;
+  justify-items:center;
+  align-items:start;
+  box-sizing:border-box;
+}
+#sideLeft{
+  width:120px; max-width:120px;
+  justify-self:end; text-align:right;
+  padding-right:6px; box-sizing:border-box;
+}
+#sideRight{
+  width:120px; max-width:120px;
+  justify-self:start; text-align:left;
+  padding-left:6px; box-sizing:border-box;
+}
+#mainCard{
+  width:220px; max-width:220px; height:260px;
+  position:relative; box-sizing:border-box;
+  justify-self:center;
+}
+#sideLeft > *, #sideRight > *{
+  display:block; margin:0; max-width:100%;
+  line-height:1.15;
 }
 
-@media (max-width: 480px){
-  .room-wrap{ padding-left: 0; padding-right: 0; }
-  #sideLeft, }
-
-/* === MatchSqr Game Layout, consolidated and scoped === */
-body.is-game #roomMain {
-  display: grid;
-  width: 476px;
-  margin-left: auto;
-  margin-right: auto;
-  grid-template-columns: 120px 220px 120px;
-  grid-template-areas: 'left card right';
-  gap: 8px;
-  justify-items: center;
-  align-items: start;
-  box-sizing: border-box;
-}
-
-body.is-game #sideLeft { grid-area: left; width: 120px; max-width: 120px; justify-self: end; text-align: right; padding-right: 6px; position: relative; z-index: 2; box-sizing: border-box; }
-body.is-game #sideRight { grid-area: right; width: 120px; max-width: 120px; justify-self: start; text-align: left; padding-left: 6px; position: relative; z-index: 2; box-sizing: border-box; }
-body.is-game #mainCard { grid-area: card; width: 220px; max-width: 220px; height: 260px; position: relative; z-index: 1; box-sizing: border-box; justify-self: center; }
-
-/* Prevent side text from disappearing due to margins or nowrap */
-body.is-game #sideLeft > *, body.is-game #sideRight > * {
-  display: block;
-  margin: 0;
-  max-width: 100%;
-  line-height: 1.15;
-}
-
-/* Mobile breakpoint widened so it applies on typical device widths */
+/* Mobile breakpoint, ensure it triggers on 375px devices */
 @media (max-width: 640px){
-  body.is-game .room-wrap { padding-left: 0; padding-right: 0; }
-
-  body.is-game #roomMain {
-    width: 332px;
-    grid-template-columns: 70px 180px 70px;
-    grid-template-areas: 'left card right';
-    gap: 6px;
+  .room-wrap{ padding-left:0; padding-right:0; }
+  #roomMain{
+    width:332px;
+    grid-template-columns:70px 180px 70px;
+    gap:6px;
   }
-
-  body.is-game #sideLeft,
-  body.is-game #sideRight { width: 70px; max-width: 70px; }
-
-  body.is-game #mainCard { width: 180px; max-width: 180px; height: 216px; }
+  #sideLeft, #sideRight{ width:70px; max-width:70px; }
+  #mainCard{ width:180px; max-width:180px; height:216px; }
+  /* Allow wrapping on narrow columns */
+  #sideLeft > *, #sideRight > *{ white-space:normal; }
 }
