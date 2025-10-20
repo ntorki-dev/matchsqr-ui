@@ -49,7 +49,6 @@ a{color:inherit;text-decoration:none}
 }
 
 /* Cards / layout */
-.card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:16px}
 .grid{display:grid;gap:16px}
 
 /* Host lobby */
@@ -65,8 +64,6 @@ a{color:inherit;text-decoration:none}
 /* Game room */
 .room-wrap{max-width:860px;margin:24px auto;padding:0 16px}
 .timer{font-weight:800}
-.main-card{min-height:260px;display:flex;align-items:center;justify-content:center;position:relative}
-
 /* Centered round Start (pre-start) */
 .start-round{width:120px;height:120px;border-radius:60px;background:var(--green);color:#fff;border:0;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 10px 30px rgba(34,164,71,.25)}
 
@@ -288,12 +285,6 @@ body.is-game #answerRow{
 .side-left{ min-width:220px; justify-self:end; }
 
 /* Main card sizing and positioning */
-.main-card{
-  width: var(--cardw);
-  max-width: var(--cardw);
-  position: relative;
-}
-
 /* Timer container inside the card */
 .top-right{
   position:absolute;
@@ -333,8 +324,7 @@ body.is-game #answerRow{
   body.is-game { --cardw: min(90vw, 220px); }
   .room-main{ display:flex; flex-direction:column; align-items:center; }
   .side-left{ display:none; }
-  .main-card{ margin: 0 auto; }
-}
+  }
 
 
 /* === Mobile centering fix === */
@@ -357,19 +347,13 @@ body.is-game #answerRow{
   }
 
   /* Keep the card centered and matching --cardw */
-  .main-card{
-    width: var(--cardw) !important;
-    max-width: var(--cardw) !important;
-    margin-left:auto;
-    margin-right:auto;
   }
-}
 
 
 /* --- Seats around card and responsive card sizing --- */
 :root { --card-w: 220px; --card-h: calc(var(--card-w) * 1.181818); } /* 220x260 aspect */
 
-.seats{ display:flex; flex-direction:column; justify-content:space-between; height: var(--card-h); }
+.card.seats{ display:flex; flex-direction:column; justify-content:space-between; height: var(--card-h); }
 .seats-left{ align-items:flex-end; text-align:right; padding-right:8px; }
 .seats-right{ align-items:flex-start; text-align:left; padding-left:8px; }
 .seat-item{ font-size:12px; line-height:1.2; margin:6px 0; white-space:nowrap; color:var(--ink); }
@@ -380,51 +364,15 @@ body.is-game #answerRow{
   .seat-item{ font-size:11px; }
   }
 
-/* === MatchSqr Game Layout, consolidated and definitive === */
-#roomMain {
-  display: grid;
-  width: 476px;
-  margin-left: auto;
-  margin-right: auto;
-  grid-template-columns: 120px 220px 120px;
-  grid-template-areas: 'left card right';
-  gap: 8px;
-  justify-items: center;
-  align-items: start;
-  box-sizing: border-box;
-}
-#sideLeft {
-  grid-area: left;
-  width: 120px; max-width: 120px;
-  justify-self: end; text-align: right;
-  padding-right: 6px; box-sizing: border-box;
-}
-#sideRight {
-  grid-area: right;
-  width: 120px; max-width: 120px;
-  justify-self: start; text-align: left;
-  padding-left: 6px; box-sizing: border-box;
-}
-#mainCard, .card.main-card {
-  grid-area: card;
-  width: 220px; max-width: 220px; height: 260px;
-  position: relative; box-sizing: border-box;
-  justify-self: center;
-}
-#sideLeft > *, #sideRight > * {
-  display: block; margin: 0; max-width: 100%; line-height: 1.15;
-}
+/* === Authoritative game layout, last in file === */
+#roomMain{ display:grid; width:476px; margin-inline:auto; grid-template-columns:120px 220px 120px; gap:8px; justify-items:center; align-items:start; box-sizing:border-box; }
+#sideLeft{ width:120px; max-width:120px; justify-self:end; text-align:right; padding-right:6px; box-sizing:border-box; }
+#sideRight{ width:120px; max-width:120px; justify-self:start; text-align:left; padding-left:6px; box-sizing:border-box; }
+#mainCard{ width:220px; max-width:220px; height:260px; position:relative; box-sizing:border-box; justify-self:center; }
+.card.main-card{ width:220px; max-width:220px; height:260px; }
 
-/* Mobile, widened to ensure activation on common devices */
-@media screen and (max-width: 640px) {
-  #roomMain#roomMain {
-    width: 332px;
-    grid-template-columns: 70px 180px 70px;
-    grid-template-areas: 'left card right';
-    gap: 6px;
-  }
-  #sideLeft#sideLeft, #sideRight#sideRight { width: 70px; max-width: 70px; }
-  #mainCard#mainCard, .card.main-card {
-    width: 180px; max-width: 180px; height: 216px;
-  }
+@media screen and (max-width: 640px){
+  #roomMain{ width:332px; grid-template-columns:70px 180px 70px; gap:6px; }
+  #sideLeft, #sideRight{ width:70px; max-width:70px; }
+  #mainCard, .card.main-card{ width:180px; max-width:180px; height:216px; }
 }
