@@ -371,9 +371,18 @@ body.is-game #answerRow{
 
 .card.main-card{ width: var(--card-w); height: var(--card-h); }
 
-#roomMain{ grid-template-columns: 1fr auto 1fr; gap: 16px;
+#roomMain{
+  display: grid;
+  width: 476px;
+  margin-left: auto;
+  margin-right: auto;
+  grid-template-columns: 120px 220px 120px;
+  gap: 8px;
+  justify-items: center;
   justify-content: center;
+  align-items: start;
 }
+
 
 .seats{ display:flex; flex-direction:column; justify-content:space-between; height: var(--card-h); }
 .seats-left{ align-items:flex-end; text-align:right; padding-right:8px; }
@@ -384,17 +393,43 @@ body.is-game #answerRow{
 @media (max-width: 640px){
   :root{ --card-w: clamp(150px, 42vw, 220px); }
   .seat-item{ font-size:11px; }
-  #roomMain{ grid-template-columns: 1fr auto 1fr; }
+  #roomMain{
+  display: grid;
+  width: 476px;
+  margin-left: auto;
+  margin-right: auto;
+  grid-template-columns: 120px 220px 120px;
+  gap: 8px;
+  justify-items: center;
+  justify-content: center;
+  align-items: start;
 }
 
-#sideLeft {
+}
+
+#sideLeft{
+  width: 120px;
+  max-width: 120px;
   justify-self: end;
   text-align: right;
+  box-sizing: border-box;
 }
 
-#sideRight {
+#sideRight{
+  width: 120px;
+  max-width: 120px;
   justify-self: start;
   text-align: left;
+  box-sizing: border-box;
+}
+
+#mainCard{
+  width: 220px;
+  max-width: 220px;
+  height: 260px;
+  position: relative;
+  box-sizing: border-box;
+  justify-self: center;
 }
 
 #sideLeft > *, #sideRight > * {
@@ -406,26 +441,9 @@ body.is-game #answerRow{
   white-space: nowrap;
 }
 
-
 @media (max-width: 480px){
-  #roomMain { justify-content: center; }
-}
-
-/* === Game grid centering and column anchoring, clean rewrite === */
-#roomMain {
-  width: 476px;
-  margin-left: auto;
-  margin-right: auto;
-  align-items: start;
-  grid-template-columns: 120px 220px 120px;
-  gap: 8px;
-}
-
-#sideLeft { display: block; justify-self: end; text-align: right; }
-#sideRight { display: block; justify-self: start; text-align: left; }
-
-@media (max-width: 480px){
-  #roomMain {
+  .room-wrap{ padding-left: 0; padding-right: 0; }
+  #roomMain{
     width: 332px;
     margin-left: auto;
     margin-right: auto;
@@ -433,4 +451,6 @@ body.is-game #answerRow{
     gap: 6px;
     align-items: start;
   }
+  #sideLeft, #sideRight{ width: 70px; max-width: 70px; }
+  #mainCard{ width: 180px; max-width: 180px; height: 216px; }
 }
