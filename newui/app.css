@@ -402,19 +402,23 @@ body.is-game #answerRow{
 }
 
 
-/* === Minimal top actions row, sits just under header === */
+/* === Top actions row full-bleed under header === */
 .top-actions-row{
   display:flex;
   align-items:center;
   justify-content:flex-end;
   gap:8px;
-  max-width: 860px;
-  margin: 0 auto;
-  padding: 6px 0; /* minimal height, just enough for the button */
+  width:100%;
+  padding: 6px 16px; /* minimal height, slight horizontal padding to match header */
+  box-sizing: border-box;
 }
 @media (max-width: 480px){
   .top-actions-row .btn{ padding:7px 10px; font-size:13px; }
 }
+@media (max-width: 380px){
+  .top-actions-row .btn{ padding:6px 9px; font-size:12px; }
+}
+
 @media (max-width: 380px){
   .top-actions-row .btn{ padding:6px 9px; font-size:12px; }
 }
