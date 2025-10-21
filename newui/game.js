@@ -346,8 +346,7 @@ render(forceFull){
                 this.state.endsAt = g.ends_at || g.endsAt || null;
               }
               await this.refresh();
-            }catch(e){ toast(e.message||'Start failed'); }
-          };
+             };
           const help=document.createElement('div'); help.className='help'; help.id='msLobbyHelp'; help.textContent = enough ? 'Ready to start.' : 'Need at least 2 players to start.';
           wrap.appendChild(startBtn); wrap.appendChild(help);
         }else{
@@ -410,7 +409,7 @@ render(forceFull){
       const role=getRole(this.code); const isHost = role==='host';
       if (isHost && forceFull){
         controls.innerHTML = '<button id="nextCard" class="btn">Reveal next card</button>';
-        $('#nextCard').onclick = async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||"Next failed"); } };
+        $('#nextCard').onclick = async()=>{ try{ await API.next_question(); await this.refresh();  };
 
       }else if (!isHost){ controls.innerHTML=''; }
 
@@ -418,23 +417,26 @@ render(forceFull){
       return;
     }
 
-    if (s.status==='ended'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
-  controls.innerHTML='';
-  // Render seats around the card
-  this.renderSeats();
-  // Put summary inside the main card instead of replacing the whole grid
-  main.innerHTML = '<div style="text-align:center; max-width:640px;">'+
-          '<h3>Summary</h3>'+
-          '<p class="help">The game has ended. You can start a new one from Host page.</p>'+
-          '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">'+
-            '<a class="btn" href="#/host">Host a new game</a>'+
-            '<button id="shareBtn" class="btn secondary">Share</button>'+
-          '</div>'+
-        '</div>';
-      $('#shareBtn').onclick=()=>{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); };;
-  const shareBtn = document.getElementById('shareBtn'); if (shareBtn){ shareBtn.onclick=()=>{ try{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); }catch(_){} }; }
-  return;
-}
+    
+    if (s.status==='ended'){
+      try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}
+      clearHeaderActions();
+      controls.innerHTML='';
+      // Render seats around the card
+      this.renderSeats();
+      // Put summary inside the main card instead of replacing the whole grid
+      main.innerHTML = '<div style="text-align:center; max-width:640px;">'+
+              '<h3>Summary</h3>'+
+              '<p class="help">The game has ended. You can start a new one from Host page.</p>'+
+              '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">'+
+                '<a class="btn" href="#/host">Host a new game</a>'+
+                '<button id="shareBtn" class="btn secondary">Share</button>'+
+              '</div>'+
+            '</div>';
+      $('#shareBtn').onclick=()=>{ try{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); }catch(_){} };
+      return;
+    }
+
   }
 };
 
