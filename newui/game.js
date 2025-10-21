@@ -393,10 +393,7 @@ render(forceFull){
       if (isHost && forceFull){
         controls.innerHTML = '<button id="nextCard" class="btn">Reveal next card</button>';
         $('#nextCard').onclick = async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||"Next failed"); } };
-      }catch(e){ toast(e.message||'Next failed'); } };
-        $('#extendBtn').onclick=()=>{ location.hash='#/billing'; };
-        $('#endAnalyze').onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
-      }else if (!isHost){ controls.innerHTML=''; }
+      } else if (!isHost){ controls.innerHTML=''; }
 
       this.renderTimer();
       return;
