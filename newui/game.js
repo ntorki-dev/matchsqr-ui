@@ -100,7 +100,7 @@ const Game = {
     }
   },
 
-  stop(){ try{ clearHeaderActions(); const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  if(this.poll) clearInterval(this.poll); if(this.tick) clearInterval(this.tick); if(this.hbH) clearInterval(this.hbH); if(this.hbG) clearInterval(this.hbG); },
+  stop(){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  if(this.poll) clearInterval(this.poll); if(this.tick) clearInterval(this.tick); if(this.hbH) clearInterval(this.hbH); if(this.hbG) clearInterval(this.hbG); },
   async refresh(){
     try{
       const out=await API.get_state({ code:this.code });
@@ -303,21 +303,21 @@ const Game = {
   mountHeaderActions(){
     const s=this.state;
     const frag=document.createDocumentFragment();
-    const t=document.createElement('div');
-    t.className='ms-timer';
-    t.id='roomTimer';
-    t.textContent='--:--';
-    frag.appendChild(t);
+    const timer=document.createElement('div');
+    timer.className='ms-timer';
+    timer.id='roomTimer';
+    timer.textContent='--:--';
+    frag.appendChild(timer);
     const role=getRole(this.code);
-    const isHost = role==='host';
+    const isHost=role==='host';
     if (s.status==='running' && isHost){
-      const btn=document.createElement('button');
-      btn.className='btn secondary ms-extend';
-      btn.id='extendBtnHeader';
-      btn.textContent='Extend';
-      btn.onclick=()=>{ location.hash='#/billing'; };
-      frag.appendChild(btn);
-    }
+      const btnExtend=document.createElement('button');
+      btnExtend.className='btn secondary ms-extend';
+      btnExtend.id='extendBtnHeader';
+      btnExtend.textContent='Extend';
+      btnExtend.onclick=()=>{ location.hash='#/billing'; };
+      frag.appendChild(btnExtend);
+      }
     setHeaderActions(frag);
     this.renderTimer();
   },
@@ -326,12 +326,8 @@ render(forceFull){
     const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
     if (!main || !controls) return;
     if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; }
-
-    /* removed legacy in-card timer */
-topRight.id='msTopRight'; topRight.className='top-right-removed'; main.appendChild(topRight); }
-    topRight.innerHTML = (s.status==='running' ? '<span id="roomTimer">--:--</span>' : '');
-
-    if (s.status==='lobby'){ clearHeaderActions(); try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){} 
+/* removed legacy in-card timer */
+    if (s.status==='lobby'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.className='lobby-wrap';
         this.renderSeats();
@@ -367,7 +363,7 @@ topRight.id='msTopRight'; topRight.className='top-right-removed'; main.appendChi
       return;
     }
 
-    if (s.status==='running'){ this.mountHeaderActions(); try{ const tar=document.getElementById('topActionsRow'); if (tar){ const role=getRole(this.code); const isHost=(role==='host'); tar.innerHTML = isHost ? '<button id="endAnalyzeTop" class="btn danger">End game & analyze</button>' : ''; if (isHost){ document.getElementById('endAnalyzeTop').onclick = async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } }; } } }catch(_){}  try{ const tar=document.getElementById('topActionsRow'); if (tar){ const role=getRole(this.code); const isHost=(role==='host'); tar.innerHTML = isHost ? '<button id="endAnalyzeTop" class="btn danger">End game & analyze</button>' : ''; if (isHost){ document.getElementById('endAnalyzeTop').onclick = async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } }; } } }catch(_){} 
+    if (s.status==='running') { try{ const tar=document.getElementById('topActionsRow'); if (tar){ const role=getRole(this.code); const isHost=(role==='host'); tar.innerHTML = isHost ? '<button id="endAnalyzeTop" class="btn danger">End game & analyze</button>' : ''; if (isHost){ document.getElementById('endAnalyzeTop').onclick = async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } }; } } }catch(_){}  this.mountHeaderActions();
       if (forceFull){
         const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
         q.innerHTML = '<h3 style="margin:0 0 8px 0;">'+(s.question?.title || 'Question')+'</h3><p class="help" style="margin:0;">'+(s.question?.text || '')+'</p>';
@@ -414,15 +410,20 @@ topRight.id='msTopRight'; topRight.className='top-right-removed'; main.appendChi
 
       const role=getRole(this.code); const isHost = role==='host';
       if (isHost && forceFull){
-        controls.innerHTML = '<button id="nextCard" class="btn">Reveal next card</button>';
-        $('#nextCard').onclick = async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||"Next failed"); } };
-      } else if (!isHost){ controls.innerHTML=''; }
+        controls.innerHTML=
+          '<button id="nextCard" class="btn">Reveal next card</button>'+
+          '<button id="extendBtn" class="btn secondary" disabled>Extend</button>'+
+          '<button id="endAnalyze" class="btn danger">End and analyze</button>';
+        $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
+        $('#extendBtn').onclick=()=>{ location.hash='#/billing'; };
+        $('#endAnalyze').onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
+      }else if (!isHost){ controls.innerHTML=''; }
 
       this.renderTimer();
       return;
     }
 
-    if (s.status==='ended'){ clearHeaderActions(); try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){} 
+    if (s.status==='ended'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
   controls.innerHTML='';
   // Render seats around the card
   this.renderSeats();
