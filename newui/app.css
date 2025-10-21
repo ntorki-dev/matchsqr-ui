@@ -5,6 +5,14 @@
 a{color:inherit;text-decoration:none}
 .container{max-width:1080px;margin:0 auto;padding:16px}
 
+/* Restore base card styling */
+.card{
+  background:#ffffff;
+  border:1px solid var(--border);
+  border-radius: var(--radius);
+  padding:16px;
+}
+
 /* Header */
 .header{display:flex;align-items:center;justify-content:space-between;max-width:1200px;margin:20px auto 0;padding:0 24px}
 .header .brand{display:flex;align-items:center;gap:10px;font-weight:700}
@@ -36,11 +44,23 @@ a{color:inherit;text-decoration:none}
 .cta-row{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
 .cta{display:inline-flex;align-items:center;gap:10px;background:var(--green);color:#fff;border:0;border-radius:8px;padding:12px 18px;font-weight:700;cursor:pointer}
 .cta img{width:18px;height:18px;object-fit:contain}
+.home-learn{
+  position: static;
+  display: block;
+  margin: 16px 0 0;
+  text-align: left;
+  color: #667085;
+  font-size: 14px;
+  background: transparent;
+  max-width: 720px;
+  padding: 0 16px;
+}
+
 /* Cards / layout */
-.card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:16px}
 .grid{display:grid;gap:16px}
 
 /* Host lobby */
+.host-wrap{max-width:720px;margin:28px auto;padding:0 16px}
 .host-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .inline-actions{display:flex;align-items:center;gap:10px}
 .icon-btn{background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
@@ -52,8 +72,6 @@ a{color:inherit;text-decoration:none}
 /* Game room */
 .room-wrap{max-width:860px;margin:24px auto;padding:0 16px}
 .timer{font-weight:800}
-.main-card{min-height:260px;display:flex;align-items:center;justify-content:center;position:relative}
-
 /* Centered round Start (pre-start) */
 .start-round{width:120px;height:120px;border-radius:60px;background:var(--green);color:#fff;border:0;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 10px 30px rgba(34,164,71,.25)}
 
@@ -91,6 +109,17 @@ a{color:inherit;text-decoration:none}
 }
 
 /* === Learn more: normal flow, only phrase clickable === */
+.home-learn{
+  position: static;
+  display: block;
+  margin: 16px 0 0;
+  text-align: left;
+  color: #667085;
+  font-size: 14px;
+  background: transparent;
+  max-width: 720px;
+  padding: 0 16px;
+}
 .home-learn .learn-link{
   color: #2563eb;
   text-decoration: none;
@@ -103,9 +132,20 @@ a{color:inherit;text-decoration:none}
   .home-hero .globe{ width: 200px; height: 200px; }
   .home-hero h1{ font-size: clamp(20px, 6vw, 28px); }
   .home-hero p{ font-size: clamp(13px, 3.3vw, 16px); }
-  }
+  .home-learn{
+  position: static;
+  display: block;
+  margin: 16px auto 0;
+  text-align: center;
+  color: #667085;
+  font-size: 14px;
+  background: transparent;
+  max-width: 720px;
+  padding: 0 16px;
+}
+}
 
-@media (max-width: 520px){ }
+@media (max-width: 520px){ .home-learn{ font-size: 13px; } }
 
 
 /* Host screen additions */
@@ -126,7 +166,12 @@ a{color:inherit;text-decoration:none}
   gap:10px;
   margin-top: 8px;
 }
-.code-share-row /* Host screen hero layout (card-less) */
+.code-share-row .code-value{
+  font-weight: 800;
+}
+
+/* Host screen hero layout (card-less) */
+.host-wrap{max-width:720px;margin:64px auto;padding:0 16px}
 .host-center{justify-items:center;text-align:center}
 .host-create .cta,
 .host-existing .cta{
@@ -144,7 +189,8 @@ a{color:inherit;text-decoration:none}
   gap:10px;
   margin-top: 10px;
 }
-.code-share-row .small-note{ margin-top: 6px; }
+.code-share-row .code-value{ font-weight: 800; }
+.small-note{ margin-top: 6px; }
 
 /* Host headline, match homepage H1 at 25% smaller */
 .host-wrap .host-lead{
@@ -205,7 +251,16 @@ body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
 
 /* === MOBILE OVERRIDE: Keep Learn more left-aligned on small screens === */
 @media (max-width: 520px){
+  .home-learn{
+    text-align: left !important;
+    margin: 16px 0 0 !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    display: inline-block !important;   /* defeat parent centering */
+    align-self: flex-start !important;   /* if parent is flex */
+    justify-content: flex-start !important;
   }
+}
 
 .answer-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:12px}
 
@@ -238,12 +293,6 @@ body.is-game #answerRow{
 .side-left{ min-width:220px; justify-self:end; }
 
 /* Main card sizing and positioning */
-.main-card{
-  width: var(--cardw);
-  max-width: var(--cardw);
-  position: relative;
-}
-
 /* Timer container inside the card */
 .top-right{
   position:absolute;
@@ -283,8 +332,7 @@ body.is-game #answerRow{
   body.is-game { --cardw: min(90vw, 220px); }
   .room-main{ display:flex; flex-direction:column; align-items:center; }
   .side-left{ display:none; }
-  .main-card{ margin: 0 auto; }
-}
+  }
 
 
 /* === Mobile centering fix === */
@@ -307,23 +355,13 @@ body.is-game #answerRow{
   }
 
   /* Keep the card centered and matching --cardw */
-  .main-card{
-    width: var(--cardw) !important;
-    max-width: var(--cardw) !important;
-    margin-left:auto;
-    margin-right:auto;
   }
-}
 
 
 /* --- Seats around card and responsive card sizing --- */
 :root { --card-w: 220px; --card-h: calc(var(--card-w) * 1.181818); } /* 220x260 aspect */
 
-.card.main-card{ width: var(--card-w); height: var(--card-h); }
-
-#roomMain{ grid-template-columns: 1fr auto 1fr; gap: 16px; }
-
-.seats{ display:flex; flex-direction:column; justify-content:space-between; height: var(--card-h); }
+.card.seats{ display:flex; flex-direction:column; justify-content:space-between; height: var(--card-h); }
 .seats-left{ align-items:flex-end; text-align:right; padding-right:8px; }
 .seats-right{ align-items:flex-start; text-align:left; padding-left:8px; }
 .seat-item{ font-size:12px; line-height:1.2; margin:6px 0; white-space:nowrap; color:var(--ink); }
@@ -332,50 +370,36 @@ body.is-game #answerRow{
 @media (max-width: 640px){
   :root{ --card-w: clamp(150px, 42vw, 220px); }
   .seat-item{ font-size:11px; }
-  #roomMain{ grid-template-columns: 1fr auto 1fr; }
-}
-
-/* === Consolidated: Home Learn === */
-.home-learn{
-  position: static;
-  display: block;
-  margin: 16px 0 0;
-  text-align: left;
-  color: #667085;
-  font-size: 14px;
-  background: transparent;
-  max-width: 720px;
-  padding: 0 16px;
-}
-@media (max-width: 640px){
-  .home-learn{
-    /* Keep aligned left even if parent uses centering or flex */
-    display: inline-block;
-    align-self: flex-start;
-    justify-content: flex-start;
-    font-size: 13px;
   }
+
+/* === Authoritative game layout, last in file === */
+#roomMain{ display:grid; width:476px; margin-inline:auto; grid-template-columns:120px 220px 120px; gap:8px; justify-items:center; align-items:start; box-sizing:border-box; }
+#sideLeft{ width:120px; max-width:120px; justify-self:end; text-align:right; padding-right:6px; box-sizing:border-box; }
+#sideRight{ width:120px; max-width:120px; justify-self:start; text-align:left; padding-left:6px; box-sizing:border-box; }
+#mainCard{ width:220px; max-width:220px; height:260px; position:relative; box-sizing:border-box; justify-self:center; }
+.card.main-card{ width:220px; max-width:220px; height:260px; }
+
+@media screen and (max-width: 640px){
+  #roomMain{ width:332px; grid-template-columns:70px 180px 70px; gap:6px; }
+  #sideLeft, #sideRight{ width:70px; max-width:70px; }
+  #mainCard, .card.main-card{ width:180px; max-width:180px; height:216px; }
 }
 
-/* === Consolidated: Host flow === */
-.host-wrap{ max-width: 720px; margin: 64px auto; padding: 0 16px; }
-@media (max-width: 640px){
-  .host-wrap{ margin: 28px auto; }
-}
 
-/* Canonical: shared emphasis class */
-.code-value{ font-weight: 800; }
-
-
-/* === Header actions slot (non-intrusive) === */
+/* === Match Square: Header Actions Slot (non-intrusive) ===
+   Holds the timer and host buttons in the header center.
+   Prefixed with .ms- to avoid collisions.
+---------------------------------------------------------------- */
+.header{ display:flex; align-items:center; justify-content:space-between; } /* ensure flex container */
 .header .ms-actions{
   flex: 1 1 auto;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: center;   /* timer centered between brand and right cluster */
   gap: 12px;
-  min-height: 40px;
+  min-height: 40px;          /* reserve vertical room so content below never jumps */
 }
+/* Timer typography, inherits white in game header */
 .ms-timer{
   font-weight: 800;
   letter-spacing: 0.5px;
@@ -384,13 +408,27 @@ body.is-game #answerRow{
   line-height: 1;
   color: currentColor;
 }
+
+/* Buttons next to a large timer need slight normalization */
+.header .ms-actions .btn{ line-height: 1.15; }
+.header .ms-actions .btn.ms-end{ white-space: normal; } /* allow soft wrap if needed */
+
+/* Tablet and down */
 @media (max-width: 767px){
-  .header .ms-actions .btn{ padding: 10px 14px; }
+  .header .ms-actions{ gap: 10px; }
+  .header .ms-actions .btn{ padding: 10px 14px; font-size: 14px; }
   .ms-timer{ font-size: clamp(18px, 6vw, 28px); }
 }
-@media (max-width: 430px){
+
+/* Small phones */
+@media (max-width: 480px){
   .header .ms-actions{ gap: 8px; }
-  .header .ms-actions .btn{ padding: 8px 12px; }
-  .ms-timer{ font-size: clamp(16px, 7vw, 24px); }
-  .header .ms-actions .btn.ms-end{ white-space: normal; line-height: 1.2; }
+  .header .ms-actions .btn{ padding: 7px 10px; font-size: 13px; }
+  .ms-timer{ font-size: 18px; }
 }
+
+/* Ultra-small widths, keep order and prevent overflow by allowing soft wrap on the long red button */
+@media (max-width: 380px){
+  .header .ms-actions .btn.ms-end{ max-width: 44vw; }
+}
+
