@@ -385,30 +385,37 @@ body.is-game #answerRow{
   #mainCard, .card.main-card{ width:180px; max-width:180px; height:216px; }
 }
 
-
-/* === Header center slot === */
+/* === Match Square: Header Actions Slot (non-intrusive) === */
 .header{ display:flex; align-items:center; justify-content:space-between; }
-.header .ms-center{
-  flex: 1 1 auto;
-  display:flex; align-items:center; justify-content:center;
-  gap: 12px;
-  min-height: 40px;
+.header .ms-actions{ flex:1 1 auto; display:flex; align-items:center; justify-content:center; gap:12px; min-height:40px; }
+.ms-timer{ font-weight:800; letter-spacing:0.5px; font-variant-numeric:tabular-nums; font-size:clamp(18px,3.8vw,32px); line-height:1; color:currentColor; }
+
+@media (max-width: 430px){
+  .header .ms-actions{ gap:6px; }
+  .header .ms-actions .btn{ padding:6px 9px; font-size:12px; }
+  .ms-timer{ font-size:16px; }
 }
-.ms-timer{ font-weight:800; letter-spacing:0.5px; font-variant-numeric:tabular-nums; line-height:1; color: currentColor; font-size: clamp(18px,3.8vw,32px); }
+@media (max-width: 360px){
+  .header .ms-actions .btn{ padding:5px 8px; font-size:11px; }
+  .header .ms-actions .btn.ms-end{ max-width:48vw; }
+  .ms-timer{ font-size:15px; }
+}
 
-/* Tools row right alignment for End button */
-#toolsRow{ display:flex; align-items:center; justify-content:flex-end; gap: 10px; }
 
-/* Mobile reductions */
+/* === Minimal top actions row, sits just under header === */
+.top-actions-row{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 6px 0; /* minimal height, just enough for the button */
+}
 @media (max-width: 480px){
-  .header .ms-center{ gap:8px; min-height: 36px; }
-  .header .ms-center .btn{ padding:7px 10px; font-size:13px; }
-  .ms-timer{ font-size: 18px; }
-  #toolsRow .btn{ padding:7px 10px; font-size:13px; }
+  .top-actions-row .btn{ padding:7px 10px; font-size:13px; }
 }
-@media (max-width: 400px){
-  .header .ms-center .btn{ padding:6px 9px; font-size:12px; }
-  .ms-timer{ font-size: 16px; }
-  #toolsRow .btn{ padding:6px 9px; font-size:12px; }
+@media (max-width: 380px){
+  .top-actions-row .btn{ padding:6px 9px; font-size:12px; }
 }
 

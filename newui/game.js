@@ -1,6 +1,6 @@
 // game.js
 import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey, inferAndPersistHostRole, getSession } from './api.js';
-import { renderHeader, ensureDebugTray, $, toast, setHeaderCenter, clearHeaderCenter } from './ui.js';
+import { renderHeader, ensureDebugTray, $, toast, setHeaderActions, clearHeaderActions } from './ui.js';
 
 const Game = {
   code:null, poll:null, tick:null, hbH:null, hbG:null,
@@ -100,7 +100,7 @@ const Game = {
     }
   },
 
-  stop(){ try{ clearHeaderCenter(); }catch(_){}  if(this.poll) clearInterval(this.poll); if(this.tick) clearInterval(this.tick); if(this.hbH) clearInterval(this.hbH); if(this.hbG) clearInterval(this.hbG); },
+  stop(){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  if(this.poll) clearInterval(this.poll); if(this.tick) clearInterval(this.tick); if(this.hbH) clearInterval(this.hbH); if(this.hbG) clearInterval(this.hbG); },
   async refresh(){
     try{
       const out=await API.get_state({ code:this.code });
@@ -317,8 +317,8 @@ const Game = {
       btnExtend.textContent='Extend';
       btnExtend.onclick=()=>{ location.hash='#/billing'; };
       frag.appendChild(btnExtend);
-    }
-    setHeaderCenter(frag);
+      }
+    setHeaderActions(frag);
     this.renderTimer();
   },
 
@@ -327,7 +327,7 @@ render(forceFull){
     if (!main || !controls) return;
     if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; }
 /* removed legacy in-card timer */
-    if (s.status==='lobby'){ clearHeaderCenter();
+    if (s.status==='lobby'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.className='lobby-wrap';
         this.renderSeats();
@@ -363,7 +363,7 @@ render(forceFull){
       return;
     }
 
-    if (s.status==='running'){
+    if (s.status==='running'){  try{ const tar=document.getElementById('topActionsRow'); if (tar){     const role=getRole(this.code); const isHost=(role==='host');     if (isHost){ tar.innerHTML = '<button id="endAnalyzeTop" class="btn danger">End game & analyze</button>';       document.getElementById('endAnalyzeTop').onclick = async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } };     } else { tar.innerHTML=''; }   } }catch(_){}  this.mountHeaderActions();
       if (forceFull){
         const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
         q.innerHTML = '<h3 style="margin:0 0 8px 0;">'+(s.question?.title || 'Question')+'</h3><p class="help" style="margin:0;">'+(s.question?.text || '')+'</p>';
@@ -410,16 +410,20 @@ render(forceFull){
 
       const role=getRole(this.code); const isHost = role==='host';
       if (isHost && forceFull){
-        controls.innerHTML = '<button id="nextCard" class="btn">Reveal next card</button>';
-        $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||"Next failed"); } };
-        const tools = $('#toolsRow'); if (tools){ tools.innerHTML = '<button id="endAnalyzeTools" class="btn danger">End game & analyze</button>'; $('#endAnalyzeTools').onclick = async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } }; }
-      } else if (!isHost){ controls.innerHTML=''; }
+        controls.innerHTML=
+          '<button id="nextCard" class="btn">Reveal next card</button>'+
+          '<button id="extendBtn" class="btn secondary" disabled>Extend</button>'+
+          '<button id="endAnalyze" class="btn danger">End and analyze</button>';
+        $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
+        $('#extendBtn').onclick=()=>{ location.hash='#/billing'; };
+        $('#endAnalyze').onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
+      }else if (!isHost){ controls.innerHTML=''; }
 
       this.renderTimer();
       return;
     }
 
-    if (s.status==='ended'){ clearHeaderCenter();
+    if (s.status==='ended'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
   controls.innerHTML='';
   // Render seats around the card
   this.renderSeats();
@@ -445,7 +449,8 @@ export async function render(ctx){
   app.innerHTML=
     '<div class="offline-banner">You are offline. Trying to reconnect…</div>'+
     '<div class="room-wrap">'+
-      '<div class="controls-row" id="controlsRow"></div>'+
+      '<div class="top-actions-row" id="topActionsRow"></div>
+      <div class="controls-row" id="controlsRow"></div>'+
       '<div id="roomMain">'+
         '<div id="sideLeft"></div>'+
         '<div class="card main-card" id="mainCard"></div>'+
