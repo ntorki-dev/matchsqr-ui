@@ -79,6 +79,7 @@ export async function renderHeader(){
   const headerHTML = `
     <div class="header">
       <a class="brand" href="#/"><img src="./assets/logo.png" alt="logo"/><span>MatchSqr</span></a>
+      <div class="center" id="hdrActions"></div>
       <div class="right" id="hdrRight">
         ${rightInitial}
       </div>
@@ -229,3 +230,25 @@ export function ensureFooter(){
     mo.observe(document.documentElement, { childList: true, subtree: true });
   } catch (_e) {}
 })();
+
+
+/* added by assistant */
+export function setHeaderActions(nodeOrHtml){
+  try{
+    const slot = document.getElementById('hdrActions');
+    if (!slot) return;
+    slot.innerHTML = '';
+    if (!nodeOrHtml) return;
+    if (typeof nodeOrHtml === 'string'){
+      slot.innerHTML = nodeOrHtml;
+    } else {
+      slot.appendChild(nodeOrHtml);
+    }
+  }catch(_){}
+}
+export function clearHeaderActions(){
+  try{
+    const slot = document.getElementById('hdrActions');
+    if (slot) slot.innerHTML = '';
+  }catch(_){}
+}

@@ -1,11 +1,51 @@
 // game.js
 import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey, inferAndPersistHostRole, getSession } from './api.js';
-import { renderHeader, ensureDebugTray, $, toast } from './ui.js';
+import { renderHeader, ensureDebugTray, $, toast, setHeaderActions, clearHeaderActions } from './ui.js';
 
 const Game = {
   code:null, poll:null, tick:null, hbH:null, hbG:null,
   state:{ status:'lobby', endsAt:null, participants:[], question:null, current_turn:null, host_user_id:null },
   ui:{ lastSig:'', ansVisible:false, draft:'' },
+
+  _buildHeaderActions(isHost){
+    const frag = document.createElement('div');
+    frag.className = 'hdr-game-actions';
+    const t = document.createElement('div');
+    t.id = 'roomTimer';
+    t.className = 'game-timer';
+    t.textContent = '--:--';
+    frag.appendChild(t);
+    if (isHost){
+      const btnExtend = document.createElement('button');
+      btnExtend.id = 'extendBtn';
+      btnExtend.className = 'btn secondary';
+      btnExtend.textContent = 'Extend';
+      frag.appendChild(btnExtend);
+      const btnEnd = document.createElement('button');
+      btnEnd.id = 'endAnalyze';
+      btnEnd.className = 'btn danger';
+      btnEnd.textContent = 'End game & analyze';
+      frag.appendChild(btnEnd);
+    }
+    return frag;
+  },
+  _mountHeader(isHost){
+    try{
+      const frag = this._buildHeaderActions(!!isHost);
+      setHeaderActions(frag);
+      if (isHost){
+        const ex = document.getElementById('extendBtn');
+        const en = document.getElementById('endAnalyze');
+        if (ex) ex.onclick = ()=>{ location.hash = '#/billing'; };
+        if (en) en.onclick = async ()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
+      }
+      this.renderTimer();
+    }catch(_){}
+  },
+  _clearHeader(){
+    try{ clearHeaderActions(); }catch(_){}
+  },
+
 
   // --- Heartbeat diagnostics state (added) ---
   __hb:{ host:{fails:0,lastErr:null,lastStatus:null,lastAt:null}, guest:{fails:0,lastErr:null,lastStatus:null,lastAt:null}, logs:0, maxLogs:10 },
@@ -83,6 +123,7 @@ const Game = {
         if (!this.__finalBeatInstalled){
           window.addEventListener('pagehide', finalBeat, { capture:true });
           window.addEventListener('beforeunload', finalBeat, { capture:true });
+          window.addEventListener('pagehide', ()=>{ try{ clearHeaderActions(); }catch(_){ } }, { capture:true });
           this.__finalBeatInstalled = true;
         }
       } catch {}
@@ -392,18 +433,16 @@ render(forceFull){
       const role=getRole(this.code); const isHost = role==='host';
       if (isHost && forceFull){
         controls.innerHTML=
-          '<button id="nextCard" class="btn">Reveal next card</button>'+
-          '<button id="extendBtn" class="btn secondary" disabled>Extend</button>'+
-          '<button id="endAnalyze" class="btn danger">End and analyze</button>';
+          '<button id="nextCard" class="btn">Reveal next card</button>';
         $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
-        $('#extendBtn').onclick=()=>{ location.hash='#/billing'; };
-        $('#endAnalyze').onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
+        this._mountHeader(true);
       }else if (!isHost){ controls.innerHTML=''; }
 
       this.renderTimer();
       return;
     }
 
+    this._clearHeader();
     if (s.status==='ended'){
   controls.innerHTML='';
   // Render seats around the card

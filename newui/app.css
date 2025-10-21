@@ -365,3 +365,24 @@ body.is-game #answerRow{
 
 /* Canonical: shared emphasis class */
 .code-value{ font-weight: 800; }
+
+
+/* Header center actions area for game controls */
+.header .center{flex:1;display:flex;align-items:center;justify-content:center;gap:12px;min-width:0}
+.header .center .game-timer{font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;font-weight:700;font-size:28px;line-height:1;color:#ffffff}
+.header .center .btn{white-space:nowrap}
+
+/* Responsive rules */
+@media (max-width: 767px){
+  .header{flex-wrap:wrap;row-gap:8px}
+  .header .brand{order:1}
+  .header .center{order:2;width:100%;justify-content:center}
+  .header .right{order:3;margin-left:auto}
+  .header .center .game-timer{font-size:26px}
+  .header .center .btn{padding-left:10px;padding-right:10px}
+}
+@media (max-width: 429px){
+  .header .center .game-timer{font-size:24px}
+  /* allow soft wrap inside long button label without shrinking tap target */
+  .header .center .btn{white-space:normal;line-height:1.15}
+}
