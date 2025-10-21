@@ -386,7 +386,7 @@ body.is-game #answerRow{
 }
 
 
-/* === Final alignment: timer+extend center, end button right === */
+/* === Header center slot === */
 .header{ display:flex; align-items:center; justify-content:space-between; }
 .header .ms-center{
   flex: 1 1 auto;
@@ -396,31 +396,19 @@ body.is-game #answerRow{
 }
 .ms-timer{ font-weight:800; letter-spacing:0.5px; font-variant-numeric:tabular-nums; line-height:1; color: currentColor; font-size: clamp(18px,3.8vw,32px); }
 
-#hdrRight{ display:flex; align-items:center; gap:12px; }
-#hdrRight .ms-actions-right{ display:flex; align-items:center; gap:12px; margin-right:6px; }
+/* Tools row right alignment for End button */
+#toolsRow{ display:flex; align-items:center; justify-content:flex-end; gap: 10px; }
 
-/* Tablet down */
-@media (max-width: 767px){
-  .header .ms-center{ gap:10px; }
-  .header .ms-center .btn{ padding:10px 14px; font-size:14px; }
-  #hdrRight .ms-actions-right .btn{ padding:10px 14px; font-size:14px; }
-  .ms-timer{ font-size: clamp(18px, 6vw, 28px); }
-}
-
-/* Small phones */
+/* Mobile reductions */
 @media (max-width: 480px){
   .header .ms-center{ gap:8px; min-height: 36px; }
   .header .ms-center .btn{ padding:7px 10px; font-size:13px; }
-  #hdrRight .ms-actions-right{ gap:8px; }
-  #hdrRight .ms-actions-right .btn{ padding:7px 10px; font-size:13px; }
   .ms-timer{ font-size: 18px; }
+  #toolsRow .btn{ padding:7px 10px; font-size:13px; }
 }
-
-/* Very small phones */
 @media (max-width: 400px){
   .header .ms-center .btn{ padding:6px 9px; font-size:12px; }
-  #hdrRight .ms-actions-right .btn{ padding:6px 9px; font-size:12px; }
-  #hdrRight .ms-actions-right .btn.ms-end{ max-width: 44vw; white-space: normal; line-height: 1.2; }
   .ms-timer{ font-size: 16px; }
+  #toolsRow .btn{ padding:6px 9px; font-size:12px; }
 }
 

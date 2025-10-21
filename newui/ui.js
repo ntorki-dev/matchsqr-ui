@@ -231,7 +231,6 @@ export function ensureFooter(){
   } catch (_e) {}
 })();
 
-
 export function setHeaderCenter(nodeOrHtml){
   const slot = document.getElementById('msHeaderCenter');
   if (!slot) return;
@@ -248,29 +247,4 @@ export function clearHeaderCenter(){
   const slot = document.getElementById('msHeaderCenter');
   if (!slot) return;
   while (slot.firstChild) slot.removeChild(slot.firstChild);
-}
-export function setHeaderRightActions(nodeOrHtml){
-  const right = document.getElementById('hdrRight');
-  if (!right) return;
-  let wrap = right.querySelector('.ms-actions-right');
-  if (!wrap){
-    wrap = document.createElement('div');
-    wrap.className = 'ms-actions-right';
-    right.prepend(wrap); // ensures these appear before Login/Profile
-  }else{
-    while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
-  }
-  if (!nodeOrHtml) return;
-  if (typeof nodeOrHtml==='string') wrap.insertAdjacentHTML('afterbegin', nodeOrHtml);
-  else if (nodeOrHtml instanceof Node) wrap.appendChild(nodeOrHtml);
-  else if (Array.isArray(nodeOrHtml)) nodeOrHtml.forEach(n=>{
-    if (typeof n==='string') wrap.insertAdjacentHTML('beforeend', n);
-    else if (n instanceof Node) wrap.appendChild(n);
-  });
-}
-export function clearHeaderRightActions(){
-  const right = document.getElementById('hdrRight');
-  if (!right) return;
-  const wrap = right.querySelector('.ms-actions-right');
-  if (wrap){ while (wrap.firstChild) wrap.removeChild(wrap.firstChild); }
 }
