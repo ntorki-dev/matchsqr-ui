@@ -79,7 +79,7 @@ export async function renderHeader(){
   const headerHTML = `
     <div class="header">
       <a class="brand" href="#/"><img src="./assets/logo.png" alt="logo"/><span>MatchSqr</span></a>
-      <div class="center" id="hdrActions"></div>
+      <div class="ms-actions" id="msHeaderActions" aria-live="polite"></div>
       <div class="right" id="hdrRight">
         ${rightInitial}
       </div>
@@ -232,23 +232,24 @@ export function ensureFooter(){
 })();
 
 
-/* added by assistant */
 export function setHeaderActions(nodeOrHtml){
-  try{
-    const slot = document.getElementById('hdrActions');
-    if (!slot) return;
-    slot.innerHTML = '';
-    if (!nodeOrHtml) return;
-    if (typeof nodeOrHtml === 'string'){
-      slot.innerHTML = nodeOrHtml;
-    } else {
-      slot.appendChild(nodeOrHtml);
-    }
-  }catch(_){}
+  const slot = document.getElementById('msHeaderActions');
+  if (!slot) return;
+  while (slot.firstChild) slot.removeChild(slot.firstChild);
+  if (!nodeOrHtml) return;
+  if (typeof nodeOrHtml === 'string'){
+    slot.insertAdjacentHTML('afterbegin', nodeOrHtml);
+  } else if (nodeOrHtml instanceof Node){
+    slot.appendChild(nodeOrHtml);
+  } else if (Array.isArray(nodeOrHtml)){
+    nodeOrHtml.forEach(n=>{
+      if (typeof n === 'string') slot.insertAdjacentHTML('beforeend', n);
+      else if (n instanceof Node) slot.appendChild(n);
+    });
+  }
 }
 export function clearHeaderActions(){
-  try{
-    const slot = document.getElementById('hdrActions');
-    if (slot) slot.innerHTML = '';
-  }catch(_){}
+  const slot = document.getElementById('msHeaderActions');
+  if (!slot) return;
+  while (slot.firstChild) slot.removeChild(slot.firstChild);
 }

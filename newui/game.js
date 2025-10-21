@@ -7,46 +7,6 @@ const Game = {
   state:{ status:'lobby', endsAt:null, participants:[], question:null, current_turn:null, host_user_id:null },
   ui:{ lastSig:'', ansVisible:false, draft:'' },
 
-  _buildHeaderActions(isHost){
-    const frag = document.createElement('div');
-    frag.className = 'hdr-game-actions';
-    const t = document.createElement('div');
-    t.id = 'roomTimer';
-    t.className = 'game-timer';
-    t.textContent = '--:--';
-    frag.appendChild(t);
-    if (isHost){
-      const btnExtend = document.createElement('button');
-      btnExtend.id = 'extendBtn';
-      btnExtend.className = 'btn secondary';
-      btnExtend.textContent = 'Extend';
-      frag.appendChild(btnExtend);
-      const btnEnd = document.createElement('button');
-      btnEnd.id = 'endAnalyze';
-      btnEnd.className = 'btn danger';
-      btnEnd.textContent = 'End game & analyze';
-      frag.appendChild(btnEnd);
-    }
-    return frag;
-  },
-  _mountHeader(isHost){
-    try{
-      const frag = this._buildHeaderActions(!!isHost);
-      setHeaderActions(frag);
-      if (isHost){
-        const ex = document.getElementById('extendBtn');
-        const en = document.getElementById('endAnalyze');
-        if (ex) ex.onclick = ()=>{ location.hash = '#/billing'; };
-        if (en) en.onclick = async ()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
-      }
-      this.renderTimer();
-    }catch(_){}
-  },
-  _clearHeader(){
-    try{ clearHeaderActions(); }catch(_){}
-  },
-
-
   // --- Heartbeat diagnostics state (added) ---
   __hb:{ host:{fails:0,lastErr:null,lastStatus:null,lastAt:null}, guest:{fails:0,lastErr:null,lastStatus:null,lastAt:null}, logs:0, maxLogs:10 },
 
@@ -123,7 +83,6 @@ const Game = {
         if (!this.__finalBeatInstalled){
           window.addEventListener('pagehide', finalBeat, { capture:true });
           window.addEventListener('beforeunload', finalBeat, { capture:true });
-          window.addEventListener('pagehide', ()=>{ try{ clearHeaderActions(); }catch(_){ } }, { capture:true });
           this.__finalBeatInstalled = true;
         }
       } catch {}
@@ -141,7 +100,7 @@ const Game = {
     }
   },
 
-  stop(){ if(this.poll) clearInterval(this.poll); if(this.tick) clearInterval(this.tick); if(this.hbH) clearInterval(this.hbH); if(this.hbG) clearInterval(this.hbG); },
+  stop(){ if(this.poll) clearInterval(this.poll); if(this.tick) clearInterval(this.tick); if(this.hbH) clearInterval(this.hbH); if(this.hbG) clearInterval(this.hbG); try{ clearHeaderActions(); }catch(_){} },
   async refresh(){
     try{
       const out=await API.get_state({ code:this.code });
@@ -340,6 +299,37 @@ const Game = {
     });
     
   },
+
+  mountHeaderActions(){
+    const s=this.state;
+    const frag = document.createDocumentFragment();
+    const timer = document.createElement('div');
+    timer.className = 'ms-timer';
+    timer.id = 'roomTimer';
+    timer.textContent='--:--';
+    frag.appendChild(timer);
+
+    const role=getRole(this.code);
+    const isHost = role==='host';
+    if (s.status==='running' && isHost){
+      const btnExtend = document.createElement('button');
+      btnExtend.className='btn secondary ms-extend';
+      btnExtend.id='extendBtnHeader';
+      btnExtend.textContent='Extend';
+      btnExtend.onclick=()=>{ location.hash = '#/billing'; };
+      frag.appendChild(btnExtend);
+
+      const btnEnd = document.createElement('button');
+      btnEnd.className='btn danger ms-end';
+      btnEnd.id='endAnalyzeHeader';
+      btnEnd.textContent='End game & analyze';
+      btnEnd.onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
+      frag.appendChild(btnEnd);
+    }
+    setHeaderActions(frag);
+    this.renderTimer();
+  }
+
 render(forceFull){
     const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
     if (!main || !controls) return;
@@ -349,7 +339,7 @@ render(forceFull){
     if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.className='top-right'; main.appendChild(topRight); }
     topRight.innerHTML = (s.status==='running' ? '<span id="roomTimer">--:--</span>' : '');
 
-    if (s.status==='lobby'){
+    if (s.status==='lobby'){ clearHeaderActions();
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.className='lobby-wrap';
         this.renderSeats();
@@ -385,7 +375,7 @@ render(forceFull){
       return;
     }
 
-    if (s.status==='running'){
+    if (s.status==='running'){ this.mountHeaderActions();
       if (forceFull){
         const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
         q.innerHTML = '<h3 style="margin:0 0 8px 0;">'+(s.question?.title || 'Question')+'</h3><p class="help" style="margin:0;">'+(s.question?.text || '')+'</p>';
@@ -435,15 +425,13 @@ render(forceFull){
         controls.innerHTML=
           '<button id="nextCard" class="btn">Reveal next card</button>';
         $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
-        this._mountHeader(true);
-      }else if (!isHost){ controls.innerHTML=''; }
+      } else if (!isHost){ controls.innerHTML=''; }
 
       this.renderTimer();
       return;
     }
 
-    this._clearHeader();
-    if (s.status==='ended'){
+    if (s.status==='ended'){ clearHeaderActions();
   controls.innerHTML='';
   // Render seats around the card
   this.renderSeats();
