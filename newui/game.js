@@ -1,6 +1,6 @@
 // game.js
 import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey, inferAndPersistHostRole, getSession } from './api.js';
-import { renderHeader, ensureDebugTray, $, toast, setHeaderActions, clearHeaderActions } from './ui.js';
+import { renderHeader, ensureDebugTray, $, toast } from './ui.js';
 
 const Game = {
   code:null, poll:null, tick:null, hbH:null, hbG:null,
@@ -299,35 +299,16 @@ const Game = {
     });
     
   },
-
-  mountHeaderActions(){
-    const s=this.state;
-    const frag=document.createDocumentFragment();
-    const timer=document.createElement('div');
-    timer.className='ms-timer';
-    timer.id='roomTimer';
-    timer.textContent='--:--';
-    frag.appendChild(timer);
-    const role=getRole(this.code);
-    const isHost=role==='host';
-    if (s.status==='running' && isHost){
-      const btnExtend=document.createElement('button');
-      btnExtend.className='btn secondary ms-extend';
-      btnExtend.id='extendBtnHeader';
-      btnExtend.textContent='Extend';
-      btnExtend.onclick=()=>{ location.hash='#/billing'; };
-      frag.appendChild(btnExtend);
-      }
-    setHeaderActions(frag);
-    this.renderTimer();
-  },
-
 render(forceFull){
     const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
     if (!main || !controls) return;
     if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; }
-/* removed legacy in-card timer */
-    if (s.status==='lobby'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
+
+    let topRight=$('#msTopRight');
+    if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.className='top-right'; main.appendChild(topRight); }
+    topRight.innerHTML = (s.status==='running' ? '<span id="roomTimer">--:--</span>' : '');
+
+    if (s.status==='lobby'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){} 
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.className='lobby-wrap';
         this.renderSeats();
@@ -363,7 +344,7 @@ render(forceFull){
       return;
     }
 
-    if (s.status==='running') { try{ const tar=document.getElementById('topActionsRow'); if (tar){ const role=getRole(this.code); const isHost=(role==='host'); tar.innerHTML = isHost ? '<button id="endAnalyzeTop" class="btn danger">End game & analyze</button>' : ''; if (isHost){ document.getElementById('endAnalyzeTop').onclick = async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } }; } } }catch(_){}  this.mountHeaderActions();
+    if (s.status==='running'){ try{ const tar=document.getElementById('topActionsRow'); if (tar){ const role=getRole(this.code); const isHost=(role==='host'); tar.innerHTML = isHost ? '<button id="endAnalyzeTop" class="btn danger">End game & analyze</button>' : ''; if (isHost){ document.getElementById('endAnalyzeTop').onclick = async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } }; } } }catch(_){} 
       if (forceFull){
         const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
         q.innerHTML = '<h3 style="margin:0 0 8px 0;">'+(s.question?.title || 'Question')+'</h3><p class="help" style="margin:0;">'+(s.question?.text || '')+'</p>';
@@ -410,11 +391,9 @@ render(forceFull){
 
       const role=getRole(this.code); const isHost = role==='host';
       if (isHost && forceFull){
-        controls.innerHTML=
-          '<button id="nextCard" class="btn">Reveal next card</button>'+
-          '<button id="extendBtn" class="btn secondary" disabled>Extend</button>'+
-          '<button id="endAnalyze" class="btn danger">End and analyze</button>';
-        $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
+        controls.innerHTML = '<button id="nextCard" class="btn">Reveal next card</button>';
+        $('#nextCard').onclick = async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||"Next failed"); } };
+      }catch(e){ toast(e.message||'Next failed'); } };
         $('#extendBtn').onclick=()=>{ location.hash='#/billing'; };
         $('#endAnalyze').onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
       }else if (!isHost){ controls.innerHTML=''; }
@@ -423,7 +402,7 @@ render(forceFull){
       return;
     }
 
-    if (s.status==='ended'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
+    if (s.status==='ended'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){} 
   controls.innerHTML='';
   // Render seats around the card
   this.renderSeats();
@@ -448,8 +427,8 @@ export async function render(ctx){
   const app=document.getElementById('app');
   app.innerHTML=
     '<div class="offline-banner">You are offline. Trying to reconnect…</div>'+
-    '<div class="top-actions-row" id="topActionsRow"></div>'+
-      '<div class="room-wrap">'+
+    '<div class="top-actions-row" id="topActionsRow"></div>
+      <div class="room-wrap">'+
       '<div class="controls-row" id="controlsRow"></div>'+
       '<div id="roomMain">'+
         '<div id="sideLeft"></div>'+
