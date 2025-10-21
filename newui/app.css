@@ -386,49 +386,41 @@ body.is-game #answerRow{
 }
 
 
-/* === Match Square: Header Actions Slot (non-intrusive) ===
-   Holds the timer and host buttons in the header center.
-   Prefixed with .ms- to avoid collisions.
----------------------------------------------------------------- */
-.header{ display:flex; align-items:center; justify-content:space-between; } /* ensure flex container */
-.header .ms-actions{
+/* === Final alignment: timer+extend center, end button right === */
+.header{ display:flex; align-items:center; justify-content:space-between; }
+.header .ms-center{
   flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;   /* timer centered between brand and right cluster */
+  display:flex; align-items:center; justify-content:center;
   gap: 12px;
-  min-height: 40px;          /* reserve vertical room so content below never jumps */
+  min-height: 40px;
 }
-/* Timer typography, inherits white in game header */
-.ms-timer{
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  font-variant-numeric: tabular-nums;
-  font-size: clamp(18px, 3.8vw, 32px);
-  line-height: 1;
-  color: currentColor;
-}
+.ms-timer{ font-weight:800; letter-spacing:0.5px; font-variant-numeric:tabular-nums; line-height:1; color: currentColor; font-size: clamp(18px,3.8vw,32px); }
 
-/* Buttons next to a large timer need slight normalization */
-.header .ms-actions .btn{ line-height: 1.15; }
-.header .ms-actions .btn.ms-end{ white-space: normal; } /* allow soft wrap if needed */
+#hdrRight{ display:flex; align-items:center; gap:12px; }
+#hdrRight .ms-actions-right{ display:flex; align-items:center; gap:12px; margin-right:6px; }
 
-/* Tablet and down */
+/* Tablet down */
 @media (max-width: 767px){
-  .header .ms-actions{ gap: 10px; }
-  .header .ms-actions .btn{ padding: 10px 14px; font-size: 14px; }
+  .header .ms-center{ gap:10px; }
+  .header .ms-center .btn{ padding:10px 14px; font-size:14px; }
+  #hdrRight .ms-actions-right .btn{ padding:10px 14px; font-size:14px; }
   .ms-timer{ font-size: clamp(18px, 6vw, 28px); }
 }
 
 /* Small phones */
 @media (max-width: 480px){
-  .header .ms-actions{ gap: 8px; }
-  .header .ms-actions .btn{ padding: 7px 10px; font-size: 13px; }
+  .header .ms-center{ gap:8px; min-height: 36px; }
+  .header .ms-center .btn{ padding:7px 10px; font-size:13px; }
+  #hdrRight .ms-actions-right{ gap:8px; }
+  #hdrRight .ms-actions-right .btn{ padding:7px 10px; font-size:13px; }
   .ms-timer{ font-size: 18px; }
 }
 
-/* Ultra-small widths, keep order and prevent overflow by allowing soft wrap on the long red button */
-@media (max-width: 380px){
-  .header .ms-actions .btn.ms-end{ max-width: 44vw; }
+/* Very small phones */
+@media (max-width: 400px){
+  .header .ms-center .btn{ padding:6px 9px; font-size:12px; }
+  #hdrRight .ms-actions-right .btn{ padding:6px 9px; font-size:12px; }
+  #hdrRight .ms-actions-right .btn.ms-end{ max-width: 44vw; white-space: normal; line-height: 1.2; }
+  .ms-timer{ font-size: 16px; }
 }
 

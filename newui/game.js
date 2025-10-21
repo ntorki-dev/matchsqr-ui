@@ -1,6 +1,6 @@
 // game.js
 import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey, inferAndPersistHostRole, getSession } from './api.js';
-import { renderHeader, ensureDebugTray, $, toast, setHeaderActions, clearHeaderActions } from './ui.js';
+import { renderHeader, ensureDebugTray, $, toast, setHeaderCenter, clearHeaderCenter, setHeaderRightActions, clearHeaderRightActions } from './ui.js';
 
 const Game = {
   code:null, poll:null, tick:null, hbH:null, hbG:null,
@@ -100,7 +100,7 @@ const Game = {
     }
   },
 
-  stop(){ if(this.poll) clearInterval(this.poll); if(this.tick) clearInterval(this.tick); if(this.hbH) clearInterval(this.hbH); if(this.hbG) clearInterval(this.hbG); try{ clearHeaderActions(); }catch(_){} },
+  stop(){ try{ clearHeaderCenter(); clearHeaderRightActions(); }catch(_){}  if(this.poll) clearInterval(this.poll); if(this.tick) clearInterval(this.tick); if(this.hbH) clearInterval(this.hbH); if(this.hbG) clearInterval(this.hbG); },
   async refresh(){
     try{
       const out=await API.get_state({ code:this.code });
@@ -302,31 +302,35 @@ const Game = {
 
   mountHeaderActions(){
     const s=this.state;
-    const frag = document.createDocumentFragment();
-    const timer = document.createElement('div');
-    timer.className = 'ms-timer';
-    timer.id = 'roomTimer';
+    const fragCenter=document.createDocumentFragment();
+    const timer=document.createElement('div');
+    timer.className='ms-timer';
+    timer.id='roomTimer';
     timer.textContent='--:--';
-    frag.appendChild(timer);
-
+    fragCenter.appendChild(timer);
     const role=getRole(this.code);
-    const isHost = role==='host';
+    const isHost=role==='host';
     if (s.status==='running' && isHost){
-      const btnExtend = document.createElement('button');
+      const btnExtend=document.createElement('button');
       btnExtend.className='btn secondary ms-extend';
       btnExtend.id='extendBtnHeader';
       btnExtend.textContent='Extend';
-      btnExtend.onclick=()=>{ location.hash = '#/billing'; };
-      frag.appendChild(btnExtend);
-
-      const btnEnd = document.createElement('button');
+      btnExtend.onclick=()=>{ location.hash='#/billing'; };
+      fragCenter.appendChild(btnExtend);
+    }
+    setHeaderCenter(fragCenter);
+    if (s.status==='running' && isHost){
+      const fragRight=document.createDocumentFragment();
+      const btnEnd=document.createElement('button');
       btnEnd.className='btn danger ms-end';
       btnEnd.id='endAnalyzeHeader';
       btnEnd.textContent='End game & analyze';
       btnEnd.onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
-      frag.appendChild(btnEnd);
+      fragRight.appendChild(btnEnd);
+      setHeaderRightActions(fragRight);
+    }else{
+      clearHeaderRightActions();
     }
-    setHeaderActions(frag);
     this.renderTimer();
   },
 
@@ -334,12 +338,8 @@ render(forceFull){
     const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
     if (!main || !controls) return;
     if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; }
-
-    let topRight=$('#msTopRight');
-    if (!topRight){ topRight=document.createElement('div'); topRight.id='msTopRight'; topRight.className='top-right'; main.appendChild(topRight); }
-    topRight.innerHTML = (s.status==='running' ? '<span id="roomTimer">--:--</span>' : '');
-
-    if (s.status==='lobby'){ clearHeaderActions();
+/* removed legacy in-card timer */
+    if (s.status==='lobby'){ clearHeaderCenter(); clearHeaderRightActions();
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.className='lobby-wrap';
         this.renderSeats();
@@ -423,15 +423,19 @@ render(forceFull){
       const role=getRole(this.code); const isHost = role==='host';
       if (isHost && forceFull){
         controls.innerHTML=
-          '<button id="nextCard" class="btn">Reveal next card</button>';
+          '<button id="nextCard" class="btn">Reveal next card</button>'+
+          '<button id="extendBtn" class="btn secondary" disabled>Extend</button>'+
+          '<button id="endAnalyze" class="btn danger">End and analyze</button>';
         $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
-      } else if (!isHost){ controls.innerHTML=''; }
+        $('#extendBtn').onclick=()=>{ location.hash='#/billing'; };
+        $('#endAnalyze').onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
+      }else if (!isHost){ controls.innerHTML=''; }
 
       this.renderTimer();
       return;
     }
 
-    if (s.status==='ended'){ clearHeaderActions();
+    if (s.status==='ended'){ clearHeaderCenter(); clearHeaderRightActions();
   controls.innerHTML='';
   // Render seats around the card
   this.renderSeats();
