@@ -363,7 +363,6 @@ render(forceFull){
       return;
     }
 
-    if (s.status==='running') { try{ const tar=document.getElementById('topActionsRow'); if (tar){ const role=getRole(this.code); const isHost=(role==='host'); tar.innerHTML = isHost ? '<button id="endAnalyzeTop" class="btn danger">End game & analyze</button>' : ''; if (isHost){ document.getElementById('endAnalyzeTop').onclick = async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } }; } } }catch(_){}  this.mountHeaderActions();
       if (forceFull){
         const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
         q.innerHTML = '<h3 style="margin:0 0 8px 0;">'+(s.question?.title || 'Question')+'</h3><p class="help" style="margin:0;">'+(s.question?.text || '')+'</p>';
@@ -410,13 +409,9 @@ render(forceFull){
 
       const role=getRole(this.code); const isHost = role==='host';
       if (isHost && forceFull){
-        controls.innerHTML=
-          '<button id="nextCard" class="btn">Reveal next card</button>'+
-          '<button id="extendBtn" class="btn secondary" disabled>Extend</button>'+
-          '<button id="endAnalyze" class="btn danger">End and analyze</button>';
-        $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
-        $('#extendBtn').onclick=()=>{ location.hash='#/billing'; };
-        $('#endAnalyze').onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
+        controls.innerHTML = '<button id="nextCard" class="btn">Reveal next card</button>';
+        $('#nextCard').onclick = async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||"Next failed"); } };
+      }catch(e){ toast(e.message||'Next failed'); } };
       }else if (!isHost){ controls.innerHTML=''; }
 
       this.renderTimer();
