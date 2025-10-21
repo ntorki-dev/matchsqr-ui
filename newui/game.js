@@ -328,7 +328,7 @@ const Game = {
     }
     setHeaderActions(frag);
     this.renderTimer();
-  }
+  },
 
 render(forceFull){
     const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
