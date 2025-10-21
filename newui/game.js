@@ -427,8 +427,8 @@ export async function render(ctx){
   const app=document.getElementById('app');
   app.innerHTML=
     '<div class="offline-banner">You are offline. Trying to reconnect…</div>'+
-    '<div class="top-actions-row" id="topActionsRow"></div>
-      <div class="room-wrap">'+
+    '<div class="top-actions-row" id="topActionsRow"></div>'+
+      '<div class="room-wrap">'+
       '<div class="controls-row" id="controlsRow"></div>'+
       '<div id="roomMain">'+
         '<div id="sideLeft"></div>'+
