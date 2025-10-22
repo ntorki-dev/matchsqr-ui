@@ -411,7 +411,7 @@ render(forceFull){
       const role=getRole(this.code); const isHost = role==='host';
       if (isHost && forceFull){
         controls.innerHTML=
-          '<button id="nextCard" class="cta"><img src="./assets/next-arrow.png" alt="Next"/><span>Next Card</span></button>';
+          '<button id="nextCard" class="cta"><img src="./assets/next-card.png" alt="Next"/><span>Next Card</span></button>';
         $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
       }else if (!isHost){ controls.innerHTML=''; }
 
