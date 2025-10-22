@@ -446,14 +446,14 @@ body.is-game #answerRow{
 }
 
 .seat-initials{
-  width:50px;
-  height:50px;
+  width:40px;
+  height:40px;
   border-radius:50%;
   display:flex;
   align-items:center;
   justify-content:center;
   font-weight:800;
-  font-size:20px; /* slightly larger than names */
+  font-size:18px; /* slightly larger than names */
   line-height:1;
   background:#ffffff;
   color: var(--green);
@@ -481,5 +481,5 @@ body.is-game #answerRow{
 
 /* Slightly smaller circle on very small screens */
 @media (max-width: 360px){
-  .seat-initials{ width:44px; height:44px; font-size:18px; }
+  .seat-initials{ width:35px; height:35px; font-size:16px; }
 }
