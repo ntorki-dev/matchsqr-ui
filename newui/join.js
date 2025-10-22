@@ -7,7 +7,7 @@ export async function render(){
   app.innerHTML = `
     <div class="offline-banner">You are offline. Trying to reconnect…</div>
     <div class="container">
-      <div class="card" style="max-width:520px;margin:28px auto;">
+      <div style="max-width:420px;margin:28px auto;">
         <h2>Join a game</h2>
         <div class="grid">
           <input id="gameId" class="input" placeholder="Game code">
