@@ -305,12 +305,13 @@ const Game = {
       el.className = 'seat-item' + ((curPid && String(curPid)===String(pid)) ? ' is-turn' : '');
       if (pid) el.dataset.pid = String(pid);
 
-      const nameText = displayName(p) + (role==='host' ? ' (host)' : '');
-      const initials = makeInitials(displayName(p));
-
-      // Replace plain text with structured content: initials above the name
+      const nameOnly = displayName(p);
+      const initials = makeInitials(nameOnly);
+      // Initials, optional crown for host, then name
+      const crownHtml = (role==='host') ? '<img class="seat-crown" src="./assets/crown.png" alt="host" width="16" height="16">' : '';
       el.innerHTML = '<div class="seat-initials">'+ initials +'</div>'+
-                     '<div class="seat-name">'+ nameText +'</div>';
+                     crownHtml +
+                     '<div class="seat-name">'+ nameOnly +'</div>';
 
       if (leftIdx.has(idx)) L.appendChild(el);
       if (rightIdx.has(idx)) R.appendChild(el);

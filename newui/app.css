@@ -362,8 +362,8 @@ body.is-game #answerRow{
 :root { --card-w: 220px; --card-h: calc(var(--card-w) * 1.181818); } /* 220x260 aspect */
 
 .card.seats{ display:flex; flex-direction:column; justify-content:space-between; height: var(--card-h); }
-.seats-left{ align-items:flex-end; text-align:right; padding-right:8px; }
-.seats-right{ align-items:flex-start; text-align:left; padding-left:8px; }
+.seats-left{ align-items:flex-end; text-align:right; padding-right:4px; }
+.seats-right{ align-items:flex-start; text-align:left; padding-left:4px; }
 .seat-item{ font-size:12px; line-height:1.2; margin:6px 0; white-space:nowrap; color:var(--ink); }
 .seat-item.is-turn{ font-weight:700; }
 
@@ -380,8 +380,8 @@ body.is-game #answerRow{
 .card.main-card{ width:220px; max-width:220px; height:260px; }
 
 @media screen and (max-width: 640px){
-  #roomMain{ width:332px; grid-template-columns:70px 180px 70px; gap:6px; }
-  #sideLeft, #sideRight{ width:70px; max-width:70px; }
+  #roomMain{ width:332px; grid-template-columns:60px 180px 60px; gap:6px; }
+  #sideLeft, #sideRight{ width:60px; max-width:60px; }
   #mainCard, .card.main-card{ width:180px; max-width:180px; height:216px; }
 }
 
@@ -425,11 +425,71 @@ body.is-game #answerRow{
 
 
 
-/* === Card visual states: idle vs running ===
-   Idle (lobby/ended): white with green border.
-   Running: solid green background, white text, top logo.
-   No shadows as requested.
-================================================ */
+/* === Participant initials circle above names ===
+   Clean UI, 40x40 circle. Uses existing .seat-item and .is-turn.
+   Normal: white bg, green border and text.
+   Turn: green bg, white text.
+================================================= */
+.seat-item{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:flex-start;
+  gap:4px;
+  margin:8px 0;
+}
+/* Ensure both side columns center this widget */
+.seats-left .seat-item,
+.seats-right .seat-item{
+  text-align:center;
+  align-items:center;
+}
+
+.seat-initials{
+  width:40px;
+  height:40px;
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:800;
+  font-size:18px; /* slightly larger than names */
+  line-height:1;
+  background:#ffffff;
+  color: var(--green);
+  border:2px solid var(--green);
+  box-sizing:border-box;
+  transition:background .15s ease, color .15s ease, border-color .15s ease, transform .15s ease;
+}
+/* Highlight when it is the participant's turn, piggybacks on existing .is-turn */
+.seat-item.is-turn .seat-initials{
+  background: var(--green);
+  color:#ffffff;
+  border-color: var(--green);
+  transform: translateZ(0); /* avoid blurriness on some browsers */
+}
+
+.seat-name{
+  font-size:12px;
+  line-height:1.2;
+  font-weight:400;
+  color: var(--ink);
+}
+.seat-item.is-turn .seat-name{
+  font-weight:700; /* keep existing emphasis */
+}
+@media (max-width: 480px){
+  .seat-name { display: none; }
+  .seat-item { gap: 2px; } /* optional, tightens spacing when name is hidden */
+}
+
+/* Slightly smaller circle on very small screens */
+@media (max-width: 360px){
+  .seat-initials{ width:35px; height:35px; font-size:16px; }
+}
+
+
+/* === Card visual states: idle vs running (no shadow), 40x40 logo === */
 .card.main-card.card--idle{
   background:#ffffff;
   border-color: var(--green);
@@ -442,7 +502,7 @@ body.is-game #answerRow{
   position: relative;
   overflow: hidden;
 }
-/* Ensure text inside turns white without affecting outside controls */
+/* Make all text inside the running card white only for the card area */
 .card.main-card.card--running h1,
 .card.main-card.card--running h2,
 .card.main-card.card--running h3,
@@ -453,7 +513,7 @@ body.is-game #answerRow{
   color:#ffffff !important;
 }
 
-/* Top-centered game logo in running state, size 40x40 */
+/* Top-centered logo in running state */
 .card.main-card.card--running::before{
   content:"";
   position:absolute;
@@ -465,9 +525,5 @@ body.is-game #answerRow{
   background:url("./assets/logo-game.png") no-repeat center center / contain;
 }
 
-/* Add top padding so logo does not overlap content */
-.card.main-card.card--running{
-  padding-top:64px; /* original padding + space for logo */
-}
-
-/* Keep border radius and sizing from existing .main-card definitions */
+/* Add top padding so content does not overlap logo */
+.card.main-card.card--running{ padding-top:64px; }
