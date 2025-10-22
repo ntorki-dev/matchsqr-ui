@@ -305,10 +305,9 @@ const Game = {
       el.className = 'seat-item' + ((curPid && String(curPid)===String(pid)) ? ' is-turn' : '');
       if (pid) el.dataset.pid = String(pid);
 
-      const nameText = displayName(p) + (role==='host' ? ' (host)' : '');
+      const nameOnly = displayName(p);
       const initials = makeInitials(displayName(p));
-
-      // Replace plain text with structured content: initials above the name
+      // Replace plain text with structured content
       el.innerHTML = '<div class="seat-initials">'+ initials +'</div>'+
                      '<div class="seat-name">'+ nameText +'</div>';
 
