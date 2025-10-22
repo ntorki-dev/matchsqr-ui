@@ -17,7 +17,7 @@ export async function render(ctx){
     app.innerHTML = `
       <div class="offline-banner">You are offline. Trying to reconnect…</div>
       <div class="container">
-        <div class="card" style="max-width:520px;margin:28px auto;">
+        <div style="max-width:520px;margin:28px auto;">
           <h2>Account</h2>
           <p>You need to log in to view your account.</p>
           <p><a class="btn btn-primary" href="#/login?next=%2F#%2Faccount">Go to Login</a></p>
@@ -32,7 +32,7 @@ export async function render(ctx){
   app.innerHTML = `
     <div class="offline-banner">You are offline. Trying to reconnect…</div>
     <div class="container">
-      <div class="card" style="max-width:720px;margin:28px auto;">
+      <div style="max-width:720px;margin:28px auto;">
         <h2>Welcome, ${name}</h2>
         <div class="grid" style="grid-template-columns:1fr 1fr; gap:12px">
           <button id="logoutBtn" class="ghost">Logout</button>
@@ -56,7 +56,7 @@ async function renderLogin(){
   app.innerHTML = `
     <div class="offline-banner">You are offline. Trying to reconnect…</div>
     <div class="container">
-      <div class="card" style="max-width:520px;margin:28px auto;">
+      <div style="max-width:520px;margin:28px auto;">
         <h2>Login</h2>
         <div class="grid">
           <input id="email" class="input" placeholder="Email" type="email">
