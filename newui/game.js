@@ -305,13 +305,12 @@ const Game = {
       el.className = 'seat-item' + ((curPid && String(curPid)===String(pid)) ? ' is-turn' : '');
       if (pid) el.dataset.pid = String(pid);
 
-      const nameOnly = displayName(p);
-      const initials = makeInitials(nameOnly);
-      // Initials, optional crown for host, then name
-      const crownHtml = (role==='host') ? '<img class="seat-crown" src="./assets/crown.png" alt="host" width="16" height="16">' : '';
+      const nameText = displayName(p) + (role==='host' ? ' (host)' : '');
+      const initials = makeInitials(displayName(p));
+
+      // Replace plain text with structured content: initials above the name
       el.innerHTML = '<div class="seat-initials">'+ initials +'</div>'+
-                     crownHtml +
-                     '<div class="seat-name">'+ nameOnly +'</div>';
+                     '<div class="seat-name">'+ nameText +'</div>';
 
       if (leftIdx.has(idx)) L.appendChild(el);
       if (rightIdx.has(idx)) R.appendChild(el);
@@ -343,6 +342,17 @@ const Game = {
 
 render(forceFull){
     const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
+    // Toggle card visual state classes without changing layout or content
+    if (main && main.classList) {
+      main.classList.remove('card--idle','card--running');
+      const st = s.status || 'lobby';
+      if (st === 'running') {
+        main.classList.add('card--running');
+      } else {
+        main.classList.add('card--idle');
+      }
+    }
+
     if (!main || !controls) return;
     if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; }
 /* removed legacy in-card timer */
