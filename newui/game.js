@@ -411,12 +411,8 @@ render(forceFull){
       const role=getRole(this.code); const isHost = role==='host';
       if (isHost && forceFull){
         controls.innerHTML=
-          '<button id="nextCard" class="btn">Reveal next card</button>'+
-          '<button id="extendBtn" class="btn secondary" disabled>Extend</button>'+
-          '<button id="endAnalyze" class="btn danger">End and analyze</button>';
+          '<button id="nextCard" class="btn">Reveal next card</button>';
         $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
-        $('#extendBtn').onclick=()=>{ location.hash='#/billing'; };
-        $('#endAnalyze').onclick=async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||'End failed'); } };
       }else if (!isHost){ controls.innerHTML=''; }
 
       this.renderTimer();
