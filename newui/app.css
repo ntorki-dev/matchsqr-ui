@@ -521,7 +521,6 @@ body.is-game #answerRow{
   left:50%;
   width:30px;
   height:30px;
-  margin-left:-20px;
   background:url("./assets/logo-game.png") no-repeat center center / contain;
 }
 
