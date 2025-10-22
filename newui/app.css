@@ -517,10 +517,10 @@ body.is-game #answerRow{
 .card.main-card.card--running::before{
   content:"";
   position:absolute;
-  top:14px;
+  top:30px;
   left:50%;
-  width:40px;
-  height:40px;
+  width:30px;
+  height:30px;
   margin-left:-20px;
   background:url("./assets/logo-game.png") no-repeat center center / contain;
 }
