@@ -287,13 +287,31 @@ const Game = {
       return name;
     };
 
+    // NEW: helper to compute initials from the display name
+    const makeInitials = (name) => {
+      if (!name || typeof name !== 'string') return 'G';
+      const trimmed = name.trim();
+      if (!trimmed) return 'G';
+      const chars = Array.from(trimmed); // handles Unicode properly
+      const first = (chars[0] || '').toLocaleUpperCase();
+      const second = (chars[1] || '').toLocaleUpperCase();
+      return second ? (first + second) : first;
+    };
+
     seats.forEach(({idx, p})=>{
       const pid = p?.participant_id || p?.id || '';
       const role = p?.role || (p?.is_host ? 'host' : '');
       const el = document.createElement('div');
       el.className = 'seat-item' + ((curPid && String(curPid)===String(pid)) ? ' is-turn' : '');
       if (pid) el.dataset.pid = String(pid);
-      el.textContent = displayName(p) + (role==='host' ? ' (host)' : '');
+
+      const nameText = displayName(p) + (role==='host' ? ' (host)' : '');
+      const initials = makeInitials(displayName(p));
+
+      // Replace plain text with structured content: initials above the name
+      el.innerHTML = '<div class="seat-initials">'+ initials +'</div>'+
+                     '<div class="seat-name">'+ nameText +'</div>';
+
       if (leftIdx.has(idx)) L.appendChild(el);
       if (rightIdx.has(idx)) R.appendChild(el);
     });
