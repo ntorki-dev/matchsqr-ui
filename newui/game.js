@@ -5,56 +5,9 @@ import { renderHeader, ensureDebugTray, $, toast, setHeaderActions, clearHeaderA
 const Game = {
   code:null, poll:null, tick:null, hbH:null, hbG:null,
   state:{ status:'lobby', endsAt:null, participants:[], question:null, current_turn:null, host_user_id:null },
-  ui:{ lastSig:'', ansVisible:false, draft:'', micRecognition:null, micListening:false, inputMode:null, lastTurnPid:null },
+  ui:{  lastSig:'', ansVisible:false, draft:'' , inputMode:null, micListening:false, micInstance:null },
 
-  
-  // --- Mic helpers (speech-to-text) ---
-  _ensureRecognition(){
-    if (this.ui.micRecognition) return this.ui.micRecognition;
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return null;
-    const rec = new SR();
-    rec.lang = 'en-US';
-    rec.interimResults = true;
-    rec.maxAlternatives = 1;
-    rec.onresult = (evt)=>{
-      let text='';
-      for (let i=0; i<evt.results.length; i++){
-        const res = evt.results[i];
-        if (res && res[0]) text += res[0].transcript;
-      }
-      this.ui.draft = text;
-      try{ const box=document.getElementById('msBox'); if (box) box.value=this.ui.draft; }catch(_){}
-    };
-    rec.onerror = (_e)=>{ /* soft-fail, keep UI stable */ };
-    rec.onend = ()=>{
-      this.ui.micListening = false;
-      if (this.ui.inputMode==='mic') this.ui.inputMode=null;
-      // do not hide the textarea here, user may switch to typing
-      try{ const mic=document.getElementById('micIcon'); if(mic) mic.classList.remove('active'); }catch(_){}
-    };
-    this.ui.micRecognition = rec;
-    return rec;
-  },
-  _startMic(){
-    if (!this.canAnswer()) return;
-    const rec = this._ensureRecognition();
-    if (!rec){ toast('Microphone is not supported in this browser'); return; }
-    try{ rec.stop(); }catch(_){}
-    try{
-      rec.start();
-      this.ui.ansVisible = true;
-      this.ui.inputMode = 'mic';
-      this.ui.micListening = true;
-      this.render(true);
-    }catch(_){}
-  },
-  _stopMic(){
-    const rec = this.ui && this.ui.micRecognition;
-    if (rec){ try{ rec.stop(); }catch(_){ } }
-    if (this.ui){ this.ui.micListening=false; if (this.ui.inputMode==='mic') this.ui.inputMode=null; }
-  },
-// --- Heartbeat diagnostics state (added) ---
+  // --- Heartbeat diagnostics state (added) ---
   __hb:{ host:{fails:0,lastErr:null,lastStatus:null,lastAt:null}, guest:{fails:0,lastErr:null,lastStatus:null,lastAt:null}, logs:0, maxLogs:10 },
 
   async mount(code){
@@ -161,22 +114,8 @@ const Game = {
       const sig = [status, endsAt, question?.id||'', current_turn?.participant_id||'', participants.length, host_user_id||''].join('|');
       const forceFull = (sig !== this.ui.lastSig);
       this.state = { status, endsAt, participants, question, current_turn, host_user_id };
-
-      // If turn changed away from me, stop mic and hide editor
-      const prevTurn = this.ui.lastTurnPid;
-      const newTurn = current_turn && current_turn.participant_id ? String(current_turn.participant_id) : null;
-      if (prevTurn !== newTurn){
-        this.ui.lastTurnPid = newTurn;
-        if (!this.canAnswer()){
-          this._stopMic();
-          this.ui.inputMode = null;
-          this.ui.ansVisible = false;
-          // keep draft to let user reuse text on their next turn if desired
-        }
-      }
-
       await this.backfillPidIfMissing();
-      this.render(forceFull);
+      try{ if(!this.canAnswer()){ this._stopMic(); this.ui.ansVisible=false; this.ui.inputMode=null; } }catch{} this.render(forceFull);
       this.ui.lastSig = sig;
       this.startHeartbeats();
     }catch(e){}
@@ -188,6 +127,65 @@ const Game = {
     const m=String(Math.floor(t/60)).padStart(2,'0'), s=String(t%60).padStart(2,'0');
     el.textContent=m+':'+s;
   },
+  
+  // --- Mic helpers ---
+  _ensureRecognizer(){
+    if (this.ui.micInstance || typeof window === 'undefined') return this.ui.micInstance;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR){ return null; }
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = (navigator.language || 'en-US');
+    rec.onresult = (ev)=>{
+      let txt = '';
+      for (let i=ev.resultIndex; i<ev.results.length; i++){
+        txt += ev.results[i][0].transcript;
+      }
+      txt = (txt||'').trim();
+      if (txt){
+        this.ui.ansVisible = true;
+        this.ui.inputMode = 'mic';
+        this.ui.draft = txt;
+        try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{}
+        const box = document.getElementById('msBox');
+        if (box){ box.value = this.ui.draft; }
+      }
+    };
+    rec.onend = ()=>{
+      this.ui.micListening = false;
+      if (this.ui.inputMode==='mic'){ this.ui.inputMode = null; }
+      try{ this.render(false); }catch{}
+    };
+    rec.onerror = ()=>{
+      this.ui.micListening = false;
+      if (this.ui.inputMode==='mic'){ this.ui.inputMode = null; }
+      try{ this.render(false); }catch{}
+    };
+    this.ui.micInstance = rec;
+    return rec;
+  },
+  _startMic(){
+    if (!this.canAnswer()) return;
+    const rec = this._ensureRecognizer();
+    if (!rec){ toast('Mic not supported on this browser'); return; }
+    try{
+      this.ui.ansVisible = true;
+      this.ui.inputMode = 'mic';
+      rec.start();
+      this.ui.micListening = true;
+      this.render(false);
+    }catch(e){ toast('Mic error'); }
+  },
+  _stopMic(){
+    const rec = this.ui.micInstance;
+    if (rec && this.ui.micListening){
+      try{ rec.stop(); }catch{}
+    }
+    this.ui.micListening = false;
+    if (this.ui.inputMode==='mic'){ this.ui.inputMode = null; }
+  },
+
   canAnswer(){
     const code=this.code; const pid = JSON.parse(localStorage.getItem(msPidKey(code))||'null');
     const cur = this.state.current_turn && this.state.current_turn.participant_id;
@@ -462,20 +460,24 @@ render(forceFull){
 
         this.renderSeats();
 
-        
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
         actRow.innerHTML=
-          '<img id="micIcon" class="tool-icon" '+(can?'':'aria-disabled="true"')+' src="./assets/mic.png" alt="Mic" title="Mic" />'+
-          '<img id="kbIcon" class="tool-icon" '+(can?'':'aria-disabled="true"')+' src="./assets/keyboard.png" alt="Keyboard" title="Keyboard" />';
+          '<button id="micBtn" class="kb-mic-btn" '+(can?'':'disabled')+'><img src="./assets/mic.png" alt="mic"/> <span>Mic</span></button>'+
+          '<button id="kbBtn" class="kb-mic-btn" '+(can?'':'disabled')+'><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>';
         (tools||main).appendChild(actRow);
-        const micEl = document.getElementById('micIcon');
-        if (micEl) micEl.classList.toggle('active', this.ui.inputMode==='mic');
-        const kbEl = document.getElementById('kbIcon');
-        if (kbEl) kbEl.classList.toggle('active', this.ui.inputMode==='kb');
-        if (micEl) micEl.onclick=()=>{ if (!this.canAnswer()) return; this._startMic(); };
-        if (kbEl) kbEl.onclick=()=>{ if (!this.canAnswer()) return; this.ui.inputMode='kb'; this.ui.ansVisible=true; this.render(true); };
-if (this.ui.ansVisible){
+        $('#micIcon').onclick=()=>{ if (!this.canAnswer()) return; this._startMic(); };
+        $('#kbIcon').onclick=()=>{ if (!this.canAnswer()) return; this.ui.inputMode='kb'; this.ui.ansVisible=true; this.render(true); const box=$('#msBox'); if(box) box.focus(); };
+      }else{
+        this.renderSeats();
+                const can2=this.canAnswer();
+        const micEl=$('#micIcon'); const kbEl=$('#kbIcon');
+        if(micEl){ micEl.classList.toggle('disabled', !can2); micEl.classList.toggle('active', this.ui.inputMode==='mic'); }
+        if(kbEl){ kbEl.classList.toggle('disabled', !can2); kbEl.classList.toggle('active', this.ui.inputMode==='kb'); }
+
+      }
+
+      if (this.ui.ansVisible){
         let ans=$('#msAns');
         if (!ans){
           ans=document.createElement('div'); ans.className='card answer-card'; ans.id='msAns';
@@ -490,12 +492,7 @@ if (this.ui.ansVisible){
           const box=$('#msBox'); if (box){ box.value = this.ui.draft||''; box.addEventListener('input', ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
           const submit=$('#submitBtn'); if (submit) submit.onclick=async()=>{
             const box=$('#msBox'); const text=(box.value||'').trim(); if(!text) return;
-            try{ submit.disabled=true; await API.submit_answer({ text }); 
-              this._stopMic();
-              this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch(_){}
-              this.ui.ansVisible=false; this.ui.inputMode=null;
-              this.render(true);
-             box.value=''; this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} await this.refresh(); }catch(e){ submit.disabled=false; toast(e.message||'Submit failed'); }
+            try{ submit.disabled=true; await API.submit_answer({ text }); box.value=''; this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} await this.refresh(); }catch(e){ submit.disabled=false; toast(e.message||'Submit failed'); }
           };
         }else{
           const box=$('#msBox'); if (box){ box.placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn'; box.toggleAttribute('disabled', !this.canAnswer()); }
