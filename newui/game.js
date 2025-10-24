@@ -519,45 +519,50 @@ this.syncActiveIcons(); if (kb) kb.toggleAttribute('disabled', !can);
       return;
     }
 
-    if (s.status==='ended'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
-  controls.innerHTML='';
-  // Render seats around the card
-  this.renderSeats();
-  // Put summary inside the main card instead of replacing the whole grid
-  main.innerHTML = '<div style="text-align:center; max-width:640px;">'+
-          '<h3>Summary</h3>'+
-          '<p class="help">The game has ended. You can start a new one from Host page.</p>'+
-          '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">'+
-            '<a class="btn" href="#/host">Host a new game</a>'+
-            '<button id="shareBtn" class="btn secondary">Share</button>'+
-          '</div>'+
-        '</div>';
-      $('#shareBtn').onclick=()=>{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); };;
-  const shareBtn = document.getElementById('shareBtn'); if (shareBtn){ shareBtn.onclick=()=>{ try{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); }catch(_){} }; }
-  return;
-}
+    
+    if (s.status==='ended'){
+      try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  
+      clearHeaderActions();
+      controls.innerHTML='';
+      this.renderSeats();
+      main.innerHTML = '<div style="text-align:center; max-width:640px;">'+
+        '<h3>Summary</h3>'+
+        '<p class="help">The game has ended. You can start a new one from Host page.</p>'+
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">'+
+          '<a class="btn" href="#/host">Host a new game</a>'+
+          '<button id="shareBtn" class="btn secondary">Share</button>'+
+        '</div>'+
+      '</div>';
+      const shareBtn = document.getElementById('shareBtn');
+      if (shareBtn){
+        shareBtn.onclick = async()=>{ try{ await navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); }catch(_){} };
+      }
+      return;
+    }
+
   }
 };
 
+
 export async function render(ctx){
   const code = ctx?.code || null;
-  const app=document.getElementById('app');
-  app.innerHTML=
+  const app = document.getElementById('app');
+  app.innerHTML =
     '<div class="offline-banner">You are offline. Trying to reconnect…</div>'+
     '<div class="top-actions-row" id="topActionsRow"></div>'+
-      '<div class="room-wrap">'+
+    '<div class="room-wrap">'+
       '<div class="controls-row" id="controlsRow"></div>'+
       '<div id="roomMain">'+
         '<div id="sideLeft"></div>'+
-        '<div class="card main-card" id="mainCard"></div>'+
+        '<div class="card main-card" id="mainCard">'+
+          '<div class="card-body">'+
+            '<div id="answerRow"></div>'+
+            '<div id="toolsRow"></div>'+
+          '</div>'+
+        '</div>'+
         '<div id="sideRight"></div>'+
       '</div>'+
-      '<div class="controls-row" id="toolsRow"></div>'+
-      '<div class="answer-row" id="answerRow"></div>'+
     '</div>';
-  await renderHeader(); ensureDebugTray();
-  try{ document.body.classList.add('is-game'); }catch{}
-  const _ms_onHash = () => { if (!location.hash.startsWith('#/game/')) { try{ document.body.classList.remove('is-game'); }catch{} window.removeEventListener('hashchange', _ms_onHash); } };
-  window.addEventListener('hashchange', _ms_onHash);
-if (code){ Game.mount(code); }
+
+  await Game.mount(code);
 }
