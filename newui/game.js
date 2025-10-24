@@ -118,7 +118,7 @@ const Game = {
       this.render(forceFull);
       this.ui.lastSig = sig;
       this.startHeartbeats();
-      try{ if (!this.canAnswer() && this.ui.ansVisible){ this.ui.ansVisible=false; this.stopMic(); } }catch(_){}
+      try{ if (!this.canAnswer() && this.ui.ansVisible){ this.ui.ansVisible=false; this.stopMic(); } }catch{}
     }catch(e){}
   },
   remainingSeconds(){ if (!this.state.endsAt) return null; const diff=Math.floor((new Date(this.state.endsAt).getTime()-Date.now())/1000); return Math.max(0,diff); },
@@ -140,26 +140,20 @@ const Game = {
     const rec = new SR();
     rec.continuous = true;
     rec.interimResults = true;
-    rec.onresult = (ev) => {
-      let interim = '';
-      let finalTxt = this.ui.draft || '';
-      for (let i=ev.resultIndex; i<ev.results.length; i++){
-        const res = ev.results[i];
-        if (res.isFinal) finalTxt += res[0].transcript;
+    rec.onresult = (ev)=>{
+      let interim=''; let finalTxt=this.ui.draft||'';
+      for(let i=ev.resultIndex;i<ev.results.length;i++){
+        const res=ev.results[i];
+        if(res.isFinal) finalTxt += res[0].transcript;
         else interim += res[0].transcript;
       }
       this.ui.ansVisible = true;
       this.ui.draft = finalTxt + (interim ? ' ' + interim : '');
       try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{}
-      const box = document.getElementById('msBox');
-      if (box) box.value = this.ui.draft;
+      const box=document.getElementById('msBox'); if(box) box.value=this.ui.draft;
     };
-    rec.onerror = (_e) => { /* non-fatal */ };
-    rec.onend = () => {
-      this.ui.micListening = false;
-      this.ui.inputMode = null;
-      this.syncActiveIcons();
-    };
+    rec.onerror = ()=>{};
+    rec.onend = ()=>{ this.ui.micListening=false; this.ui.inputMode=null; this.syncActiveIcons(); };
     this.ui.micRec = rec;
     return rec;
   }
@@ -167,33 +161,21 @@ const Game = {
     if (!this.canAnswer()) return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR){ toast('Mic not supported in this browser'); return; }
-    const rec = await this.ensureRecognition();
-    if (!rec) { toast('Mic not supported in this browser'); return; }
-    try{ rec.start(); }catch(_){/* might already be running */}
-    this.ui.micListening = true;
-    this.ui.inputMode = 'mic';
-    this.ui.ansVisible = true;
-    this.render(true);
-    this.syncActiveIcons();
+    const rec = await this.ensureRecognition(); if (!rec){ toast('Mic not supported in this browser'); return; }
+    try{ rec.start(); }catch(_){}
+    this.ui.micListening=true; this.ui.inputMode='mic'; this.ui.ansVisible=true;
+    this.render(true); this.syncActiveIcons();
   }
   ,stopMic(){
     try{ if (this.ui?.micRec) this.ui.micRec.stop(); }catch(_){}
-    this.ui.micListening = false;
-    this.ui.inputMode = null;
-    this.syncActiveIcons();
+    this.ui.micListening=false; this.ui.inputMode=null; this.syncActiveIcons();
   }
   ,syncActiveIcons(){
-    const can = this.canAnswer();
-    const mic = document.getElementById('micIcon');
-    const kb  = document.getElementById('kbIcon');
-    if (mic){
-      mic.classList.toggle('active', this.ui.inputMode==='mic');
-      mic.classList.toggle('disabled', !can);
-    }
-    if (kb){
-      kb.classList.toggle('active', this.ui.inputMode==='kb');
-      kb.classList.toggle('disabled', !can);
-    }
+    const can=this.canAnswer();
+    const mic=document.getElementById('micIcon');
+    const kb =document.getElementById('kbIcon');
+    if(mic){ mic.classList.toggle('active', this.ui.inputMode==='mic'); mic.classList.toggle('disabled', !can); }
+    if(kb ){ kb .classList.toggle('active', this.ui.inputMode==='kb');  kb .classList.toggle('disabled', !can); }
   }
 ,
   async backfillPidIfMissing(){
@@ -467,22 +449,21 @@ render(forceFull){
 
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
-        actRow.innerHTML=
-  '<img id="micIcon" class="tool-icon" src="./assets/mic.png" alt="Mic" width="36" height="36"/>'+
-  '<img id="kbIcon" class="tool-icon" src="./assets/keyboard.png" alt="Keyboard" width="36" height="36"/>';
+        actRow.innerHTML =
+  '<img id="micIcon" class="tool-icon" src="./assets/mic.png" alt="Mic" width="32" height="32"/>'+
+  '<img id="kbIcon" class="tool-icon" src="./assets/keyboard.png" alt="Keyboard" width="32" height="32"/>';
 (tools||main).appendChild(actRow);
 const _mic=document.getElementById('micIcon');
-const _kb=document.getElementById('kbIcon');
+const _kb =document.getElementById('kbIcon');
 if (_mic) _mic.onclick=()=>{ if (!this.canAnswer()) return; this.startMic(); };
-if (_kb) _kb.onclick=()=>{ if (!this.canAnswer()) return; this.ui.inputMode='kb'; this.ui.ansVisible=true; this.render(true); };
-this.syncActiveIcons();
-this.ui.ansVisible=true; this.render(true); };
+if (_kb)  _kb .onclick=()=>{ if (!this.canAnswer()) return; this.ui.inputMode='kb'; this.ui.ansVisible=true; this.render(true); };
+this.syncActiveIcons(); this.ui.ansVisible=true; this.render(true); };
       }else{
         this.renderSeats();
         const can=this.canAnswer(); const mic=document.getElementById('micIcon'); const kb=document.getElementById('kbIcon');
 if (mic) mic.classList.toggle('disabled', !can);
-if (kb) kb.classList.toggle('disabled', !can);
-this.syncActiveIcons(); if (kb) kb.toggleAttribute('disabled', !can);
+if (kb)  kb .classList.toggle('disabled', !can);
+this.syncActiveIcons();
       }
 
       if (this.ui.ansVisible){
@@ -497,72 +478,70 @@ this.syncActiveIcons(); if (kb) kb.toggleAttribute('disabled', !can);
               '<button id="submitBtn" class="btn"'+(this.canAnswer()?'':' disabled')+'>Submit</button>'+
             '</div>';
           (answer||main).appendChild(ans);
-          const box=$('#msBox'); if (box){ box.value = this.ui.draft||''; box.addEventListener('input', ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }; try{ if (this.ui.inputMode==='kb') { box.focus(); box.selectionStart=box.value.length; box.selectionEnd=box.value.length; } }catch(_){}
+          const box=$('#msBox'); if (box){ box.value = this.ui.draft||''; box.addEventListener('input', ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
           const submit=$('#submitBtn'); if (submit) submit.onclick=async()=>{
             const box=$('#msBox'); const text=(box.value||'').trim(); if(!text) return;
-            try{ submit.disabled=true; await API.submit_answer({ text }); box.value=''; this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} await this.refresh(); }catch(e){ submit.disabled=false; toast(e.message||'Submit failed'); }
+            try{ submit.disabled=true; await API.submit_answer({ text }); box.value=''; this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} this.stopMic(); this.ui.ansVisible=false; this.ui.inputMode=null; this.render(true);
+            await this.refresh(); }catch(e){ submit.disabled=false; toast(e.message||'Submit failed'); }
           };
         }else{
           const box=$('#msBox'); if (box){ box.placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn'; box.toggleAttribute('disabled', !this.canAnswer()); }
           const submit=$('#submitBtn'); if (submit){ submit.toggleAttribute('disabled', !this.canAnswer()); }
         }
-      }; this.syncActiveIcons();
+      }
 
       const role=getRole(this.code); const isHost = role==='host';
-      if (isHost && forceFull){
-        controls.innerHTML=
-          '<button id="nextCard" class="cta"><img src="./assets/next-card.png" alt="Next"/><span>Next Card</span></button>';
-        $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
-      }else if (!isHost){ controls.innerHTML=''; }
+if (isHost){
+  if (!document.getElementById('nextCard')){
+    controls.innerHTML=
+      '<button id="nextCard" class="cta"><img src="./assets/next-card.png" alt="Next"/><span>Next Card</span></button>';
+    $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
+  }
+} else { controls.innerHTML=''; }
 
       this.renderTimer();
       return;
     }
 
-    
-    if (s.status==='ended'){
-      try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  
-      clearHeaderActions();
-      controls.innerHTML='';
-      this.renderSeats();
-      main.innerHTML = '<div style="text-align:center; max-width:640px;">'+
-        '<h3>Summary</h3>'+
-        '<p class="help">The game has ended. You can start a new one from Host page.</p>'+
-        '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">'+
-          '<a class="btn" href="#/host">Host a new game</a>'+
-          '<button id="shareBtn" class="btn secondary">Share</button>'+
-        '</div>'+
-      '</div>';
-      const shareBtn = document.getElementById('shareBtn');
-      if (shareBtn){
-        shareBtn.onclick = async()=>{ try{ await navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); }catch(_){} };
-      }
-      return;
-    }
-
+    if (s.status==='ended'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
+  controls.innerHTML='';
+  // Render seats around the card
+  this.renderSeats();
+  // Put summary inside the main card instead of replacing the whole grid
+  main.innerHTML = '<div style="text-align:center; max-width:640px;">'+
+          '<h3>Summary</h3>'+
+          '<p class="help">The game has ended. You can start a new one from Host page.</p>'+
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">'+
+            '<a class="btn" href="#/host">Host a new game</a>'+
+            '<button id="shareBtn" class="btn secondary">Share</button>'+
+          '</div>'+
+        '</div>';
+      $('#shareBtn').onclick=()=>{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); };;
+  const shareBtn = document.getElementById('shareBtn'); if (shareBtn){ shareBtn.onclick=()=>{ try{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); }catch(_){} }; }
+  return;
+}
   }
 };
 
-
 export async function render(ctx){
   const code = ctx?.code || null;
-  const app = document.getElementById('app');
-  app.innerHTML =
+  const app=document.getElementById('app');
+  app.innerHTML=
     '<div class="offline-banner">You are offline. Trying to reconnect…</div>'+
     '<div class="top-actions-row" id="topActionsRow"></div>'+
-    '<div class="room-wrap">'+
+      '<div class="room-wrap">'+
       '<div class="controls-row" id="controlsRow"></div>'+
       '<div id="roomMain">'+
         '<div id="sideLeft"></div>'+
-        '<div class="card main-card" id="mainCard">'+
-          '<div class="card-body">'+
-            '<div id="answerRow"></div>'+
-            '<div id="toolsRow"></div>'+
-          '</div>'+
-        '</div>'+
+        '<div class="card main-card" id="mainCard"></div>'+
         '<div id="sideRight"></div>'+
       '</div>'+
+      '<div class="controls-row" id="toolsRow"></div>'+
+      '<div class="answer-row" id="answerRow"></div>'+
     '</div>';
-
-  await Game.mount(code);
+  await renderHeader(); ensureDebugTray();
+  try{ document.body.classList.add('is-game'); }catch{}
+  const _ms_onHash = () => { if (!location.hash.startsWith('#/game/')) { try{ document.body.classList.remove('is-game'); }catch{} window.removeEventListener('hashchange', _ms_onHash); } };
+  window.addEventListener('hashchange', _ms_onHash);
+if (code){ Game.mount(code); }
 }
