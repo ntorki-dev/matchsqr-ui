@@ -5,7 +5,7 @@ import { renderHeader, ensureDebugTray, $, toast, setHeaderActions, clearHeaderA
 const Game = {
   code:null, poll:null, tick:null, hbH:null, hbG:null,
   state:{ status:'lobby', endsAt:null, participants:[], question:null, current_turn:null, host_user_id:null },
-  ui:{  lastSig:'', ansVisible:false, draft:'' , inputMode:null, micListening:false, micInstance:null },
+  ui:{ lastSig:'', ansVisible:false, draft:'', inputMode:null, micListening:false, micRec:null },
 
   // --- Heartbeat diagnostics state (added) ---
   __hb:{ host:{fails:0,lastErr:null,lastStatus:null,lastAt:null}, guest:{fails:0,lastErr:null,lastStatus:null,lastAt:null}, logs:0, maxLogs:10 },
@@ -115,7 +115,8 @@ const Game = {
       const forceFull = (sig !== this.ui.lastSig);
       this.state = { status, endsAt, participants, question, current_turn, host_user_id };
       await this.backfillPidIfMissing();
-      try{ if(!this.canAnswer()){ this._stopMic(); this.ui.ansVisible=false; this.ui.inputMode=null; } }catch{} this.render(forceFull);
+      try{ if (!this.canAnswer()) { this.stopMic(); if (this.ui.ansVisible){ this.ui.ansVisible=false; this.ui.inputMode=null; } } }catch(_){ }
+      this.render(forceFull);
       this.ui.lastSig = sig;
       this.startHeartbeats();
     }catch(e){}
@@ -127,65 +128,6 @@ const Game = {
     const m=String(Math.floor(t/60)).padStart(2,'0'), s=String(t%60).padStart(2,'0');
     el.textContent=m+':'+s;
   },
-  
-  // --- Mic helpers ---
-  _ensureRecognizer(){
-    if (this.ui.micInstance || typeof window === 'undefined') return this.ui.micInstance;
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR){ return null; }
-    const rec = new SR();
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.lang = (navigator.language || 'en-US');
-    rec.onresult = (ev)=>{
-      let txt = '';
-      for (let i=ev.resultIndex; i<ev.results.length; i++){
-        txt += ev.results[i][0].transcript;
-      }
-      txt = (txt||'').trim();
-      if (txt){
-        this.ui.ansVisible = true;
-        this.ui.inputMode = 'mic';
-        this.ui.draft = txt;
-        try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{}
-        const box = document.getElementById('msBox');
-        if (box){ box.value = this.ui.draft; }
-      }
-    };
-    rec.onend = ()=>{
-      this.ui.micListening = false;
-      if (this.ui.inputMode==='mic'){ this.ui.inputMode = null; }
-      try{ this.render(false); }catch{}
-    };
-    rec.onerror = ()=>{
-      this.ui.micListening = false;
-      if (this.ui.inputMode==='mic'){ this.ui.inputMode = null; }
-      try{ this.render(false); }catch{}
-    };
-    this.ui.micInstance = rec;
-    return rec;
-  },
-  _startMic(){
-    if (!this.canAnswer()) return;
-    const rec = this._ensureRecognizer();
-    if (!rec){ toast('Mic not supported on this browser'); return; }
-    try{
-      this.ui.ansVisible = true;
-      this.ui.inputMode = 'mic';
-      rec.start();
-      this.ui.micListening = true;
-      this.render(false);
-    }catch(e){ toast('Mic error'); }
-  },
-  _stopMic(){
-    const rec = this.ui.micInstance;
-    if (rec && this.ui.micListening){
-      try{ rec.stop(); }catch{}
-    }
-    this.ui.micListening = false;
-    if (this.ui.inputMode==='mic'){ this.ui.inputMode = null; }
-  },
-
   canAnswer(){
     const code=this.code; const pid = JSON.parse(localStorage.getItem(msPidKey(code))||'null');
     const cur = this.state.current_turn && this.state.current_turn.participant_id;
@@ -378,7 +320,61 @@ const Game = {
     
   },
 
-  mountHeaderActions(){
+  
+  // --- mic and input helpers (surgical) ---
+  ensureRecognition(){
+    if (this.ui.micRec) return this.ui.micRec;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null;
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.onresult = (e)=>{
+      let final = ''; let interim = '';
+      for (let i=0;i<e.results.length;i++){
+        const res = e.results[i];
+        if (res.isFinal) final += res[0].transcript;
+        else interim += res[0].transcript;
+      }
+      const txt = (final || interim || '').trim();
+      if (!this.ui.ansVisible) this.ui.ansVisible = true;
+      this.ui.draft = txt;
+      const box = document.getElementById('msBox');
+      if (box) box.value = txt;
+    };
+    rec.onend = ()=>{ this.ui.micListening = false; this._syncActiveIcons(); };
+    rec.onerror = ()=>{ this.ui.micListening = false; this._syncActiveIcons(); };
+    this.ui.micRec = rec;
+    return rec;
+  },
+  startMic(){
+    const rec = this.ensureRecognition();
+    if (!rec){ toast('Mic not supported in this browser'); return; }
+    if (!this.canAnswer()) return;
+    try{
+      if (!this.ui.ansVisible) this.ui.ansVisible = true;
+      this.ui.inputMode = 'mic';
+      this.render(true);
+      rec.start();
+      this.ui.micListening = true;
+      setTimeout(()=>this._syncActiveIcons(),0);
+    }catch(e){ this.ui.micListening=false; this._syncActiveIcons(); }
+  },
+  stopMic(){
+    try{ if (this.ui.micRec && this.ui.micListening){ this.ui.micRec.stop(); } }catch(_){}
+    this.ui.micListening = false;
+    this._syncActiveIcons();
+  },
+  _syncActiveIcons(){
+    const mic = document.getElementById('micIcon');
+    const kb  = document.getElementById('kbIcon');
+    if (mic) mic.classList.toggle('active', this.ui.inputMode==='mic' && this.ui.micListening);
+    if (kb)  kb.classList.toggle('active', this.ui.inputMode==='kb' && !this.ui.micListening && this.ui.ansVisible);
+    const dis = !this.canAnswer();
+    if (mic) mic.classList.toggle('disabled', dis);
+    if (kb)  kb.classList.toggle('disabled', dis);
+  },
+mountHeaderActions(){
     const s=this.state;
     const frag=document.createDocumentFragment();
     const timer=document.createElement('div');
@@ -448,8 +444,7 @@ render(forceFull){
         this.renderSeats();
         const startBtn=$('#startGame'); if (startBtn){ const enough = Array.isArray(s.participants) && s.participants.length>=2; startBtn.disabled=!enough; }
       }
-      this.renderTimer();
-      return;
+      this.renderTimer(); this._syncActiveIcons(); return;
     }
 
     if (s.status==='running') { try{ const tar=document.getElementById('topActionsRow'); if (tar){ const role=getRole(this.code); const isHost=(role==='host'); tar.innerHTML = isHost ? '<button id="endAnalyzeTop" class="btn danger">End game & analyze</button>' : ''; if (isHost){ document.getElementById('endAnalyzeTop').onclick = async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } }; } } }catch(_){}  this.mountHeaderActions();
@@ -462,19 +457,16 @@ render(forceFull){
 
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
-        actRow.innerHTML=
-          '<button id="micBtn" class="kb-mic-btn" '+(can?'':'disabled')+'><img src="./assets/mic.png" alt="mic"/> <span>Mic</span></button>'+
-          '<button id="kbBtn" class="kb-mic-btn" '+(can?'':'disabled')+'><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>';
+        actRow.innerHTML=  '<img id="micIcon" class="tool-icon" src="./assets/mic.png" alt="Mic" title="Mic" width="36" height="36" />'+ '<img id="kbIcon" class="tool-icon" src="./assets/keyboard.png" alt="Keyboard" title="Keyboard" width="36" height="36" />';
         (tools||main).appendChild(actRow);
-        $('#micIcon').onclick=()=>{ if (!this.canAnswer()) return; this._startMic(); };
-        $('#kbIcon').onclick=()=>{ if (!this.canAnswer()) return; this.ui.inputMode='kb'; this.ui.ansVisible=true; this.render(true); const box=$('#msBox'); if(box) box.focus(); };
+        const _mic=document.getElementById('micIcon'); const _kb=document.getElementById('kbIcon');
+        if (_mic) _mic.onclick=()=>{ if (!this.canAnswer()) return; this.startMic(); };
+        if (_kb) _kb.onclick=()=>{ if (!this.canAnswer()) return; this.ui.inputMode='kb'; this.ui.ansVisible=true; this.stopMic(); this.render(true); const box=document.getElementById('msBox'); if (box) box.focus(); };
+        $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
+        $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
       }else{
         this.renderSeats();
-                const can2=this.canAnswer();
-        const micEl=$('#micIcon'); const kbEl=$('#kbIcon');
-        if(micEl){ micEl.classList.toggle('disabled', !can2); micEl.classList.toggle('active', this.ui.inputMode==='mic'); }
-        if(kbEl){ kbEl.classList.toggle('disabled', !can2); kbEl.classList.toggle('active', this.ui.inputMode==='kb'); }
-
+        this._syncActiveIcons();
       }
 
       if (this.ui.ansVisible){
@@ -507,9 +499,7 @@ render(forceFull){
         $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
       }else if (!isHost){ controls.innerHTML=''; }
 
-      this.renderTimer();
-      return;
-    }
+      this.renderTimer(); this._syncActiveIcons(); return; }
 
     if (s.status==='ended'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
   controls.innerHTML='';
