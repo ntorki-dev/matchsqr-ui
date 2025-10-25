@@ -265,7 +265,7 @@ body.is-game .footer,
 body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
 
 .site-footer{
-  position: static;
+  position: fixed;
   left:0; right:0; bottom:0;
   height: 30px;
   box-sizing: border-box;
@@ -296,8 +296,7 @@ body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
 body.is-game { --cardw: 220px; }
 
 /* Rows above/below the card align to card width */
-body.is-game #controlsRow,
-body.is-game #toolsRow{
+body.is-game #controlsRow, body.is-game #toolsRow{
   max-width: var(--cardw);
   margin-left: auto;
   margin-right: auto;
@@ -560,29 +559,36 @@ body.is-game #toolsRow{
 
 
 /* =========================================================
-   app.css v3 – widen answer row and make footer scroll
+   app.css v4 – widen answer area and keep footer at bottom (sticky, not fixed)
    ========================================================= */
 
-/* Wider answer row aligned to participants, not the card width */
+/* Make page use full viewport height so footer can sit at bottom */
+html, body { height: 100%; }
+body.is-game { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* Main game wrapper grows to fill space above footer */
+.room-wrap { flex: 1 0 auto; }
+
+/* Footer scrolls with page and stays at bottom of viewport when content is short */
+.site-footer { position: static; margin-top: auto; height: auto; padding: 12px 24px; }
+
+/* Answer row: break free of card width and center */
 body.is-game #answerRow{
   max-width: 640px !important;
-  width: 100%;
+  width: 100% !important;
   margin-left: auto;
   margin-right: auto;
+  align-self: center;
 }
 
-/* Stretch textarea and right-align submit inside answer area */
-.answer-card textarea{ width: 100%; min-height: 140px; }
+/* Textarea and submit alignment */
+.answer-card textarea{ width: 100% !important; min-height: 150px; }
 .answer-card .actions-row{ display: flex; justify-content: flex-end; margin-top: 10px; }
 
-/* Footer now scrolls with page content */
-.site-footer{ height: auto; padding: 12px 24px; }
-.room-wrap{ padding-bottom: 0; }
-
-/* Mobile: keep answer row within viewport */
+/* Mobile: keep within safe viewport width */
 @media (max-width: 767px){
   body.is-game #answerRow{
-    max-width: min(90vw, 332px) !important;
-    width: 100%;
+    max-width: min(92vw, 360px) !important;
+    width: 100% !important;
   }
 }
