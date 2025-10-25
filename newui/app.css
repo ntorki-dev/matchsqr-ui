@@ -557,3 +557,39 @@ body.is-game #answerRow{
 
 /* Add top padding so content does not overlap logo */
 .card.main-card.card--running{ padding-top:64px; }
+
+
+
+/* =========================================================
+   app.css v2 – Surgical overrides for Answer width, Submit alignment, and Footer spacing
+   ========================================================= */
+
+/* 1) Widen the answer row beyond the card width, center it */
+body.is-game #answerRow{
+  max-width: 640px;   /* matches question-block max width */
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* 2) Stretch textarea and right-align the submit button within the answer card */
+.answer-card textarea{
+  width: 100%;
+  min-height: 140px;
+}
+.answer-card .actions-row{
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+/* 3) Prevent fixed footer from overlapping content */
+.room-wrap{ padding-bottom: 56px; }
+
+/* 4) Mobile override, keep the answer wider than the card but within viewport */
+@media (max-width: 767px){
+  body.is-game #answerRow{
+    max-width: min(90vw, 332px);
+    width: 100%;
+  }
+}
