@@ -3,7 +3,50 @@ import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey
 import { renderHeader, ensureDebugTray, $, toast, setHeaderActions, clearHeaderActions } from './ui.js';
 
 const Game = {
-  code:null, poll:null, tick:null, hbH:null, hbG:null,
+  
+  // --- Speech-to-Text controls (browser-based, Web Speech API) ---
+  startSTT(){
+    try{ if (this._rec) { this.stopSTT(); } }catch{}
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR){ try{ toast('Speech to text is not supported in this browser'); }catch{} return; }
+    const rec = new SR();
+    rec.lang = (navigator && navigator.language) || 'en-US';
+    rec.continuous = true;
+    rec.interimResults = true;
+    this.ui.sttActive = true;
+    this._rec = rec;
+    rec.onresult = (evt)=>{
+      const box = $('#msBox');
+      if (!box) return;
+      // Append only final results to avoid constant flicker
+      for (let i = evt.resultIndex; i < evt.results.length; i++){
+        const res = evt.results[i];
+        const txt = res[0] && res[0].transcript ? res[0].transcript : '';
+        if (txt){
+          if (res.isFinal){
+            const cur = box.value || '';
+            box.value = (cur ? (cur.trimEnd() + ' ') : '') + txt.trim() + ' ';
+            this.ui.draft = box.value;
+            try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{}
+          }
+        }
+      }
+    };
+    rec.onerror = (_e)=>{ this.ui.sttActive=false; };
+    rec.onend = ()=>{ this.ui.sttActive=false; };
+    try { rec.start(); } catch { this.ui.sttActive=false; }
+  },
+  stopSTT(){
+    try{
+      if (this._rec){
+        try{ this._rec.onresult=null; this._rec.onerror=null; this._rec.onend=null; }catch{}
+        try{ this._rec.stop(); }catch{}
+      }
+    }catch{}
+    this._rec = null;
+    this.ui.sttActive = false;
+  },
+code:null, poll:null, tick:null, hbH:null, hbG:null,
   state:{ status:'lobby', endsAt:null, participants:[], question:null, current_turn:null, host_user_id:null },
   ui:{ lastSig:'', ansVisible:false, draft:'' },
 
@@ -416,6 +459,7 @@ render(forceFull){
         if (kb) kb.classList.toggle('disabled', !can);
         if (mic) { if (this.ui&&this.ui.inputTool==='mic') mic.classList.add('active'); else mic.classList.remove('active'); }
         if (kb) { if (this.ui&&this.ui.inputTool==='kb') kb.classList.add('active'); else kb.classList.remove('active'); }
+        if (!can) { try{ this.stopSTT(); }catch{} }
       }
 
       if (this.ui.ansVisible){
@@ -433,7 +477,7 @@ render(forceFull){
           const box=$('#msBox'); if (box){ box.value = this.ui.draft||''; box.addEventListener('input', ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
           const submit=$('#submitBtn'); if (submit) submit.onclick=async()=>{
             const box=$('#msBox'); const text=(box.value||'').trim(); if(!text) return;
-            try{ submit.disabled=true; await API.submit_answer({ text }); this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} this.ui.ansVisible=false; this.ui.inputTool=null; const mic=$('#micBtn'), kb=$('#kbBtn'); if(mic) mic.classList.remove('active'); if(kb) kb.classList.remove('active'); this.render(true); box.value=''; this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} await this.refresh(); }catch(e){ submit.disabled=false; toast(e.message||'Submit failed'); }
+            try{ submit.disabled=true; await API.submit_answer({ text }); try{ this.stopSTT(); }catch{} this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} this.ui.ansVisible=false; this.ui.inputTool=null; const mic=$('#micBtn'), kb=$('#kbBtn'); if(mic) mic.classList.remove('active'); if(kb) kb.classList.remove('active'); this.render(true); box.value=''; this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} await this.refresh(); }catch(e){ submit.disabled=false; toast(e.message||'Submit failed'); }
           };
         }else{
           const box=$('#msBox'); if (box){ box.placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn'; box.toggleAttribute('disabled', !this.canAnswer()); }
