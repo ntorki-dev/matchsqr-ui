@@ -449,7 +449,7 @@ render(forceFull){
     if (s.status==='running') { try{ const tar=document.getElementById('topActionsRow'); if (tar){ const role=getRole(this.code); const isHost=(role==='host'); tar.innerHTML = isHost ? '<button id="endAnalyzeTop" class="btn danger">End game & analyze</button>' : ''; if (isHost){ document.getElementById('endAnalyzeTop').onclick = async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } }; } } }catch(_){}  this.mountHeaderActions();
       if (forceFull){
         const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
-        q.innerHTML = '<h3 style="margin:0 0 8px 0;">'+(s.question?.text || '')+'</h3>';
+        q.innerHTML = '<h4 style="margin:0 0 8px 0;">'+(s.question?.text || '')+'</h4>';
         main.appendChild(q);
         // v10: Show guidance when game is running and there is no active turn
         try{
