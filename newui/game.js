@@ -467,10 +467,46 @@ render(forceFull){
         // v8: Toggle Next Card button based on round state
         try{
           const s=this.state; const next=$('#nextCard')||document.getElementById('nextCard');
-          if (next){ const active = !!(s.current_turn && s.current_turn.participant_id); next.toggleAttribute('disabled', active); }
+          if (next){ const active = !!(s.current_turn && s.current_turn.participant_id); next.disabled = !!active; next.setAttribute('aria-disabled', active ? 'true' : 'false'); }
           if (next){
-            if (active){ next.setAttribute('aria-disabled','true'); next.classList.add('disabled'); next.style.opacity='0.5'; next.style.pointerEvents='none'; next.style.cursor='not-allowed'; }
-            else { next.removeAttribute('aria-disabled'); next.classList.remove('disabled'); next.style.opacity=''; next.style.pointerEvents=''; next.style.cursor=''; }
+            const isButton = next.tagName && next.tagName.toLowerCase() === 'button';
+            if (active){
+              if (isButton){ next.disabled = true; }
+              next.setAttribute('aria-disabled','true'); next.classList.add('disabled','btn-disabled');
+              try{ next.style.setProperty('opacity','0.5','important'); }catch{}
+              try{ next.style.setProperty('filter','grayscale(1)','important'); }catch{}
+              try{ next.style.setProperty('pointer-events','none','important'); }catch{}
+              try{ next.style.setProperty('cursor','not-allowed','important'); }catch{}
+              try{ next.setAttribute('tabindex','-1'); }catch{}
+            } else {
+              if (isButton){ next.disabled = false; }
+              next.removeAttribute('aria-disabled'); next.classList.remove('disabled','btn-disabled');
+              try{ next.style.setProperty('opacity','', 'important'); }catch{}
+              try{ next.style.setProperty('filter','', 'important'); }catch{}
+              try{ next.style.setProperty('pointer-events','', 'important'); }catch{}
+              try{ next.style.setProperty('cursor','', 'important'); }catch{}
+              try{ next.removeAttribute('tabindex'); }catch{}
+            }
+          }
+          if (next){
+            const isButton = next.tagName && next.tagName.toLowerCase() === 'button';
+            if (active){
+              if (isButton){ next.disabled = true; }
+              next.setAttribute('aria-disabled','true'); next.classList.add('disabled','btn-disabled');
+              try{ next.style.setProperty('opacity','0.5','important'); }catch{}
+              try{ next.style.setProperty('filter','grayscale(1)','important'); }catch{}
+              try{ next.style.setProperty('pointer-events','none','important'); }catch{}
+              try{ next.style.setProperty('cursor','not-allowed','important'); }catch{}
+              try{ next.setAttribute('tabindex','-1'); }catch{}
+            } else {
+              if (isButton){ next.disabled = false; }
+              next.removeAttribute('aria-disabled'); next.classList.remove('disabled','btn-disabled');
+              try{ next.style.setProperty('opacity','', 'important'); }catch{}
+              try{ next.style.setProperty('filter','', 'important'); }catch{}
+              try{ next.style.setProperty('pointer-events','', 'important'); }catch{}
+              try{ next.style.setProperty('cursor','', 'important'); }catch{}
+              try{ next.removeAttribute('tabindex'); }catch{}
+            }
           }
           if (next){
             if (active){ next.setAttribute('aria-disabled','true'); next.classList.add('disabled'); next.style.opacity='0.5'; next.style.pointerEvents='none'; next.style.cursor='not-allowed'; }
@@ -541,7 +577,7 @@ render(forceFull){
       const role=getRole(this.code); const isHost = role==='host';
       if (isHost && forceFull){
         controls.innerHTML=
-          '<button id="nextCard" class="cta"><img src="./assets/next-card.png" alt="Next"/><span>Next Card</span></button>';
+          '<button id="nextCard" class="cta" '+( (s.current_turn && s.current_turn.participant_id) ? 'disabled' : '' )+'>'+'<img src="./assets/next-card.png" alt="Next"/><span>Next Card</span></button>';
         $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
       }else if (!isHost){ controls.innerHTML=''; }
 
