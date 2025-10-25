@@ -7,34 +7,42 @@ const Game = {
   // --- Speech-to-Text controls (browser-based, Web Speech API) ---
   startSTT(){
     try{ if (this._rec) { this.stopSTT(); } }catch{}
+    try{
+      const isLocal = typeof location!=='undefined' && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname||'');
+      const isSecure = typeof location!=='undefined' && location.protocol==='https:';
+      if (!isLocal && !isSecure){ try{ toast('Speech to text may require HTTPS'); }catch{} }
+    }catch{}
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR){ try{ toast('Speech to text is not supported in this browser'); }catch{} return; }
     const rec = new SR();
     rec.lang = (navigator && navigator.language) || 'en-US';
     rec.continuous = true;
     rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    this._sttFinalText = (function(box){ return box ? (box.value||'') : ''; })($('#msBox'));
     this.ui.sttActive = true;
     this._rec = rec;
     rec.onresult = (evt)=>{
-      const box = $('#msBox');
-      if (!box) return;
-      // Append only final results to avoid constant flicker
+      const box = $('#msBox'); if (!box) return;
+      let interim = '';
       for (let i = evt.resultIndex; i < evt.results.length; i++){
         const res = evt.results[i];
         const txt = res[0] && res[0].transcript ? res[0].transcript : '';
-        if (txt){
-          if (res.isFinal){
-            const cur = box.value || '';
-            box.value = (cur ? (cur.trimEnd() + ' ') : '') + txt.trim() + ' ';
-            this.ui.draft = box.value;
-            try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{}
-          }
+        if (!txt) continue;
+        if (res.isFinal){
+          this._sttFinalText = (this._sttFinalText ? (this._sttFinalText.trimEnd() + ' ') : '') + txt.trim();
+          box.value = this._sttFinalText + ' ';
+          this.ui.draft = box.value;
+          try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{}
+        }else{
+          interim += txt;
         }
       }
+      if (interim){ box.value = (this._sttFinalText? (this._sttFinalText + ' ') : '') + interim; }
     };
-    rec.onerror = (_e)=>{ this.ui.sttActive=false; };
+    rec.onerror = (e)=>{ this.ui.sttActive=false; try{ toast(e && e.error ? String(e.error) : 'Speech error'); }catch{} };
     rec.onend = ()=>{ this.ui.sttActive=false; };
-    try { rec.start(); } catch { this.ui.sttActive=false; }
+    try { rec.start(); } catch (e) { this.ui.sttActive=false; try{ toast(e && e.message ? e.message : 'Cannot start speech'); }catch{} }
   },
   stopSTT(){
     try{
@@ -46,6 +54,7 @@ const Game = {
     this._rec = null;
     this.ui.sttActive = false;
   },
+
 code:null, poll:null, tick:null, hbH:null, hbG:null,
   state:{ status:'lobby', endsAt:null, participants:[], question:null, current_turn:null, host_user_id:null },
   ui:{ lastSig:'', ansVisible:false, draft:'' },
@@ -450,6 +459,9 @@ render(forceFull){
           '<img id="micBtn" class="tool-icon'+((this.ui&&this.ui.inputTool==='mic')?' active':'')+(can?'':' disabled')+'" src="./assets/mic.png" alt="mic"/>'+
           '<img id="kbBtn" class="tool-icon'+((this.ui&&this.ui.inputTool==='kb')?' active':'')+(can?'':' disabled')+'" src="./assets/keyboard.png" alt="keyboard"/>';
         (tools||main).appendChild(actRow);
+        // v5 override: toggle mic STT and stop STT on keyboard
+        $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; if (this.ui && this.ui.sttActive){ try{ this.stopSTT(); }catch{} this.ui.sttActive=false; this.render(true); return; } this.ui.ansVisible=true; this.ui.inputTool='mic'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (mic) mic.classList.add('active'); if (kb) kb.classList.remove('active'); this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } try{ this.startSTT(); }catch{} };
+        $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; try{ this.stopSTT(); }catch{} this.ui.ansVisible=true; this.ui.inputTool='kb'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (kb) kb.classList.add('active'); if (mic) mic.classList.remove('active'); this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.ui.inputTool='mic'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (mic) mic.classList.add('active'); if (kb) kb.classList.remove('active'); this.render(true); };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.ui.inputTool='kb'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (kb) kb.classList.add('active'); if (mic) mic.classList.remove('active'); this.render(true); };
       }else{
