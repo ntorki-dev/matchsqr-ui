@@ -449,10 +449,27 @@ render(forceFull){
     if (s.status==='running') { try{ const tar=document.getElementById('topActionsRow'); if (tar){ const role=getRole(this.code); const isHost=(role==='host'); tar.innerHTML = isHost ? '<button id="endAnalyzeTop" class="btn danger">End game & analyze</button>' : ''; if (isHost){ document.getElementById('endAnalyzeTop').onclick = async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } }; } } }catch(_){}  this.mountHeaderActions();
       if (forceFull){
         const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
-        q.innerHTML = '<h3 style="margin:0 0 8px 0;">'+(s.question?.title || 'Question')+'</h3><p class="help" style="margin:0;">'+(s.question?.text || '')+'</p>';
+        q.innerHTML = '<h3 style="margin:0 0 8px 0;">'+(s.question?.text || '')+'</h3>';
         main.appendChild(q);
+        // v8: Show guidance when round is complete or no active turn
+        try{
+          const hasQ = !!(s.question && (s.question.text||s.question.title));
+          const activeTurn = !!(s.current_turn && s.current_turn.participant_id);
+          const roundComplete = hasQ && !activeTurn;
+          if (roundComplete){
+            const help=document.createElement('p'); help.className='help';
+            help.textContent='Please click on Next Card to reveal the next question.';
+            q.appendChild(help);
+          }
+        }catch{}
 
         this.renderSeats();
+
+        // v8: Toggle Next Card button based on round state
+        try{
+          const s=this.state; const next=$('#nextCard')||document.getElementById('nextCard');
+          if (next){ const active = !!(s.current_turn && s.current_turn.participant_id); next.toggleAttribute('disabled', active); }
+        }catch{}
 
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
@@ -476,6 +493,11 @@ render(forceFull){
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.ui.inputTool='kb'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (kb) kb.classList.add('active'); if (mic) mic.classList.remove('active'); this.render(true); };
       }else{
         this.renderSeats();
+        // v8: Toggle Next Card button in update path
+        try{
+          const s=this.state; const next=$('#nextCard')||document.getElementById('nextCard');
+          if (next){ const active = !!(s.current_turn && s.current_turn.participant_id); next.toggleAttribute('disabled', active); }
+        }catch{}
         const can=this.canAnswer(); const mic=$('#micBtn'); const kb=$('#kbBtn');
         if (mic) mic.classList.toggle('disabled', !can);
         if (kb) kb.classList.toggle('disabled', !can);
