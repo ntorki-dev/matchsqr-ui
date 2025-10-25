@@ -351,7 +351,12 @@ body.is-game #answerRow{
 }
 
 /* Answer card spacing */
-.answer-card{ margin-top:8px; }
+.answer-card{ 
+  margin-top:8px; 
+  border:1px solid var(--border);
+  border-radius: var(--radius);
+  padding:8px;
+}
 .actions-row{ gap:8px; margin-top:6px; }
 
 /* Mobile: stack content and hide sidebar to avoid pushing/overlap */
