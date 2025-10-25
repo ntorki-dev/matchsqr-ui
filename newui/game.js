@@ -554,7 +554,7 @@ render(forceFull){
       if (this.ui.ansVisible){
         let ans=$('#msAns');
         if (!ans){
-          ans=document.createElement('div'); ans.className='card answer-card'; ans.id='msAns';
+          ans=document.createElement('div'); ans.className='answer-card'; ans.id='msAns';
           const placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn';
           ans.innerHTML =
             '<div class="meta">Your answer</div>'+
