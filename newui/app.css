@@ -265,7 +265,7 @@ body.is-game .footer,
 body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
 
 .site-footer{
-  position: fixed;
+  position: static;
   left:0; right:0; bottom:0;
   height: 30px;
   box-sizing: border-box;
@@ -297,8 +297,7 @@ body.is-game { --cardw: 220px; }
 
 /* Rows above/below the card align to card width */
 body.is-game #controlsRow,
-body.is-game #toolsRow,
-body.is-game #answerRow{
+body.is-game #toolsRow{
   max-width: var(--cardw);
   margin-left: auto;
   margin-right: auto;
@@ -561,35 +560,29 @@ body.is-game #answerRow{
 
 
 /* =========================================================
-   app.css v2 – Surgical overrides for Answer width, Submit alignment, and Footer spacing
+   app.css v3 – widen answer row and make footer scroll
    ========================================================= */
 
-/* 1) Widen the answer row beyond the card width, center it */
+/* Wider answer row aligned to participants, not the card width */
 body.is-game #answerRow{
-  max-width: 640px;   /* matches question-block max width */
+  max-width: 640px !important;
   width: 100%;
   margin-left: auto;
   margin-right: auto;
 }
 
-/* 2) Stretch textarea and right-align the submit button within the answer card */
-.answer-card textarea{
-  width: 100%;
-  min-height: 140px;
-}
-.answer-card .actions-row{
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 10px;
-}
+/* Stretch textarea and right-align submit inside answer area */
+.answer-card textarea{ width: 100%; min-height: 140px; }
+.answer-card .actions-row{ display: flex; justify-content: flex-end; margin-top: 10px; }
 
-/* 3) Prevent fixed footer from overlapping content */
-.room-wrap{ padding-bottom: 56px; }
+/* Footer now scrolls with page content */
+.site-footer{ height: auto; padding: 12px 24px; }
+.room-wrap{ padding-bottom: 0; }
 
-/* 4) Mobile override, keep the answer wider than the card but within viewport */
+/* Mobile: keep answer row within viewport */
 @media (max-width: 767px){
   body.is-game #answerRow{
-    max-width: min(90vw, 332px);
+    max-width: min(90vw, 332px) !important;
     width: 100%;
   }
 }
