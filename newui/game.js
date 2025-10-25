@@ -42,6 +42,7 @@ const Game = {
     };
     rec.onerror = (e)=>{ this.ui.sttActive=false; try{ toast(e && e.error ? String(e.error) : 'Speech error'); }catch{} };
     rec.onend = ()=>{ this.ui.sttActive=false; };
+    console.info && console.info('[MS] starting recognition, lang=', rec.lang);
     try { rec.start(); } catch (e) { this.ui.sttActive=false; try{ toast(e && e.message ? e.message : 'Cannot start speech'); }catch{} }
   },
   stopSTT(){
@@ -459,6 +460,15 @@ render(forceFull){
           '<img id="micBtn" class="tool-icon'+((this.ui&&this.ui.inputTool==='mic')?' active':'')+(can?'':' disabled')+'" src="./assets/mic.png" alt="mic"/>'+
           '<img id="kbBtn" class="tool-icon'+((this.ui&&this.ui.inputTool==='kb')?' active':'')+(can?'':' disabled')+'" src="./assets/keyboard.png" alt="keyboard"/>';
         (tools||main).appendChild(actRow);
+        // v7: mic starts STT within click gesture BEFORE re-render; toggles off if already listening
+        $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; console.info && console.info('[MS] mic click');
+          if (this.ui && this.ui.sttActive){ try{ this.stopSTT(); }catch{} this.ui.sttActive=false; this.ui.inputTool=null; this.render(true); return; }
+          this.ui.ansVisible=true; this.ui.inputTool='mic';
+          try{ this.startSTT(); }catch{}
+          this.render(true);
+          const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} }
+        };
+        $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; try{ this.stopSTT(); }catch{} this.ui.ansVisible=true; this.ui.inputTool='kb'; this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
         // v5 override: toggle mic STT and stop STT on keyboard
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; if (this.ui && this.ui.sttActive){ try{ this.stopSTT(); }catch{} this.ui.sttActive=false; this.render(true); return; } this.ui.ansVisible=true; this.ui.inputTool='mic'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (mic) mic.classList.add('active'); if (kb) kb.classList.remove('active'); this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } try{ this.startSTT(); }catch{} };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; try{ this.stopSTT(); }catch{} this.ui.ansVisible=true; this.ui.inputTool='kb'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (kb) kb.classList.add('active'); if (mic) mic.classList.remove('active'); this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
@@ -471,6 +481,8 @@ render(forceFull){
         if (kb) kb.classList.toggle('disabled', !can);
         if (mic) { if (this.ui&&this.ui.inputTool==='mic') mic.classList.add('active'); else mic.classList.remove('active'); }
         if (kb) { if (this.ui&&this.ui.inputTool==='kb') kb.classList.add('active'); else kb.classList.remove('active'); }
+        if (mic) mic.onclick = ()=>{ if (!this.canAnswer()) return; console.info && console.info('[MS] mic click'); if (this.ui && this.ui.sttActive){ try{ this.stopSTT(); }catch{} this.ui.sttActive=false; this.ui.inputTool=null; this.render(true); return; } this.ui.ansVisible=true; this.ui.inputTool='mic'; try{ this.startSTT(); }catch{} this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
+        if (kb) kb.onclick = ()=>{ if (!this.canAnswer()) return; try{ this.stopSTT(); }catch{} this.ui.ansVisible=true; this.ui.inputTool='kb'; this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
         if (!can) { try{ this.stopSTT(); }catch{} }
       }
 
