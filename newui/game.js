@@ -404,15 +404,18 @@ render(forceFull){
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
         actRow.innerHTML=
-          '<button id="micBtn" class="kb-mic-btn" '+(can?'':'disabled')+'><img src="./assets/mic.png" alt="mic"/> <span>Mic</span></button>'+
-          '<button id="kbBtn" class="kb-mic-btn" '+(can?'':'disabled')+'><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>';
+          '<img id="micBtn" class="tool-icon'+((this.ui&&this.ui.inputTool==='mic')?' active':'')+(can?'':' disabled')+'" src="./assets/mic.png" alt="mic"/>'+
+          '<img id="kbBtn" class="tool-icon'+((this.ui&&this.ui.inputTool==='kb')?' active':'')+(can?'':' disabled')+'" src="./assets/keyboard.png" alt="keyboard"/>';
         (tools||main).appendChild(actRow);
-        $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
-        $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
+        $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.ui.inputTool='mic'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (mic) mic.classList.add('active'); if (kb) kb.classList.remove('active'); this.render(true); };
+        $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.ui.inputTool='kb'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (kb) kb.classList.add('active'); if (mic) mic.classList.remove('active'); this.render(true); };
       }else{
         this.renderSeats();
         const can=this.canAnswer(); const mic=$('#micBtn'); const kb=$('#kbBtn');
-        if (mic) mic.toggleAttribute('disabled', !can); if (kb) kb.toggleAttribute('disabled', !can);
+        if (mic) mic.classList.toggle('disabled', !can);
+        if (kb) kb.classList.toggle('disabled', !can);
+        if (mic) { if (this.ui&&this.ui.inputTool==='mic') mic.classList.add('active'); else mic.classList.remove('active'); }
+        if (kb) { if (this.ui&&this.ui.inputTool==='kb') kb.classList.add('active'); else kb.classList.remove('active'); }
       }
 
       if (this.ui.ansVisible){
