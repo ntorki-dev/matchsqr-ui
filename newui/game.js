@@ -451,12 +451,11 @@ render(forceFull){
         const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
         q.innerHTML = '<h3 style="margin:0 0 8px 0;">'+(s.question?.text || '')+'</h3>';
         main.appendChild(q);
-        // v8: Show guidance when round is complete or no active turn
+        // v10: Show guidance when game is running and there is no active turn
         try{
-          const hasQ = !!(s.question && (s.question.text||s.question.title));
+          const stRunning = (s.status||'') === 'running';
           const activeTurn = !!(s.current_turn && s.current_turn.participant_id);
-          const roundComplete = hasQ && !activeTurn;
-          if (roundComplete){
+          if (stRunning && !activeTurn){
             const help=document.createElement('p'); help.className='help';
             help.textContent='Please click on Next Card to reveal the next question.';
             q.appendChild(help);
@@ -469,6 +468,14 @@ render(forceFull){
         try{
           const s=this.state; const next=$('#nextCard')||document.getElementById('nextCard');
           if (next){ const active = !!(s.current_turn && s.current_turn.participant_id); next.toggleAttribute('disabled', active); }
+          if (next){
+            if (active){ next.setAttribute('aria-disabled','true'); next.classList.add('disabled'); next.style.opacity='0.5'; next.style.pointerEvents='none'; next.style.cursor='not-allowed'; }
+            else { next.removeAttribute('aria-disabled'); next.classList.remove('disabled'); next.style.opacity=''; next.style.pointerEvents=''; next.style.cursor=''; }
+          }
+          if (next){
+            if (active){ next.setAttribute('aria-disabled','true'); next.classList.add('disabled'); next.style.opacity='0.5'; next.style.pointerEvents='none'; next.style.cursor='not-allowed'; }
+            else { next.removeAttribute('aria-disabled'); next.classList.remove('disabled'); next.style.opacity=''; next.style.pointerEvents=''; next.style.cursor=''; }
+          }
         }catch{}
 
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
