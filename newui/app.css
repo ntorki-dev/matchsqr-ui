@@ -296,7 +296,9 @@ body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
 body.is-game { --cardw: 220px; }
 
 /* Rows above/below the card align to card width */
-body.is-game #controlsRow, body.is-game #toolsRow{
+body.is-game #controlsRow,
+body.is-game #toolsRow,
+body.is-game #answerRow{
   max-width: var(--cardw);
   margin-left: auto;
   margin-right: auto;
@@ -559,36 +561,28 @@ body.is-game #controlsRow, body.is-game #toolsRow{
 
 
 /* =========================================================
-   app.css v4 – widen answer area and keep footer at bottom (sticky, not fixed)
+   app.css v5 — Fixed footer without overlap (CSS-only, best practice)
    ========================================================= */
 
-/* Make page use full viewport height so footer can sit at bottom */
-html, body { height: 100%; }
-body.is-game { min-height: 100vh; display: flex; flex-direction: column; }
+/* Use a consistent footer height so content can reserve space */
+:root { --footer-h: 56px; }
 
-/* Main game wrapper grows to fill space above footer */
-.room-wrap { flex: 1 0 auto; }
+/* Game shell reserves space for the fixed footer */
+.room-wrap { padding-bottom: var(--footer-h); }
 
-/* Footer scrolls with page and stays at bottom of viewport when content is short */
-.site-footer { position: static; margin-top: auto; height: auto; padding: 12px 24px; }
-
-/* Answer row: break free of card width and center */
-body.is-game #answerRow{
-  max-width: 640px !important;
-  width: 100% !important;
-  margin-left: auto;
-  margin-right: auto;
-  align-self: center;
+/* Fixed footer stays at the bottom and never covers content above */
+.site-footer{
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  height: var(--footer-h);
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  z-index: 1000; /* above content */
 }
 
-/* Textarea and submit alignment */
-.answer-card textarea{ width: 100% !important; min-height: 150px; }
-.answer-card .actions-row{ display: flex; justify-content: flex-end; margin-top: 10px; }
-
-/* Mobile: keep within safe viewport width */
+/* Mobile: same behavior; you can tune height if needed */
 @media (max-width: 767px){
-  body.is-game #answerRow{
-    max-width: min(92vw, 360px) !important;
-    width: 100% !important;
-  }
+  :root { --footer-h: 56px; }
 }

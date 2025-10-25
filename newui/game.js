@@ -3,60 +3,7 @@ import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey
 import { renderHeader, ensureDebugTray, $, toast, setHeaderActions, clearHeaderActions } from './ui.js';
 
 const Game = {
-  
-  // --- Speech-to-Text controls (browser-based, Web Speech API) ---
-  startSTT(){
-    try{ if (this._rec) { this.stopSTT(); } }catch{}
-    try{
-      const isLocal = typeof location!=='undefined' && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname||'');
-      const isSecure = typeof location!=='undefined' && location.protocol==='https:';
-      if (!isLocal && !isSecure){ try{ toast('Speech to text may require HTTPS'); }catch{} }
-    }catch{}
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR){ try{ toast('Speech to text is not supported in this browser'); }catch{} return; }
-    const rec = new SR();
-    rec.lang = (navigator && navigator.language) || 'en-US';
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.maxAlternatives = 1;
-    this._sttFinalText = (function(box){ return box ? (box.value||'') : ''; })($('#msBox'));
-    this.ui.sttActive = true;
-    this._rec = rec;
-    rec.onresult = (evt)=>{
-      const box = $('#msBox'); if (!box) return;
-      let interim = '';
-      for (let i = evt.resultIndex; i < evt.results.length; i++){
-        const res = evt.results[i];
-        const txt = res[0] && res[0].transcript ? res[0].transcript : '';
-        if (!txt) continue;
-        if (res.isFinal){
-          this._sttFinalText = (this._sttFinalText ? (this._sttFinalText.trimEnd() + ' ') : '') + txt.trim();
-          box.value = this._sttFinalText + ' ';
-          this.ui.draft = box.value;
-          try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{}
-        }else{
-          interim += txt;
-        }
-      }
-      if (interim){ box.value = (this._sttFinalText? (this._sttFinalText + ' ') : '') + interim; }
-    };
-    rec.onerror = (e)=>{ this.ui.sttActive=false; try{ toast(e && e.error ? String(e.error) : 'Speech error'); }catch{} };
-    rec.onend = ()=>{ this.ui.sttActive=false; };
-    console.info && console.info('[MS] starting recognition, lang=', rec.lang);
-    try { rec.start(); } catch (e) { this.ui.sttActive=false; try{ toast(e && e.message ? e.message : 'Cannot start speech'); }catch{} }
-  },
-  stopSTT(){
-    try{
-      if (this._rec){
-        try{ this._rec.onresult=null; this._rec.onerror=null; this._rec.onend=null; }catch{}
-        try{ this._rec.stop(); }catch{}
-      }
-    }catch{}
-    this._rec = null;
-    this.ui.sttActive = false;
-  },
-
-code:null, poll:null, tick:null, hbH:null, hbG:null,
+  code:null, poll:null, tick:null, hbH:null, hbG:null,
   state:{ status:'lobby', endsAt:null, participants:[], question:null, current_turn:null, host_user_id:null },
   ui:{ lastSig:'', ansVisible:false, draft:'' },
 
@@ -449,112 +396,29 @@ render(forceFull){
     if (s.status==='running') { try{ const tar=document.getElementById('topActionsRow'); if (tar){ const role=getRole(this.code); const isHost=(role==='host'); tar.innerHTML = isHost ? '<button id="endAnalyzeTop" class="btn danger">End game & analyze</button>' : ''; if (isHost){ document.getElementById('endAnalyzeTop').onclick = async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } }; } } }catch(_){}  this.mountHeaderActions();
       if (forceFull){
         const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
-        q.innerHTML = '<h4 style="margin:0 0 8px 0;">'+(s.question?.text || '')+'</h4>';
+        q.innerHTML = '<h4 style="margin:0 0 8px 0;">'+(s.question?.title || 'Question')+'</h4><p class="help" style="margin:0;">'+(s.question?.text || '')+'</p>';
         main.appendChild(q);
-        // v10: Show guidance when game is running and there is no active turn
-        try{
-          const stRunning = (s.status||'') === 'running';
-          const activeTurn = !!(s.current_turn && s.current_turn.participant_id);
-          if (stRunning && !activeTurn){
-            const help=document.createElement('p'); help.className='help';
-            help.textContent='Please click on Next Card to reveal the next question.';
-            q.appendChild(help);
-          }
-        }catch{}
 
         this.renderSeats();
-
-        // v8: Toggle Next Card button based on round state
-        try{
-          const s=this.state; const next=$('#nextCard')||document.getElementById('nextCard');
-          if (next){ const active = !!(s.current_turn && s.current_turn.participant_id); next.disabled = !!active; next.setAttribute('aria-disabled', active ? 'true' : 'false'); }
-          if (next){
-            const isButton = next.tagName && next.tagName.toLowerCase() === 'button';
-            if (active){
-              if (isButton){ next.disabled = true; }
-              next.setAttribute('aria-disabled','true'); next.classList.add('disabled','btn-disabled');
-              try{ next.style.setProperty('opacity','0.5','important'); }catch{}
-              try{ next.style.setProperty('filter','grayscale(1)','important'); }catch{}
-              try{ next.style.setProperty('pointer-events','none','important'); }catch{}
-              try{ next.style.setProperty('cursor','not-allowed','important'); }catch{}
-              try{ next.setAttribute('tabindex','-1'); }catch{}
-            } else {
-              if (isButton){ next.disabled = false; }
-              next.removeAttribute('aria-disabled'); next.classList.remove('disabled','btn-disabled');
-              try{ next.style.setProperty('opacity','', 'important'); }catch{}
-              try{ next.style.setProperty('filter','', 'important'); }catch{}
-              try{ next.style.setProperty('pointer-events','', 'important'); }catch{}
-              try{ next.style.setProperty('cursor','', 'important'); }catch{}
-              try{ next.removeAttribute('tabindex'); }catch{}
-            }
-          }
-          if (next){
-            const isButton = next.tagName && next.tagName.toLowerCase() === 'button';
-            if (active){
-              if (isButton){ next.disabled = true; }
-              next.setAttribute('aria-disabled','true'); next.classList.add('disabled','btn-disabled');
-              try{ next.style.setProperty('opacity','0.5','important'); }catch{}
-              try{ next.style.setProperty('filter','grayscale(1)','important'); }catch{}
-              try{ next.style.setProperty('pointer-events','none','important'); }catch{}
-              try{ next.style.setProperty('cursor','not-allowed','important'); }catch{}
-              try{ next.setAttribute('tabindex','-1'); }catch{}
-            } else {
-              if (isButton){ next.disabled = false; }
-              next.removeAttribute('aria-disabled'); next.classList.remove('disabled','btn-disabled');
-              try{ next.style.setProperty('opacity','', 'important'); }catch{}
-              try{ next.style.setProperty('filter','', 'important'); }catch{}
-              try{ next.style.setProperty('pointer-events','', 'important'); }catch{}
-              try{ next.style.setProperty('cursor','', 'important'); }catch{}
-              try{ next.removeAttribute('tabindex'); }catch{}
-            }
-          }
-          if (next){
-            if (active){ next.setAttribute('aria-disabled','true'); next.classList.add('disabled'); next.style.opacity='0.5'; next.style.pointerEvents='none'; next.style.cursor='not-allowed'; }
-            else { next.removeAttribute('aria-disabled'); next.classList.remove('disabled'); next.style.opacity=''; next.style.pointerEvents=''; next.style.cursor=''; }
-          }
-        }catch{}
 
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
         actRow.innerHTML=
-          '<img id="micBtn" class="tool-icon'+((this.ui&&this.ui.inputTool==='mic')?' active':'')+(can?'':' disabled')+'" src="./assets/mic.png" alt="mic"/>'+
-          '<img id="kbBtn" class="tool-icon'+((this.ui&&this.ui.inputTool==='kb')?' active':'')+(can?'':' disabled')+'" src="./assets/keyboard.png" alt="keyboard"/>';
+          '<button id="micBtn" class="kb-mic-btn" '+(can?'':'disabled')+'><img src="./assets/mic.png" alt="mic"/> <span>Mic</span></button>'+
+          '<button id="kbBtn" class="kb-mic-btn" '+(can?'':'disabled')+'><img src="./assets/keyboard.png" alt="kb"/> <span>Keyboard</span></button>';
         (tools||main).appendChild(actRow);
-        // v7: mic starts STT within click gesture BEFORE re-render; toggles off if already listening
-        $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; console.info && console.info('[MS] mic click');
-          if (this.ui && this.ui.sttActive){ try{ this.stopSTT(); }catch{} this.ui.sttActive=false; this.ui.inputTool=null; this.render(true); return; }
-          this.ui.ansVisible=true; this.ui.inputTool='mic';
-          try{ this.startSTT(); }catch{}
-          this.render(true);
-          const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} }
-        };
-        $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; try{ this.stopSTT(); }catch{} this.ui.ansVisible=true; this.ui.inputTool='kb'; this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
-        // v5 override: toggle mic STT and stop STT on keyboard
-        $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; if (this.ui && this.ui.sttActive){ try{ this.stopSTT(); }catch{} this.ui.sttActive=false; this.render(true); return; } this.ui.ansVisible=true; this.ui.inputTool='mic'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (mic) mic.classList.add('active'); if (kb) kb.classList.remove('active'); this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } try{ this.startSTT(); }catch{} };
-        $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; try{ this.stopSTT(); }catch{} this.ui.ansVisible=true; this.ui.inputTool='kb'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (kb) kb.classList.add('active'); if (mic) mic.classList.remove('active'); this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
-        $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.ui.inputTool='mic'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (mic) mic.classList.add('active'); if (kb) kb.classList.remove('active'); this.render(true); };
-        $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.ui.inputTool='kb'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (kb) kb.classList.add('active'); if (mic) mic.classList.remove('active'); this.render(true); };
+        $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
+        $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.render(true); };
       }else{
         this.renderSeats();
-        // v8: Toggle Next Card button in update path
-        try{
-          const s=this.state; const next=$('#nextCard')||document.getElementById('nextCard');
-          if (next){ const active = !!(s.current_turn && s.current_turn.participant_id); next.toggleAttribute('disabled', active); }
-        }catch{}
         const can=this.canAnswer(); const mic=$('#micBtn'); const kb=$('#kbBtn');
-        if (mic) mic.classList.toggle('disabled', !can);
-        if (kb) kb.classList.toggle('disabled', !can);
-        if (mic) { if (this.ui&&this.ui.inputTool==='mic') mic.classList.add('active'); else mic.classList.remove('active'); }
-        if (kb) { if (this.ui&&this.ui.inputTool==='kb') kb.classList.add('active'); else kb.classList.remove('active'); }
-        if (mic) mic.onclick = ()=>{ if (!this.canAnswer()) return; console.info && console.info('[MS] mic click'); if (this.ui && this.ui.sttActive){ try{ this.stopSTT(); }catch{} this.ui.sttActive=false; this.ui.inputTool=null; this.render(true); return; } this.ui.ansVisible=true; this.ui.inputTool='mic'; try{ this.startSTT(); }catch{} this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
-        if (kb) kb.onclick = ()=>{ if (!this.canAnswer()) return; try{ this.stopSTT(); }catch{} this.ui.ansVisible=true; this.ui.inputTool='kb'; this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
-        if (!can) { try{ this.stopSTT(); }catch{} }
+        if (mic) mic.toggleAttribute('disabled', !can); if (kb) kb.toggleAttribute('disabled', !can);
       }
 
       if (this.ui.ansVisible){
         let ans=$('#msAns');
         if (!ans){
-          ans=document.createElement('div'); ans.className='answer-card'; ans.id='msAns';
+          ans=document.createElement('div'); ans.className='card answer-card'; ans.id='msAns';
           const placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn';
           ans.innerHTML =
             '<div class="meta">Your answer</div>'+
@@ -566,7 +430,7 @@ render(forceFull){
           const box=$('#msBox'); if (box){ box.value = this.ui.draft||''; box.addEventListener('input', ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
           const submit=$('#submitBtn'); if (submit) submit.onclick=async()=>{
             const box=$('#msBox'); const text=(box.value||'').trim(); if(!text) return;
-            try{ submit.disabled=true; await API.submit_answer({ text }); try{ this.stopSTT(); }catch{} this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} this.ui.ansVisible=false; this.ui.inputTool=null; const mic=$('#micBtn'), kb=$('#kbBtn'); if(mic) mic.classList.remove('active'); if(kb) kb.classList.remove('active'); this.render(true); box.value=''; this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} await this.refresh(); }catch(e){ submit.disabled=false; toast(e.message||'Submit failed'); }
+            try{ submit.disabled=true; await API.submit_answer({ text }); box.value=''; this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} await this.refresh(); }catch(e){ submit.disabled=false; toast(e.message||'Submit failed'); }
           };
         }else{
           const box=$('#msBox'); if (box){ box.placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn'; box.toggleAttribute('disabled', !this.canAnswer()); }
@@ -577,7 +441,7 @@ render(forceFull){
       const role=getRole(this.code); const isHost = role==='host';
       if (isHost && forceFull){
         controls.innerHTML=
-          '<button id="nextCard" class="cta" '+( (s.current_turn && s.current_turn.participant_id) ? 'disabled' : '' )+'>'+'<img src="./assets/next-card.png" alt="Next"/><span>Next Card</span></button>';
+          '<button id="nextCard" class="cta"><img src="./assets/next-card.png" alt="Next"/><span>Next Card</span></button>';
         $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
       }else if (!isHost){ controls.innerHTML=''; }
 
@@ -591,7 +455,7 @@ render(forceFull){
   this.renderSeats();
   // Put summary inside the main card instead of replacing the whole grid
   main.innerHTML = '<div style="text-align:center; max-width:640px;">'+
-          '<h3>Summary</h3>'+
+          '<h4>Summary</h4>'+
           '<p class="help">The game has ended. You can start a new one from Host page.</p>'+
           '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">'+
             '<a class="btn" href="#/host">Host a new game</a>'+
