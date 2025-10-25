@@ -557,32 +557,3 @@ body.is-game #answerRow{
 
 /* Add top padding so content does not overlap logo */
 .card.main-card.card--running{ padding-top:64px; }
-
-
-
-/* =========================================================
-   app.css v5 — Fixed footer without overlap (CSS-only, best practice)
-   ========================================================= */
-
-/* Use a consistent footer height so content can reserve space */
-:root { --footer-h: 56px; }
-
-/* Game shell reserves space for the fixed footer */
-.room-wrap { padding-bottom: var(--footer-h); }
-
-/* Fixed footer stays at the bottom and never covers content above */
-.site-footer{
-  position: fixed;
-  left: 0; right: 0; bottom: 0;
-  height: var(--footer-h);
-  padding: 0 16px;
-  display: flex;
-  align-items: center;
-  box-sizing: border-box;
-  z-index: 1000; /* above content */
-}
-
-/* Mobile: same behavior; you can tune height if needed */
-@media (max-width: 767px){
-  :root { --footer-h: 56px; }
-}
