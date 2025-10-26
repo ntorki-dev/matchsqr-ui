@@ -79,7 +79,6 @@ export async function renderHeader(){
   const headerHTML = `
     <div class="header">
       <a class="brand" href="#/"><img src="./assets/logo.png" alt="logo"/><span>MatchSqr</span></a>
-      <div class="ms-actions" id="msHeaderActions" aria-live="polite"></div>
       <div class="right" id="hdrRight">
         ${rightInitial}
       </div>
@@ -232,84 +231,48 @@ export function ensureFooter(){
 })();
 
 
-export function setHeaderActions(nodeOrHtml){
-  const slot = document.getElementById('msHeaderActions');
-  if (!slot) return;
-  while (slot.firstChild) slot.removeChild(slot.firstChild);
-  if (!nodeOrHtml) return;
-  if (typeof nodeOrHtml === 'string'){
-    slot.insertAdjacentHTML('afterbegin', nodeOrHtml);
-  } else if (nodeOrHtml instanceof Node){
-    slot.appendChild(nodeOrHtml);
-  } else if (Array.isArray(nodeOrHtml)){
-    nodeOrHtml.forEach(n=>{
-      if (typeof n === 'string') slot.insertAdjacentHTML('beforeend', n);
-      else if (n instanceof Node) slot.appendChild(n);
-    });
-  }
-}
-export function clearHeaderActions(){
-  const slot = document.getElementById('msHeaderActions');
-  if (!slot) return;
-  while (slot.firstChild) slot.removeChild(slot.firstChild);
-}
-
-
-// === FOOTER SAFE AREA: SPACER APPROACH ===
-// Robust fix: insert an invisible spacer just before the fixed footer whose
-// height matches the footer. This reserves layout space regardless of which
-// element is the scroll container. No CSS changes required.
+// === FOOTER SAFE AREA FIX v3: scroll container aware ===
+// Reserve space for the fixed footer by padding the actual scroll container.
+// Does not change any existing exports or logic.
 (function () {
-  function ensureSpacer(footer) {
-    let spacer = document.getElementById('footer-spacer');
-    if (!spacer) {
-      spacer = document.createElement('div');
-      spacer.id = 'footer-spacer';
-      spacer.setAttribute('aria-hidden', 'true');
-      spacer.style.width = '100%';
-      spacer.style.height = '0px';
-      spacer.style.flexShrink = '0';
-      // Place spacer directly before the footer in the DOM
-      footer.parentNode.insertBefore(spacer, footer);
+  function getScrollContainer() {
+    const known = [
+      document.querySelector('.room-wrap'),
+      document.getElementById('app'),
+      document.querySelector('main'),
+      document.querySelector('.page')
+    ].filter(Boolean);
+    for (const el of known) {
+      const style = getComputedStyle(el);
+      const overflowY = style.overflowY;
+      const canScroll = (el.scrollHeight - el.clientHeight) > 1;
+      if (overflowY === 'auto' || overflowY === 'scroll' || canScroll) return el;
     }
-    return spacer;
+    return document.scrollingElement || document.documentElement || document.body;
   }
 
-  function calcFooterHeight(footer) {
-    const rect = footer.getBoundingClientRect();
-    // Include iOS safe area if present
-    let safeInset = 0;
+  function applyPadding(footer) {
+    const scroller = getScrollContainer();
+    const h = footer ? (footer.offsetHeight || 0) : 0;
     try {
-      const v = getComputedStyle(document.documentElement).getPropertyValue('padding-bottom');
-      // We cannot read env() directly here reliably; leave safeInset at 0.
-      safeInset = 0;
-    } catch(_) {}
-    return Math.max(0, Math.round(rect.height + safeInset));
-  }
-
-  function applySpacer(footer) {
-    const spacer = ensureSpacer(footer);
-    const h = calcFooterHeight(footer);
-    // Reset any previously added paddings from earlier attempts
-    try {
-      document.body.style.paddingBottom = '0px';
-      const rw = document.querySelector('.room-wrap');
-      if (rw) rw.style.paddingBottom = '0px';
-      const app = document.getElementById('app');
-      if (app) app.style.paddingBottom = '0px';
+      const candidates = [document.body, document.documentElement,
+                          document.querySelector('.room-wrap'),
+                          document.getElementById('app'),
+                          document.querySelector('main'),
+                          document.querySelector('.page')].filter(Boolean);
+      for (const el of candidates) el.style.paddingBottom = '0px';
     } catch (_) {}
-    // Apply spacer height
-    spacer.style.height = h + 'px';
-    // Keep a CSS variable for reference
+    scroller.style.paddingBottom = h + 'px';
     document.documentElement.style.setProperty('--footer-h', h + 'px');
   }
 
   function bind(footer) {
-    applySpacer(footer);
-    window.addEventListener('resize', () => applySpacer(footer), { passive: true });
-    window.addEventListener('orientationchange', () => applySpacer(footer));
+    applyPadding(footer);
+    const update = () => applyPadding(footer);
+    window.addEventListener('resize', update, { passive: true });
+    window.addEventListener('orientationchange', update);
     try {
-      const ro = new ResizeObserver(() => applySpacer(footer));
+      const ro = new ResizeObserver(update);
       ro.observe(footer);
     } catch (_) {}
   }
@@ -317,7 +280,6 @@ export function clearHeaderActions(){
   function init() {
     const footer = document.querySelector('.site-footer');
     if (footer) { bind(footer); return; }
-    // Footer may be injected later
     try {
       const mo = new MutationObserver((_, obs) => {
         const f = document.querySelector('.site-footer');
