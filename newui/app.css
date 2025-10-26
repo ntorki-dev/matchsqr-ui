@@ -558,23 +558,13 @@ body.is-game #answerRow{
 /* Add top padding so content does not overlap logo */
 .card.main-card.card--running{ padding-top:64px; }
 
-/* === FINAL HARD OVERRIDE: footer must be in flow at the very bottom === */
-/* Make #app the layout column */
-html, body { height: 100%; min-height: 100dvh; }
-#app { min-height: 100dvh; display: flex; flex-direction: column; min-width: 0; }
-/* Footer: never fixed, never overlay */
-body #app .site-footer {
-  position: static !important;
-  bottom: auto !important;
-  left: auto !important;
-  right: auto !important;
-  z-index: auto !important;
-  margin-top: auto;
-  height: auto;
-  box-sizing: border-box;
+/* === Bottom gap final fix === */
+#app { background: var(--bg) !important; }                   /* match page background */
+#app > *:not(.site-footer):last-child {
+  margin-bottom: 0 !important;                               /* kill last block margin */
+  padding-bottom: 0 !important;                              /* and padding if any */
 }
-/* Neutralize any state-specific fixed rules */
-body.is-game .site-footer { position: static !important; }
-/* Remove artificial gaps */
-#app, .room-wrap, main, .page, body { padding-bottom: 0 !important; }
-#app > :not(.site-footer):last-child { margin-bottom: 0 !important; }
+/* Common containers that might be the last child */
+#app > .room-wrap:last-child,
+#app > main:last-child,
+#app > .page:last-child { margin-bottom: 0 !important; padding-bottom: 0 !important; }
