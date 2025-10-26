@@ -75,7 +75,7 @@ button.cta:disabled { opacity:.5; filter:grayscale(1); cursor:not-allowed; }
 .help{font-size:12px}
 
 /* Game room */
-.room-wrap{max-width:860px;margin:24px auto;padding:0 16px}
+.room-wrap{max-width:860px;margin: 24px auto 0;padding:0 16px}
 .timer{font-weight:800}
 /* Centered round Start (pre-start) */
 .start-round{width:120px;height:120px;border-radius:60px;background:var(--green);color:#fff;border:0;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 10px 30px rgba(34,164,71,.25)}
