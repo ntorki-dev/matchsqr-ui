@@ -253,3 +253,83 @@ export function clearHeaderActions(){
   if (!slot) return;
   while (slot.firstChild) slot.removeChild(slot.firstChild);
 }
+
+
+// === FOOTER SAFE AREA: SPACER APPROACH ===
+// Robust fix: insert an invisible spacer just before the fixed footer whose
+// height matches the footer. This reserves layout space regardless of which
+// element is the scroll container. No CSS changes required.
+(function () {
+  function ensureSpacer(footer) {
+    let spacer = document.getElementById('footer-spacer');
+    if (!spacer) {
+      spacer = document.createElement('div');
+      spacer.id = 'footer-spacer';
+      spacer.setAttribute('aria-hidden', 'true');
+      spacer.style.width = '100%';
+      spacer.style.height = '0px';
+      spacer.style.flexShrink = '0';
+      // Place spacer directly before the footer in the DOM
+      footer.parentNode.insertBefore(spacer, footer);
+    }
+    return spacer;
+  }
+
+  function calcFooterHeight(footer) {
+    const rect = footer.getBoundingClientRect();
+    // Include iOS safe area if present
+    let safeInset = 0;
+    try {
+      const v = getComputedStyle(document.documentElement).getPropertyValue('padding-bottom');
+      // We cannot read env() directly here reliably; leave safeInset at 0.
+      safeInset = 0;
+    } catch(_) {}
+    return Math.max(0, Math.round(rect.height + safeInset));
+  }
+
+  function applySpacer(footer) {
+    const spacer = ensureSpacer(footer);
+    const h = calcFooterHeight(footer);
+    // Reset any previously added paddings from earlier attempts
+    try {
+      document.body.style.paddingBottom = '0px';
+      const rw = document.querySelector('.room-wrap');
+      if (rw) rw.style.paddingBottom = '0px';
+      const app = document.getElementById('app');
+      if (app) app.style.paddingBottom = '0px';
+    } catch (_) {}
+    // Apply spacer height
+    spacer.style.height = h + 'px';
+    // Keep a CSS variable for reference
+    document.documentElement.style.setProperty('--footer-h', h + 'px');
+  }
+
+  function bind(footer) {
+    applySpacer(footer);
+    window.addEventListener('resize', () => applySpacer(footer), { passive: true });
+    window.addEventListener('orientationchange', () => applySpacer(footer));
+    try {
+      const ro = new ResizeObserver(() => applySpacer(footer));
+      ro.observe(footer);
+    } catch (_) {}
+  }
+
+  function init() {
+    const footer = document.querySelector('.site-footer');
+    if (footer) { bind(footer); return; }
+    // Footer may be injected later
+    try {
+      const mo = new MutationObserver((_, obs) => {
+        const f = document.querySelector('.site-footer');
+        if (f) { bind(f); obs.disconnect(); }
+      });
+      mo.observe(document.documentElement, { childList: true, subtree: true });
+    } catch (_) {}
+  }
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(init, 0);
+  } else {
+    document.addEventListener('DOMContentLoaded', init);
+  }
+})();
