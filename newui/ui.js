@@ -173,7 +173,6 @@ export function ensureFooter(){
     }
   }catch{}
 }
-}
 
 /* === Autofill helper, surgical and non-breaking ===
  * Fixes console warning: inputs recognized for autofill but missing autocomplete.
