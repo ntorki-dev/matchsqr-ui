@@ -265,10 +265,9 @@ body.is-game .footer,
 body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
 
 .site-footer{
-  position: fixed;
-  left:0; right:0; bottom:0;
-  height: 30px;
-  box-sizing: border-box;
+  margin-top: auto;
+  position: static;
+  height: auto;box-sizing: border-box;
   padding: 12px 24px;
   background: transparent;
   color: inherit;
@@ -559,16 +558,9 @@ body.is-game #answerRow{
 .card.main-card.card--running{ padding-top:64px; }
 
 
-/* === Sticky footer: final overrides (safe, CSS-only) === */
+/* === Sticky footer on #app: simple, CSS-only === */
 html, body { height: 100%; min-height: 100dvh; }
-body { display: flex; flex-direction: column; }
-
-/* Ensure the main app container takes remaining space to push footer down */
-#app { flex: 1 0 auto; min-height: 0; }
-
-/* Footer must live in normal flow, never fixed on any page state */
-.site-footer { position: static !important; margin-top: auto; height: auto; box-sizing: border-box; }
-body.is-game .site-footer { position: static !important; }
-
-/* Clean up any accidental bottom padding on common containers that could create a gap */
-.room-wrap, main, .page, body { padding-bottom: 0 !important; }
+#app { min-height: 100dvh; display: flex; flex-direction: column; }
+/* Footer in normal flow, sits at bottom when content is short */
+.site-footer { position: static; margin-top: auto; height: auto; box-sizing: border-box; }
+body.is-game .site-footer { position: static; }
