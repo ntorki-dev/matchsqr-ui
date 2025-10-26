@@ -1,4 +1,5 @@
 :root{
+  --footer-h: 0px;
   --ink:#1f2937; --muted:#6b7280; --green:#22a447; --green-pressed:#1e8d3d; --border:#e5e7eb; --radius:16px;
 }
 *{box-sizing:border-box} html,body{height:100%} body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
@@ -94,7 +95,7 @@ button.cta:disabled { opacity:.5; filter:grayscale(1); cursor:not-allowed; }
 /* Shared icon styling for mic and keyboard */
 .tool-icon {
   width: 30px;
-  height: 30px;
+  
   cursor: pointer;
   vertical-align: middle;
 }
@@ -267,7 +268,7 @@ body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
 .site-footer{
   position: fixed;
   left:0; right:0; bottom:0;
-  height: 30px;
+  
   box-sizing: border-box;
   padding: 12px 24px;
   background: transparent;
@@ -276,6 +277,8 @@ body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
 }
 
 
+
+html, body, .room-wrap{ padding-bottom: var(--footer-h, 0px); }
 /* === MOBILE OVERRIDE: Keep Learn more left-aligned on small screens === */
 @media (max-width: 520px){
   .home-learn{
@@ -397,7 +400,8 @@ body.is-game #answerRow{
 .seat-item.is-turn{ font-weight:700; }
 
 @media (max-width: 640px){
-  :root{ --card-w: clamp(150px, 42vw, 220px); }
+  :root{
+  --footer-h: 0px; --card-w: clamp(150px, 42vw, 220px); }
   .seat-item{ font-size:11px; }
   }
 
