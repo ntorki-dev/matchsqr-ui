@@ -152,24 +152,9 @@ export function participantsListHTML(ppl, curPid){
 
 export function ensureFooter(){
   try{
-    const app = document.getElementById('app');
-    let footer = document.querySelector('.site-footer');
-    if (app && !footer){
+    const app=document.getElementById('app');
+    if (app && !document.querySelector('.site-footer')){
       app.insertAdjacentHTML('beforeend', `<div class="site-footer"></div>`);
-      footer = document.querySelector('.site-footer');
-    }
-    if (footer){
-      const setVar = () => {
-        const h = footer.offsetHeight || 0;
-        document.documentElement.style.setProperty('--footer-h', h + 'px');
-      };
-      requestAnimationFrame(setVar);
-      if (!window.__msFooterSizingBound){
-        window.addEventListener('resize', setVar);
-        window.addEventListener('orientationchange', setVar);
-        window.addEventListener('load', setVar);
-        window.__msFooterSizingBound = true;
-      }
     }
   }catch{}
 }
@@ -244,3 +229,21 @@ export function ensureFooter(){
     mo.observe(document.documentElement, { childList: true, subtree: true });
   } catch (_e) {}
 })();
+
+
+// === FOOTER SAFE AREA FIX ===
+// Keeps footer fixed while ensuring content never hides behind it.
+window.addEventListener('load', () => {
+  const footer = document.querySelector('.site-footer');
+  if (!footer) return;
+
+  function updateFooterPadding() {
+    const footerHeight = footer.offsetHeight || 0;
+    document.documentElement.style.setProperty('--footer-h', footerHeight + 'px');
+    document.body.style.paddingBottom = `var(--footer-h)`;
+  }
+
+  updateFooterPadding();
+  window.addEventListener('resize', updateFooterPadding);
+  window.addEventListener('orientationchange', updateFooterPadding);
+});
