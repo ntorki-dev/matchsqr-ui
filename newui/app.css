@@ -1,7 +1,11 @@
 :root{
   --ink:#1f2937; --muted:#6b7280; --green:#22a447; --green-pressed:#1e8d3d; --border:#e5e7eb; --radius:16px;
 }
-*{box-sizing:border-box} html,body{height:100%} body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+*{box-sizing:border-box} html,body{height:100%}
+#app{ min-height:100dvh; display:flex; flex-direction:column;
+  background: var(--bg);
+}
+ body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
 a{color:inherit;text-decoration:none}
 .container{max-width:1080px;margin:0 auto;padding:16px}
 
@@ -265,14 +269,14 @@ body.is-game .footer,
 body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
 
 .site-footer{
-  position: fixed;
-  left:0; right:0; bottom:0;
-  height: 30px;
+  position: static;
+  height: auto;
   box-sizing: border-box;
   padding: 12px 24px;
   background: transparent;
   color: inherit;
   z-index: 10;
+  margin-top: auto;
 }
 
 
@@ -557,14 +561,4 @@ body.is-game #answerRow{
 
 /* Add top padding so content does not overlap logo */
 .card.main-card.card--running{ padding-top:64px; }
-
-/* === Bottom gap final fix === */
-#app { background: var(--bg) !important; }                   /* match page background */
-#app > *:not(.site-footer):last-child {
-  margin-bottom: 0 !important;                               /* kill last block margin */
-  padding-bottom: 0 !important;                              /* and padding if any */
-}
-/* Common containers that might be the last child */
-#app > .room-wrap:last-child,
-#app > main:last-child,
-#app > .page:last-child { margin-bottom: 0 !important; padding-bottom: 0 !important; }
+.room-wrap > *:last-child{ margin-bottom:0; padding-bottom:0; }
