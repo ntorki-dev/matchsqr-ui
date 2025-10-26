@@ -265,9 +265,10 @@ body.is-game .footer,
 body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
 
 .site-footer{
-  margin-top: auto;
-  position: static;
-  height: auto;box-sizing: border-box;
+  position: fixed;
+  left:0; right:0; bottom:0;
+  height: 30px;
+  box-sizing: border-box;
   padding: 12px 24px;
   background: transparent;
   color: inherit;
@@ -557,10 +558,9 @@ body.is-game #answerRow{
 /* Add top padding so content does not overlap logo */
 .card.main-card.card--running{ padding-top:64px; }
 
-
-/* === Sticky footer on #app: simple, CSS-only === */
-html, body { height: 100%; min-height: 100dvh; }
-#app { min-height: 100dvh; display: flex; flex-direction: column; }
-/* Footer in normal flow, sits at bottom when content is short */
-.site-footer { position: static; margin-top: auto; height: auto; box-sizing: border-box; }
-body.is-game .site-footer { position: static; }
+/* === Bottom gap fix above footer === */
+#app { background: var(--bg); } /* same background as page */
+#app > :not(.site-footer):last-child { margin-bottom: 0 !important; }
+.room-wrap:last-child,
+main:last-child,
+.page:last-child { margin-bottom: 0 !important; }
