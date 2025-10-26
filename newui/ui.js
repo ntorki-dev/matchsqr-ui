@@ -231,19 +231,32 @@ export function ensureFooter(){
 })();
 
 
-// === FOOTER SAFE AREA FIX ===
-// Keeps footer fixed while ensuring content never hides behind it.
+// === FOOTER SAFE AREA FIX, NON-BREAKING ===
+// Keeps the footer fixed while ensuring page content never hides behind it.
+// Does not modify any existing exports or logic.
 window.addEventListener('load', () => {
   const footer = document.querySelector('.site-footer');
   if (!footer) return;
 
-  function updateFooterPadding() {
-    const footerHeight = footer.offsetHeight || 0;
-    document.documentElement.style.setProperty('--footer-h', footerHeight + 'px');
-    document.body.style.paddingBottom = `var(--footer-h)`;
+  function updateFooterSafeArea() {
+    const h = footer.offsetHeight || 0;
+    document.documentElement.style.setProperty('--footer-h', h + 'px');
+    if (document.body) {
+      document.body.style.paddingBottom = 'var(--footer-h)';
+    }
   }
 
-  updateFooterPadding();
-  window.addEventListener('resize', updateFooterPadding);
-  window.addEventListener('orientationchange', updateFooterPadding);
+  updateFooterSafeArea();
+
+  // Recompute on viewport or footer size changes
+  window.addEventListener('resize', updateFooterSafeArea, { passive: true });
+  window.addEventListener('orientationchange', updateFooterSafeArea);
+
+  // Watch the footer itself for size changes, if supported
+  try {
+    const ro = new ResizeObserver(updateFooterSafeArea);
+    ro.observe(footer);
+  } catch (_) {
+    // ResizeObserver not available, the resize listeners above are enough.
+  }
 });
