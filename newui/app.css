@@ -119,7 +119,6 @@ button.cta:disabled { opacity:.5; filter:grayscale(1); cursor:not-allowed; }
   border-radius: 8px;
 }
 
-.answer-row{display:flex;gap:8px;margin-top:8px}
 
 /* Toast & offline */
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;padding:10px 14px;border-radius:10px;background:#111;color:#fff;z-index:1000;font-size:14px}
@@ -363,7 +362,7 @@ body.is-game #answerRow{
 .answer-card{ 
   margin-top:8px; 
 }
-.actions-row{ gap:8px; margin-top:6px; }
+.actions-row{ gap:8px; margin-top:6px; padding-bottom:32px; }
 
 /* Mobile: stack content and hide sidebar to avoid pushing/overlap */
 @media (max-width: 767px){
