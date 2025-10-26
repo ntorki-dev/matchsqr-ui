@@ -2,11 +2,6 @@
   --ink:#1f2937; --muted:#6b7280; --green:#22a447; --green-pressed:#1e8d3d; --border:#e5e7eb; --radius:16px;
 }
 *{box-sizing:border-box} html,body{height:100%} body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
-
-/* === Sticky footer layout: body as flex column, no HTML changes === */
-html, body { height: 100%; min-height: 100dvh; }
-body { display: flex; flex-direction: column; }
-
 a{color:inherit;text-decoration:none}
 .container{max-width:1080px;margin:0 auto;padding:16px}
 
@@ -270,16 +265,15 @@ body.is-game .footer,
 body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
 
 .site-footer{
-  position: static;
-  margin-top: auto;
+  position: fixed;
+  left:0; right:0; bottom:0;
+  height: 30px;
+  box-sizing: border-box;
   padding: 12px 24px;
   background: transparent;
   color: inherit;
-  box-sizing: border-box;
-  height: auto;
   z-index: 10;
 }
-
 
 
 /* === MOBILE OVERRIDE: Keep Learn more left-aligned on small screens === */
@@ -563,3 +557,18 @@ body.is-game #answerRow{
 
 /* Add top padding so content does not overlap logo */
 .card.main-card.card--running{ padding-top:64px; }
+
+
+/* === Sticky footer: final overrides (safe, CSS-only) === */
+html, body { height: 100%; min-height: 100dvh; }
+body { display: flex; flex-direction: column; }
+
+/* Ensure the main app container takes remaining space to push footer down */
+#app { flex: 1 0 auto; min-height: 0; }
+
+/* Footer must live in normal flow, never fixed on any page state */
+.site-footer { position: static !important; margin-top: auto; height: auto; box-sizing: border-box; }
+body.is-game .site-footer { position: static !important; }
+
+/* Clean up any accidental bottom padding on common containers that could create a gap */
+.room-wrap, main, .page, body { padding-bottom: 0 !important; }
