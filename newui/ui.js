@@ -79,6 +79,7 @@ export async function renderHeader(){
   const headerHTML = `
     <div class="header">
       <a class="brand" href="#/"><img src="./assets/logo.png" alt="logo"/><span>MatchSqr</span></a>
+      <div class="ms-actions" id="msHeaderActions" aria-live="polite"></div>
       <div class="right" id="hdrRight">
         ${rightInitial}
       </div>
@@ -231,65 +232,76 @@ export function ensureFooter(){
 })();
 
 
-// === FOOTER SAFE AREA FIX v3: scroll container aware ===
-// Reserve space for the fixed footer by padding the actual scroll container.
-// Does not change any existing exports or logic.
+export function setHeaderActions(nodeOrHtml){
+  const slot = document.getElementById('msHeaderActions');
+  if (!slot) return;
+  while (slot.firstChild) slot.removeChild(slot.firstChild);
+  if (!nodeOrHtml) return;
+  if (typeof nodeOrHtml === 'string'){
+    slot.insertAdjacentHTML('afterbegin', nodeOrHtml);
+  } else if (nodeOrHtml instanceof Node){
+    slot.appendChild(nodeOrHtml);
+  } else if (Array.isArray(nodeOrHtml)){
+    nodeOrHtml.forEach(n=>{
+      if (typeof n === 'string') slot.insertAdjacentHTML('beforeend', n);
+      else if (n instanceof Node) slot.appendChild(n);
+    });
+  }
+}
+export function clearHeaderActions(){
+  const slot = document.getElementById('msHeaderActions');
+  if (!slot) return;
+  while (slot.firstChild) slot.removeChild(slot.firstChild);
+}
+
+
+// === FOOTER SAFE AREA: SPACER (final, non-breaking) ===
+// Inserts an invisible spacer right before the fixed footer with the same height.
+// No exports modified. Works regardless of which element scrolls.
 (function () {
-  function getScrollContainer() {
-    const known = [
-      document.querySelector('.room-wrap'),
-      document.getElementById('app'),
-      document.querySelector('main'),
-      document.querySelector('.page')
-    ].filter(Boolean);
-    for (const el of known) {
-      const style = getComputedStyle(el);
-      const overflowY = style.overflowY;
-      const canScroll = (el.scrollHeight - el.clientHeight) > 1;
-      if (overflowY === 'auto' || overflowY === 'scroll' || canScroll) return el;
+  function ensureSpacerBefore(footer){
+    let spacer = document.getElementById('msFooterSpacer');
+    if (!spacer){
+      spacer = document.createElement('div');
+      spacer.id = 'msFooterSpacer';
+      spacer.setAttribute('aria-hidden', 'true');
+      spacer.style.width = '100%';
+      spacer.style.height = '0px';
+      spacer.style.flexShrink = '0';
+      footer.parentNode.insertBefore(spacer, footer);
     }
-    return document.scrollingElement || document.documentElement || document.body;
+    return spacer;
   }
 
-  function applyPadding(footer) {
-    const scroller = getScrollContainer();
-    const h = footer ? (footer.offsetHeight || 0) : 0;
-    try {
-      const candidates = [document.body, document.documentElement,
-                          document.querySelector('.room-wrap'),
-                          document.getElementById('app'),
-                          document.querySelector('main'),
-                          document.querySelector('.page')].filter(Boolean);
-      for (const el of candidates) el.style.paddingBottom = '0px';
-    } catch (_) {}
-    scroller.style.paddingBottom = h + 'px';
+  function apply(){
+    const footer = document.querySelector('.site-footer');
+    if (!footer) return;
+    const spacer = ensureSpacerBefore(footer);
+    const h = footer.offsetHeight || 0;
+    spacer.style.height = h + 'px';
     document.documentElement.style.setProperty('--footer-h', h + 'px');
   }
 
-  function bind(footer) {
-    applyPadding(footer);
-    const update = () => applyPadding(footer);
-    window.addEventListener('resize', update, { passive: true });
-    window.addEventListener('orientationchange', update);
-    try {
-      const ro = new ResizeObserver(update);
-      ro.observe(footer);
-    } catch (_) {}
+  function bind(){
+    apply();
+    const onChange = () => apply();
+    window.addEventListener('resize', onChange, { passive: true });
+    window.addEventListener('orientationchange', onChange);
+    try { new ResizeObserver(onChange).observe(document.querySelector('.site-footer')); } catch (_){}
   }
 
-  function init() {
+  function init(){
     const footer = document.querySelector('.site-footer');
-    if (footer) { bind(footer); return; }
+    if (footer){ bind(); return; }
     try {
       const mo = new MutationObserver((_, obs) => {
-        const f = document.querySelector('.site-footer');
-        if (f) { bind(f); obs.disconnect(); }
+        if (document.querySelector('.site-footer')){ obs.disconnect(); bind(); }
       });
       mo.observe(document.documentElement, { childList: true, subtree: true });
-    } catch (_) {}
+    } catch (_){}
   }
 
-  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  if (document.readyState === 'complete' || document.readyState === 'interactive'){
     setTimeout(init, 0);
   } else {
     document.addEventListener('DOMContentLoaded', init);
