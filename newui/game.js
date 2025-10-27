@@ -562,7 +562,11 @@ render(forceFull){
             '<div class="row actions-row">'+
               '<button id="submitBtn" class="btn"'+(this.canAnswer()?'':' disabled')+'>Submit</button>'+
             '</div>';
-          (answer||main).appendChild(ans);
+          (function(){
+            try{ if (typeof Game!=='undefined' && Game._ensureAnswerWide) Game._ensureAnswerWide(); }catch{}
+            const mount = document.getElementById('answerWide') || (answer||main);
+            mount.appendChild(ans);
+          })();
           const box=$('#msBox'); if (box){ box.value = this.ui.draft||''; box.addEventListener('input', ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
           const submit=$('#submitBtn'); if (submit) submit.onclick=async()=>{
             const box=$('#msBox'); const text=(box.value||'').trim(); if(!text) return;
