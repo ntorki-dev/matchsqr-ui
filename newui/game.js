@@ -498,7 +498,7 @@ render(forceFull){
           this._setNextCardState(active);
         }catch{}
 
-        const actRow=document.createElement('div');const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
+        // actRow will be created and configured below// actRow will be created and configured below actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
         actRow.innerHTML=
           '<img id="micBtn" class="tool-icon'+((this.ui&&this.ui.inputTool==='mic')?' active':'')+(can?'':' disabled')+'" src="./assets/mic.png" alt="mic"/>'+
