@@ -64,6 +64,7 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
   __hb:{ host:{fails:0,lastErr:null,lastStatus:null,lastAt:null}, guest:{fails:0,lastErr:null,lastStatus:null,lastAt:null}, logs:0, maxLogs:10 },
 
   async mount(code){
+
     this.code=code;
     try{ this.ui.draft = localStorage.getItem(draftKey(code)) || ''; }catch{ this.ui.draft=''; }
     try{ if (sessionStorage.getItem(hostMarkerKey(code))==='1'){ setRole(code, 'host'); sessionStorage.removeItem(hostMarkerKey(code)); } }catch{}
@@ -71,6 +72,13 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
     this.startPolling();
     this.startTick();
     this.startHeartbeats();
+    try{
+      if (!this.__wideResizeInstalled){
+        this.__wideResizeInstalled = true;
+        window.addEventListener('resize', ()=>{ try{ this._adjustAnswerWide(); }catch{} });
+        window.addEventListener('orientationchange', ()=>{ try{ this._adjustAnswerWide(); }catch{} });
+      }
+    }catch{}
   },
   startPolling(){ if(this.poll) clearInterval(this.poll); this.poll=setInterval(()=>this.refresh(), 3000); },
   startTick(){ if(this.tick) clearInterval(this.tick); this.tick=setInterval(()=>this.renderTimer(), 1000); },
@@ -394,6 +402,37 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
     this.renderTimer();
   },
 
+
+  // --- ensure and size the wide answer mount under mic/keyboard ---
+  _ensureAnswerWide(){
+    try{
+      const tools = document.getElementById('toolsRow');
+      if (!tools) return null;
+      let wide = document.getElementById('answerWide');
+      if (!wide){
+        wide = document.createElement('div');
+        wide.id = 'answerWide';
+        wide.className = 'answer-wide';
+        if (tools.parentNode){
+          tools.parentNode.insertBefore(wide, tools.nextSibling);
+        }
+      }
+      this._adjustAnswerWide();
+      return wide;
+    }catch{ return null; }
+  },
+  _adjustAnswerWide(){
+    try{
+      const wide = document.getElementById('answerWide');
+      const room = document.getElementById('roomMain');
+      if (!wide || !room) return;
+      const w = room.offsetWidth || room.clientWidth || null;
+      if (w){ wide.style.maxWidth = w + 'px'; }
+      wide.style.margin = '12px auto 0';
+      wide.style.display = 'block';
+      wide.style.padding = '0';
+    }catch{}
+  },
 render(forceFull){
     const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
     // Toggle card visual state classes without changing layout or content
@@ -408,7 +447,7 @@ render(forceFull){
     }
 
     if (!main || !controls) return;
-    if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; }
+    if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; try{ this._ensureAnswerWide(); }catch{} }
 /* removed legacy in-card timer */
     if (s.status==='lobby'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
       if (forceFull){
@@ -442,7 +481,7 @@ render(forceFull){
         this.renderSeats();
         const startBtn=$('#startGame'); if (startBtn){ const enough = Array.isArray(s.participants) && s.participants.length>=2; startBtn.disabled=!enough; }
       }
-      this.renderTimer();
+      this.renderTimer(); try{ this._adjustAnswerWide(); }catch{}
       return;
     }
 
@@ -532,8 +571,8 @@ render(forceFull){
         // v5 override: toggle mic STT and stop STT on keyboard
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; if (this.ui && this.ui.sttActive){ try{ this.stopSTT(); }catch{} this.ui.sttActive=false; this.render(true); return; } this.ui.ansVisible=true; this.ui.inputTool='mic'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (mic) mic.classList.add('active'); if (kb) kb.classList.remove('active'); this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } try{ this.startSTT(); }catch{} };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; try{ this.stopSTT(); }catch{} this.ui.ansVisible=true; this.ui.inputTool='kb'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (kb) kb.classList.add('active'); if (mic) mic.classList.remove('active'); this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
-        
-        
+        $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.ui.inputTool='mic'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (mic) mic.classList.add('active'); if (kb) kb.classList.remove('active'); this.render(true); };
+        $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.ui.inputTool='kb'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (kb) kb.classList.add('active'); if (mic) mic.classList.remove('active'); this.render(true); };
       }else{
         this.renderSeats();
         // v8: Toggle Next Card button in update path
@@ -552,6 +591,7 @@ render(forceFull){
       }
 
       if (this.ui.ansVisible){
+        try{ this._ensureAnswerWide(); }catch{}
         let ans=$('#msAns');
         if (!ans){
           ans=document.createElement('div'); ans.className='answer-card'; ans.id='msAns';
@@ -559,10 +599,14 @@ render(forceFull){
           ans.innerHTML =
             '<div class="meta">Your answer</div>'+
             '<textarea id="msBox" class="input" rows="3" placeholder="'+placeholder+'"></textarea>'+
-            '<div class="row actions-row">'+
+            '<div class="row actions-row" style="display:flex;justify-content:flex-end">'+
               '<button id="submitBtn" class="btn"'+(this.canAnswer()?'':' disabled')+'>Submit</button>'+
             '</div>';
-          (answer||main).appendChild(ans);
+          (function(){
+            const wide = (typeof Game!=='undefined' && Game._ensureAnswerWide) ? Game._ensureAnswerWide() : null;
+            const mount = wide || (answer||main);
+            mount.appendChild(ans);
+          })();
           const box=$('#msBox'); if (box){ box.value = this.ui.draft||''; box.addEventListener('input', ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
           const submit=$('#submitBtn'); if (submit) submit.onclick=async()=>{
             const box=$('#msBox'); const text=(box.value||'').trim(); if(!text) return;
@@ -581,7 +625,7 @@ render(forceFull){
         $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
       }else if (!isHost){ controls.innerHTML=''; }
 
-      this.renderTimer();
+      this.renderTimer(); try{ this._adjustAnswerWide(); }catch{}
       return;
     }
 
@@ -598,7 +642,8 @@ render(forceFull){
             '<button id="shareBtn" class="btn secondary">Share</button>'+
           '</div>'+
         '</div>';
-      const shareBtn = document.getElementById('shareBtn'); if (shareBtn){ shareBtn.onclick=()=>{ try{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); }catch(_){} }; }
+      $('#shareBtn').onclick=()=>{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); };;
+  const shareBtn = document.getElementById('shareBtn'); if (shareBtn){ shareBtn.onclick=()=>{ try{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); }catch(_){} }; }
   return;
 }
   }
