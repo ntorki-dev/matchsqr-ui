@@ -372,35 +372,7 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
     
   },
 
-  
-  // --- UI helpers (consolidated to avoid conflicting toggles) ---
-  _setNextCardState(activeTurn){
-    try{
-      const next = $('#nextCard') || document.getElementById('nextCard');
-      if (!next) return;
-      const isButton = next.tagName && next.tagName.toLowerCase() === 'button';
-      const shouldDisable = !!activeTurn;
-      if (isButton) next.disabled = shouldDisable;
-      if (shouldDisable){
-        next.setAttribute('aria-disabled','true');
-        next.classList.add('disabled','btn-disabled');
-        try{ next.style.setProperty('opacity','0.5','important'); }catch{}
-        try{ next.style.setProperty('filter','grayscale(1)','important'); }catch{}
-        try{ next.style.setProperty('pointer-events','none','important'); }catch{}
-        try{ next.style.setProperty('cursor','not-allowed','important'); }catch{}
-        try{ next.setAttribute('tabindex','-1'); }catch{}
-      } else {
-        next.removeAttribute('aria-disabled');
-        next.classList.remove('disabled','btn-disabled');
-        try{ next.style.setProperty('opacity','', 'important'); }catch{}
-        try{ next.style.setProperty('filter','', 'important'); }catch{}
-        try{ next.style.setProperty('pointer-events','', 'important'); }catch{}
-        try{ next.style.setProperty('cursor','', 'important'); }catch{}
-        try{ next.removeAttribute('tabindex'); }catch{}
-      }
-    }catch{}
-  },
-mountHeaderActions(){
+  mountHeaderActions(){
     const s=this.state;
     const frag=document.createDocumentFragment();
     const timer=document.createElement('div');
@@ -492,87 +464,90 @@ render(forceFull){
 
         this.renderSeats();
 
-        // Toggle Next Card based on whether there is an active turn
+        // v8: Toggle Next Card button based on round state
         try{
-          const active = !!(this.state.current_turn && this.state.current_turn.participant_id);
-          this._setNextCardState(active);
+          const s=this.state; const next=$('#nextCard')||document.getElementById('nextCard');
+          if (next){ const active = !!(s.current_turn && s.current_turn.participant_id); next.disabled = !!active; next.setAttribute('aria-disabled', active ? 'true' : 'false'); }
+          if (next){
+            const isButton = next.tagName && next.tagName.toLowerCase() === 'button';
+            if (active){
+              if (isButton){ next.disabled = true; }
+              next.setAttribute('aria-disabled','true'); next.classList.add('disabled','btn-disabled');
+              try{ next.style.setProperty('opacity','0.5','important'); }catch{}
+              try{ next.style.setProperty('filter','grayscale(1)','important'); }catch{}
+              try{ next.style.setProperty('pointer-events','none','important'); }catch{}
+              try{ next.style.setProperty('cursor','not-allowed','important'); }catch{}
+              try{ next.setAttribute('tabindex','-1'); }catch{}
+            } else {
+              if (isButton){ next.disabled = false; }
+              next.removeAttribute('aria-disabled'); next.classList.remove('disabled','btn-disabled');
+              try{ next.style.setProperty('opacity','', 'important'); }catch{}
+              try{ next.style.setProperty('filter','', 'important'); }catch{}
+              try{ next.style.setProperty('pointer-events','', 'important'); }catch{}
+              try{ next.style.setProperty('cursor','', 'important'); }catch{}
+              try{ next.removeAttribute('tabindex'); }catch{}
+            }
+          }
+          if (next){
+            const isButton = next.tagName && next.tagName.toLowerCase() === 'button';
+            if (active){
+              if (isButton){ next.disabled = true; }
+              next.setAttribute('aria-disabled','true'); next.classList.add('disabled','btn-disabled');
+              try{ next.style.setProperty('opacity','0.5','important'); }catch{}
+              try{ next.style.setProperty('filter','grayscale(1)','important'); }catch{}
+              try{ next.style.setProperty('pointer-events','none','important'); }catch{}
+              try{ next.style.setProperty('cursor','not-allowed','important'); }catch{}
+              try{ next.setAttribute('tabindex','-1'); }catch{}
+            } else {
+              if (isButton){ next.disabled = false; }
+              next.removeAttribute('aria-disabled'); next.classList.remove('disabled','btn-disabled');
+              try{ next.style.setProperty('opacity','', 'important'); }catch{}
+              try{ next.style.setProperty('filter','', 'important'); }catch{}
+              try{ next.style.setProperty('pointer-events','', 'important'); }catch{}
+              try{ next.style.setProperty('cursor','', 'important'); }catch{}
+              try{ next.removeAttribute('tabindex'); }catch{}
+            }
+          }
+          if (next){
+            if (active){ next.setAttribute('aria-disabled','true'); next.classList.add('disabled'); next.style.opacity='0.5'; next.style.pointerEvents='none'; next.style.cursor='not-allowed'; }
+            else { next.removeAttribute('aria-disabled'); next.classList.remove('disabled'); next.style.opacity=''; next.style.pointerEvents=''; next.style.cursor=''; }
+          }
         }catch{}
 
-        // actRow will be created and configured below// actRow will be created and configured below actRow.id='msActRow'; actRow.className='kb-mic-row';
+        const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
         const can = this.canAnswer();
         actRow.innerHTML=
           '<img id="micBtn" class="tool-icon'+((this.ui&&this.ui.inputTool==='mic')?' active':'')+(can?'':' disabled')+'" src="./assets/mic.png" alt="mic"/>'+
           '<img id="kbBtn" class="tool-icon'+((this.ui&&this.ui.inputTool==='kb')?' active':'')+(can?'':' disabled')+'" src="./assets/keyboard.png" alt="keyboard"/>';
         (tools||main).appendChild(actRow);
-
-        const micEl = $('#micBtn'); const kbEl = $('#kbBtn');
-        const handleMic = () => {
-          if (!this.canAnswer()) return;
-          if (this.ui && this.ui.sttActive){
-            try{ this.stopSTT(); }catch{} 
-            this.ui.sttActive=false; 
-            this.ui.inputTool=null; 
-            this.render(true);
-            return;
-          }
-          this.ui.ansVisible=true; 
-          this.ui.inputTool='mic';
-          this.render(true);
-          const box=$('#msBox');
+        // v7: mic starts STT within click gesture BEFORE re-render; toggles off if already listening
+        $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; console.info && console.info('[MS] mic click');
+          if (this.ui && this.ui.sttActive){ try{ this.stopSTT(); }catch{} this.ui.sttActive=false; this.ui.inputTool=null; this.render(true); return; }
+          this.ui.ansVisible=true; this.ui.inputTool='mic';
           try{ this.startSTT(); }catch{}
-          if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} }
-        };
-        const handleKb = () => {
-          if (!this.canAnswer()) return;
-          try{ this.stopSTT(); }catch{} 
-          this.ui.ansVisible=true; 
-          this.ui.inputTool='kb';
           this.render(true);
-          const box=$('#msBox'); 
-          if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} }
+          const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} }
         };
-        if (micEl) micEl.onclick = handleMic;
-        if (kbEl) kbEl.onclick = handleKb;
-}else{
+        $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; try{ this.stopSTT(); }catch{} this.ui.ansVisible=true; this.ui.inputTool='kb'; this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
+        // v5 override: toggle mic STT and stop STT on keyboard
+        $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; if (this.ui && this.ui.sttActive){ try{ this.stopSTT(); }catch{} this.ui.sttActive=false; this.render(true); return; } this.ui.ansVisible=true; this.ui.inputTool='mic'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (mic) mic.classList.add('active'); if (kb) kb.classList.remove('active'); this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } try{ this.startSTT(); }catch{} };
+        $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; try{ this.stopSTT(); }catch{} this.ui.ansVisible=true; this.ui.inputTool='kb'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (kb) kb.classList.add('active'); if (mic) mic.classList.remove('active'); this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
+        
+        
+      }else{
         this.renderSeats();
-        // Toggle Next Card button in update path
+        // v8: Toggle Next Card button in update path
         try{
-          const active = !!(this.state.current_turn && this.state.current_turn.participant_id);
-          this._setNextCardState(active);
+          const s=this.state; const next=$('#nextCard')||document.getElementById('nextCard');
+          if (next){ const active = !!(s.current_turn && s.current_turn.participant_id); next.toggleAttribute('disabled', active); }
         }catch{}
-const can=this.canAnswer(); const mic=$('#micBtn'); const kb=$('#kbBtn');
+        const can=this.canAnswer(); const mic=$('#micBtn'); const kb=$('#kbBtn');
         if (mic) mic.classList.toggle('disabled', !can);
         if (kb) kb.classList.toggle('disabled', !can);
         if (mic) { if (this.ui&&this.ui.inputTool==='mic') mic.classList.add('active'); else mic.classList.remove('active'); }
         if (kb) { if (this.ui&&this.ui.inputTool==='kb') kb.classList.add('active'); else kb.classList.remove('active'); }
-        const micEl = mic, kbEl = kb;
-        const handleMic = () => {
-          if (!this.canAnswer()) return;
-          if (this.ui && this.ui.sttActive){
-            try{ this.stopSTT(); }catch{} 
-            this.ui.sttActive=false; 
-            this.ui.inputTool=null; 
-            this.render(true);
-            return;
-          }
-          this.ui.ansVisible=true; 
-          this.ui.inputTool='mic';
-          this.render(true);
-          const box=$('#msBox');
-          try{ this.startSTT(); }catch{}
-          if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} }
-        };
-        const handleKb = () => {
-          if (!this.canAnswer()) return;
-          try{ this.stopSTT(); }catch{} 
-          this.ui.ansVisible=true; 
-          this.ui.inputTool='kb';
-          this.render(true);
-          const box=$('#msBox'); 
-          if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} }
-        };
-        if (micEl) micEl.onclick = handleMic;
-        if (kbEl) kbEl.onclick = handleKb;
+        if (mic) mic.onclick = ()=>{ if (!this.canAnswer()) return; console.info && console.info('[MS] mic click'); if (this.ui && this.ui.sttActive){ try{ this.stopSTT(); }catch{} this.ui.sttActive=false; this.ui.inputTool=null; this.render(true); return; } this.ui.ansVisible=true; this.ui.inputTool='mic'; try{ this.startSTT(); }catch{} this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
+        if (kb) kb.onclick = ()=>{ if (!this.canAnswer()) return; try{ this.stopSTT(); }catch{} this.ui.ansVisible=true; this.ui.inputTool='kb'; this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
         if (!can) { try{ this.stopSTT(); }catch{} }
       }
 
@@ -623,8 +598,7 @@ const can=this.canAnswer(); const mic=$('#micBtn'); const kb=$('#kbBtn');
             '<button id="shareBtn" class="btn secondary">Share</button>'+
           '</div>'+
         '</div>';
-      
-  const shareBtn = document.getElementById('shareBtn'); if (shareBtn){ shareBtn.onclick=()=>{ try{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); }catch(_){} }; }
+      const shareBtn = document.getElementById('shareBtn'); if (shareBtn){ shareBtn.onclick=()=>{ try{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); }catch(_){} }; }
   return;
 }
   }
