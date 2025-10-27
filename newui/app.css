@@ -414,13 +414,13 @@ body.is-game #answerWide {
 
 /* === Authoritative game layout, last in file === */
 #roomMain{ display:grid; width:476px; margin-inline:auto; grid-template-columns:120px 220px 120px; gap:8px; justify-items:center; align-items:start; box-sizing:border-box; }
-#sideLeft{ width:120px; max-width:120px; justify-self:end; text-align:right; padding-right:6px; box-sizing:border-box; }
-#sideRight{ width:120px; max-width:120px; justify-self:start; text-align:left; padding-left:6px; box-sizing:border-box; }
+#sideLeft{ width:120px; max-width:120px; justify-self:end; text-align:right; padding-right:6px; box-sizing:border-box; overflow:hidden; }
+#sideRight{ width:120px; max-width:120px; justify-self:start; text-align:left; padding-left:6px; box-sizing:border-box; overflow:hidden; }
 #mainCard{ width:220px; max-width:220px; height:260px; position:relative; box-sizing:border-box; justify-self:center; }
 .card.main-card{ width:220px; max-width:220px; height:260px; }
 
 @media screen and (max-width: 640px){
-  #roomMain{ width:332px; grid-template-columns:60px 180px 60px; gap:6px; }
+  #roomMain{ width: calc(60px + 180px + 60px + 12px); grid-template-columns:60px 180px 60px; gap:6px; }
   #sideLeft, #sideRight{ width:60px; max-width:60px; }
   #mainCard, .card.main-card{ width:180px; max-width:180px; height:216px; }
 }
@@ -570,24 +570,15 @@ body.is-game #answerWide {
 .card.main-card.card--running{ padding-top:64px; }
 
 
-@media (max-width: 767px){
-  #controlsRow, #toolsRow, #answerWide {
-    width:100%;
-    max-width: 332px !important; /* match #roomMain mobile width */
-    margin-left:auto;
-    margin-right:auto;
-    display:flex;
-    justify-content:center !important;
-    align-items:center;
-    gap:10px;
-  }
-}
-
-
 /* Center mic/keyboard icons within their row */
 #msActRow {
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  gap:10px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
 }
+
+
+/* NOTE: Game mobile widths
+   #roomMain mobile width = 60 + 180 + 60 + (gap 6px * 2) = 312px.
+   Rows (#controlsRow, #toolsRow, #answerWide) use 312px on mobile for perfect centering. */
