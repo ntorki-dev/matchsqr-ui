@@ -360,6 +360,20 @@ body.is-game #answerWide {
   margin-top:8px;
   position:relative;
 }
+/* === Question text (h4) styling === */
+.question-block h4 {
+  font-size: 18px;        /* desktop / default size */
+  line-height: 1.4;       /* readable spacing */
+}
+
+/* Smaller font size for mobile screens */
+@media (max-width: 640px) {
+  .question-block h4 {
+    font-size: 14px;      /* fits smaller cards */
+    line-height: 1.35;
+  }
+}
+
 
 /* Answer card spacing */
 .answer-card{ 
