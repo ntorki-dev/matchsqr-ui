@@ -306,12 +306,15 @@ body.is-game { --cardw: 220px; }
 /* Rows above/below the card align to card width */
 body.is-game #controlsRow,
 body.is-game #toolsRow,
-body.is-game #answerRow{
-  max-width: var(--cardw);
-  margin-left: auto;
-  margin-right: auto;
+body.is-game #answerWide {
   display: flex;
   justify-content: center;
+  align-items: center;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  max-width: 476px; /* match #roomMain desktop width */
+  box-sizing: border-box;
 }
 
 /* Grid wrapper holding sidebar + card */
@@ -565,3 +568,26 @@ body.is-game #answerRow{
 
 /* Add top padding so content does not overlap logo */
 .card.main-card.card--running{ padding-top:64px; }
+
+
+@media (max-width: 767px){
+  #controlsRow, #toolsRow, #answerWide {
+    width:100%;
+    max-width: 332px !important; /* match #roomMain mobile width */
+    margin-left:auto;
+    margin-right:auto;
+    display:flex;
+    justify-content:center !important;
+    align-items:center;
+    gap:10px;
+  }
+}
+
+
+/* Center mic/keyboard icons within their row */
+#msActRow {
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:10px;
+}

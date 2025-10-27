@@ -433,6 +433,8 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
       wide.style.padding = '0';
     }catch{}
   },
+
+  // --- align arbitrary rows to #roomMain width for consistent centering (mobile-safe) ---
 render(forceFull){
     const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
     // Toggle card visual state classes without changing layout or content
