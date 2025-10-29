@@ -1,85 +1,47 @@
 
 /* clarification-overlay.js
- * v5 – ESM with named exports + safe auto-init
- * - Renders a white "?" button bottom-right inside the current question card.
- * - Opens a small panel over the card, with blur + dim backdrop.
+ * v6 – From-scratch, minimal, reliable (ESM)
+ *
+ * What it does
+ * - Renders a small white "?" button at bottom-right inside a host element you provide.
+ * - Opens a compact overlay over that host element only, with dim + blur backdrop.
  * - Uses existing .card and .help classes if present. No CSS edits. No DB calls.
- * - Reads clarification from, in order:
- *     1) data-clarification attribute on the question host element (if present)
- *     2) Game.state.question.clarification (or App/state fallbacks)
- * - Exposes:
- *     initClarificationOverlay({ getQuestionHostEl, getCurrentQuestion })
- *     syncClarificationButton()
+ *
+ * How to use from game.js
+ *   import { initClarificationOverlay, setClarification, syncClarificationButton, setHostElement } from './clarification-overlay.js';
+ *   // once, after the question DOM exists
+ *   initClarificationOverlay();
+ *   setHostElement(document.querySelector('#msQ')?.closest('.card') || document.querySelector('#msQ'));
+ *   setClarification(state.question?.clarification || '');
+ *   syncClarificationButton();
+ *
+ * You can call setClarification(...) on every question change.
  */
 
-let getHost = null;
-let getQuestion = null;
-
-let mountedCard = null;
-let btn = null;
-let rootObserver = null;
-let cardObserver = null;
-let lastClarText = null;
-
+let hostEl = null;
+let btnEl = null;
+let lastClar = '';
 const BTN_ID = 'ms-clarify-btn';
 const OVERLAY_ID = 'ms-clarify-overlay';
 
-function defaultGetHost() {
-  // Prefer explicit ids/classes known in this project
-  const picks = [
-    document.getElementById('msQ'),
-    document.querySelector('#msQ .question-block'),
-    document.querySelector('#mainCard .question-block'),
-    document.querySelector('.question-block'),
-    document.querySelector('#mainCard .card'),
-    document.querySelector('.card .question-block'),
-  ].filter(Boolean);
-
-  if (picks.length === 0) return null;
-  for (const el of picks) {
-    const card = el.closest?.('.card');
-    if (card) return card;
-  }
-  return picks[0];
+export function setHostElement(el) {
+  hostEl = el || null;
+  ensureButton();
 }
 
-function pickQuestionFrom(obj) {
-  if (!obj) return null;
-  if (obj.question && typeof obj.question === 'object') return obj.question;
-  if (obj.state && obj.state.question) return obj.state.question;
-  return null;
+export function setClarification(text) {
+  lastClar = typeof text === 'string' ? text.trim() : '';
+  ensureButton();
 }
 
-function defaultGetQuestion() {
-  const candidates = [];
-  if (globalThis.Game && typeof Game === 'object') candidates.push(Game.state, Game);
-  if (globalThis.App && typeof App === 'object') candidates.push(App.state, App);
-  if (globalThis.state && typeof state === 'object') candidates.push(state);
-  for (const c of candidates) {
-    const q = pickQuestionFrom(c);
-    if (q && (q.text !== undefined || q.title !== undefined)) return q;
-  }
-  // last-resort shallow scan
-  for (const k of Object.keys(globalThis)) {
-    try {
-      const v = globalThis[k];
-      const q = pickQuestionFrom(v);
-      if (q && (q.text !== undefined || q.title !== undefined)) return q;
-    } catch {}
-  }
-  return null;
+export function initClarificationOverlay() {
+  // no-op placeholder in case you want future init hooks
+  // Keep to match the import you already wrote.
+  ensureButton();
 }
 
-function getClarification() {
-  const host = (getHost || defaultGetHost)();
-  if (host) {
-    const attr = host.getAttribute?.('data-clarification');
-    if (attr && attr.trim()) return attr.trim();
-  }
-  const q = (getQuestion || defaultGetQuestion)();
-  if (!q) return '';
-  const txt = q.clarification ?? q.help ?? q.note ?? '';
-  return typeof txt === 'string' ? txt.trim() : '';
+export function syncClarificationButton() {
+  ensureButton();
 }
 
 function ensureRelPosition(el) {
@@ -88,43 +50,52 @@ function ensureRelPosition(el) {
   if (cs.position === 'static') el.style.position = 'relative';
 }
 
-function createButton() {
-  if (btn && btn.isConnected) return btn;
+function ensureButton() {
+  // remove if cannot render
+  if (!hostEl || !lastClar) {
+    const old = document.getElementById(BTN_ID);
+    if (old) old.remove();
+    return;
+  }
 
-  btn = document.createElement('button');
-  btn.id = BTN_ID;
-  btn.type = 'button';
-  btn.setAttribute('aria-label', 'Show clarification');
-  Object.assign(btn.style, {
-    position: 'absolute',
-    right: '10px',
-    bottom: '10px',
-    width: '28px',
-    height: '28px',
-    borderRadius: '50%',
-    border: 'none',
-    background: 'rgba(20,20,20,0.85)',
-    color: '#fff',
-    fontWeight: '700',
-    lineHeight: '28px',
-    textAlign: 'center',
-    cursor: 'pointer',
-    zIndex: '5',
-    boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
-    padding: '0',
-  });
-  btn.textContent = '?';
-  btn.addEventListener('click', openOverlay);
-  return btn;
+  ensureRelPosition(hostEl);
+
+  if (!btnEl || !btnEl.isConnected) {
+    btnEl = document.createElement('button');
+    btnEl.id = BTN_ID;
+    btnEl.type = 'button';
+    btnEl.setAttribute('aria-label', 'Show clarification');
+    Object.assign(btnEl.style, {
+      position: 'absolute',
+      right: '10px',
+      bottom: '10px',
+      width: '28px',
+      height: '28px',
+      borderRadius: '50%',
+      border: 'none',
+      background: 'rgba(20,20,20,0.85)',
+      color: '#fff',
+      fontWeight: '700',
+      lineHeight: '28px',
+      textAlign: 'center',
+      cursor: 'pointer',
+      zIndex: '5',
+      boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+      padding: '0',
+    });
+    btnEl.textContent = '?';
+    btnEl.addEventListener('click', openOverlay);
+  }
+
+  if (btnEl.parentElement !== hostEl) {
+    btnEl.remove();
+    hostEl.appendChild(btnEl);
+  }
 }
 
 function openOverlay() {
   closeOverlay();
-  const card = mountedCard || (getHost || defaultGetHost)();
-  if (!card) return;
-
-  const clar = getClarification();
-  if (!clar) return;
+  if (!hostEl || !lastClar) return;
 
   const backdrop = document.createElement('div');
   backdrop.id = OVERLAY_ID;
@@ -175,7 +146,7 @@ function openOverlay() {
     whiteSpace: 'pre-wrap',
     marginTop: '4px',
   });
-  body.textContent = clar;
+  body.textContent = lastClar;
 
   panel.appendChild(x);
   panel.appendChild(title);
@@ -190,7 +161,7 @@ function openOverlay() {
   document.addEventListener('keydown', onKey, { once: true });
   backdrop._cleanup = () => document.removeEventListener('keydown', onKey);
 
-  card.appendChild(backdrop);
+  hostEl.appendChild(backdrop);
 }
 
 function closeOverlay() {
@@ -198,88 +169,5 @@ function closeOverlay() {
   if (n) {
     try { n._cleanup && n._cleanup(); } catch {}
     n.remove();
-  }
-}
-
-function ensureButtonMounted() {
-  const card = (getHost || defaultGetHost)();
-  const clar = getClarification();
-
-  // remove if not applicable
-  if (!card || !clar) {
-    const old = document.getElementById(BTN_ID);
-    if (old) old.remove();
-    mountedCard = null;
-    return;
-  }
-
-  ensureRelPosition(card);
-  const b = createButton();
-  if (b.parentElement !== card) {
-    b.remove();
-    card.appendChild(b);
-  }
-  mountedCard = card;
-}
-
-function watchCard() {
-  const card = (getHost || defaultGetHost)();
-  if (!card) return;
-  if (cardObserver) cardObserver.disconnect();
-
-  cardObserver = new MutationObserver(() => {
-    const clar = getClarification();
-    if (clar !== lastClarText) {
-      lastClarText = clar;
-      ensureButtonMounted();
-    } else {
-      ensureButtonMounted();
-    }
-  });
-  cardObserver.observe(card, { childList: true, subtree: true, characterData: true });
-}
-
-function startRootObserver() {
-  if (rootObserver) rootObserver.disconnect();
-  rootObserver = new MutationObserver(() => {
-    ensureButtonMounted();
-    watchCard();
-  });
-  rootObserver.observe(document.body, { childList: true, subtree: true });
-}
-
-export function initClarificationOverlay({ getQuestionHostEl, getCurrentQuestion }) {
-  // Configure getters, or fall back to defaults
-  getHost = typeof getQuestionHostEl === 'function' ? getQuestionHostEl : null;
-  getQuestion = typeof getCurrentQuestion === 'function' ? getCurrentQuestion : null;
-
-  ensureButtonMounted();
-  watchCard();
-  startRootObserver();
-
-  setTimeout(ensureButtonMounted, 200);
-  setTimeout(ensureButtonMounted, 600);
-  setTimeout(ensureButtonMounted, 1200);
-}
-
-export function syncClarificationButton() {
-  ensureButtonMounted();
-}
-
-/* Safe auto-init:
- * If the app forgets to call init, we still try to mount after DOM ready.
- * If init() is later called, supplied getters override defaults cleanly.
- */
-if (typeof window !== 'undefined') {
-  const autoKick = () => {
-    ensureButtonMounted();
-    startRootObserver();
-    setTimeout(ensureButtonMounted, 250);
-    setTimeout(ensureButtonMounted, 750);
-  };
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', autoKick, { once: true });
-  } else {
-    autoKick();
   }
 }
