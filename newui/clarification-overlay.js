@@ -1,6 +1,6 @@
 
 /* clarification-overlay.js
- * v6.2 – Full-screen blur, readable text, larger panel (ESM)
+ * v6.3 – Transparent "?" button, compact panel, full-screen blur (ESM)
  *
  * Exports:
  *   initClarificationOverlay()
@@ -40,6 +40,7 @@ function ensureRelPosition(el) {
 }
 
 function ensureButton() {
+  // Remove if cannot render
   if (!hostEl || !lastClar) {
     const old = document.getElementById(BTN_ID);
     if (old) old.remove();
@@ -53,24 +54,23 @@ function ensureButton() {
     btnEl.id = BTN_ID;
     btnEl.type = 'button';
     btnEl.setAttribute('aria-label', 'Show clarification');
-    Object.assign(btnEl.style, {
-      position: 'absolute',
-      right: '10px',
-      bottom: '10px',
-      width: '28px',
-      height: '28px',
-      borderRadius: '50%',
-      border: '2px solid rgba(255,255,255,0.95)',
-      background: 'rgba(20,20,20,0.85)',
-      color: '#fff',
-      fontWeight: '700',
-      lineHeight: '24px',
-      textAlign: 'center',
-      cursor: 'pointer',
-      zIndex: '5',
-      boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
-      padding: '0',
-    });
+    // Strict transparent circle with white border and white glyph
+    btnEl.style.position = 'absolute';
+    btnEl.style.right = '10px';
+    btnEl.style.bottom = '10px';
+    btnEl.style.width = '28px';
+    btnEl.style.height = '28px';
+    btnEl.style.borderRadius = '50%';
+    btnEl.style.border = '2px solid rgba(255,255,255,0.95)';
+    btnEl.style.background = 'transparent';              // <— transparent background
+    btnEl.style.color = '#ffffff';                       // white glyph
+    btnEl.style.fontWeight = '700';
+    btnEl.style.lineHeight = '26px';
+    btnEl.style.textAlign = 'center';
+    btnEl.style.cursor = 'pointer';
+    btnEl.style.zIndex = '5';
+    btnEl.style.boxShadow = 'none';                      // no dark halo
+    btnEl.style.padding = '0';
     btnEl.textContent = '?';
     btnEl.addEventListener('click', openOverlay);
   }
@@ -85,7 +85,7 @@ function openOverlay() {
   closeOverlay();
   if (!hostEl || !lastClar) return;
 
-  // FULL-PAGE backdrop for blur + dim
+  // Full-page blurred, dimmed backdrop
   const backdrop = document.createElement('div');
   backdrop.id = OVERLAY_ID;
   Object.assign(backdrop.style, {
@@ -104,7 +104,7 @@ function openOverlay() {
     padding: '16px',
   });
 
-  // Centered panel using .card style, readable text enforced
+  // Compact panel
   const panel = document.createElement('div');
   panel.className = 'card';
   Object.assign(panel.style, {
@@ -114,8 +114,8 @@ function openOverlay() {
     overflow: 'auto',
     padding: '20px 20px 12px 20px',
     position: 'relative',
-    background: 'var(--card-bg, #fff)',
-    color: 'var(--card-fg, #111)',
+    background: '#fff',   // readable light bg
+    color: '#111',        // dark text
   });
 
   const x = document.createElement('button');
@@ -125,7 +125,7 @@ function openOverlay() {
     position: 'absolute',
     top: '8px',
     right: '12px',
-    border: '2px solid rgba(255,255,255,0.95)',
+    border: 'none',
     background: 'transparent',
     fontSize: '22px',
     cursor: 'pointer',
@@ -142,7 +142,6 @@ function openOverlay() {
   });
 
   const body = document.createElement('div');
-  // Keep small-text class if present, but force readable color
   body.classList.add('help');
   Object.assign(body.style, {
     whiteSpace: 'pre-wrap',
@@ -164,7 +163,6 @@ function openOverlay() {
   document.addEventListener('keydown', onKey, { once: true });
   backdrop._cleanup = () => document.removeEventListener('keydown', onKey);
 
-  // Attach to body to ensure full-page coverage
   document.body.appendChild(backdrop);
 }
 
