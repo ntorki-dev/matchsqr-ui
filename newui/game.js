@@ -1,7 +1,7 @@
 // game.js
 import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey, inferAndPersistHostRole, getSession } from './api.js';
 import { renderHeader, ensureDebugTray, $, toast, setHeaderActions, clearHeaderActions } from './ui.js';
-import { initClarificationOverlay, syncClarificationButton } from './clarification-overlay.js';
+import { initClarificationOverlay, setHostElement, setClarification, syncClarificationButton } from './clarification-overlay.js';
 
 const Game = {
   
@@ -456,7 +456,6 @@ render(forceFull){
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.className='lobby-wrap';
         this.renderSeats();
-        try{ syncClarificationButton(); }catch{}
 
         const role=getRole(this.code);
         if (role==='host'){
@@ -493,8 +492,15 @@ render(forceFull){
       if (forceFull){
         const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
         q.innerHTML = '<h4 style="margin:0 0 8px 0;">'+(s.question?.text || '')+'</h4>';
-        main.appendChild(q);
-        // v10: Show guidance when game is running and there is no active turn
+        \1
+try{
+  if (!this.__clarInit) { initClarificationOverlay(); this.__clarInit = true; }
+  const __hostEl = q.closest ? (q.closest('.card') || q) : q;
+  setHostElement(__hostEl);
+  setClarification((s.question && s.question.clarification) ? String(s.question.clarification) : '');
+  syncClarificationButton();
+}catch{}
+// v10: Show guidance when game is running and there is no active turn
         try{
           const stRunning = (s.status||'') === 'running';
           const activeTurn = !!(s.current_turn && s.current_turn.participant_id);
