@@ -1,12 +1,10 @@
 
 /* clarification-overlay.js
- * v3 – self-initializing, zero-touch integration
- * - Shows a small white "?" in a dark circle at bottom-right of the question card.
- * - Opens a small panel over the card (not full page) with blur + dim backdrop.
- * - Uses existing .card and .help classes if available, no CSS file edits.
+ * v3.1 – self-initializing, zero-touch integration
+ * - Small white "?" at bottom-right of the question card.
+ * - Panel over the card with blur + dim, uses .card and .help if present.
  * - No DB calls. Reads clarification from in-memory state.
- * - Works even if you forget to call init, as long as this file is loaded.
- * - Defensive against missing selectors and different state holders.
+ * - No exports. No module system assumptions.
  */
 
 (function () {
@@ -17,10 +15,6 @@
   let cardObserver = null;
   let rootObserver = null;
   let lastClarText = null;
-
-  // --- Debug aid (minimal, silent unless DEBUG flag true) ---
-  const DEBUG = false;
-  function dbg(...args) { if (DEBUG) console.debug('[Clarify]', ...args); }
 
   // --- State lookups ---
   function getStateCandidates() {
@@ -33,19 +27,16 @@
 
   function pickQuestionFrom(obj) {
     if (!obj) return null;
-    // Common forms: obj.question, obj.state.question
     if (obj.question && typeof obj.question === 'object') return obj.question;
     if (obj.state && obj.state.question) return obj.state.question;
     return null;
   }
 
   function getCurrentQuestion() {
-    // Try known places
     for (const c of getStateCandidates()) {
       const q = pickQuestionFrom(c);
       if (q && (q.text !== undefined || q.title !== undefined)) return q;
     }
-    // Fallback, scan a couple globals shallowly
     for (const k of Object.keys(globalThis)) {
       try {
         const v = globalThis[k];
@@ -59,14 +50,12 @@
   function getClarification() {
     const q = getCurrentQuestion();
     if (!q) return '';
-    // Typical field name is 'clarification'
     const txt = q.clarification ?? q.help ?? q.note ?? '';
     return typeof txt === 'string' ? txt.trim() : '';
   }
 
   // --- DOM targeting ---
   function locateQuestionCard() {
-    // Priority: explicit ids and known structure
     const picks = [
       document.getElementById('msQ'),
       document.querySelector('#msQ .question-block'),
@@ -77,12 +66,10 @@
     ].filter(Boolean);
 
     if (picks.length === 0) return null;
-    // Prefer the nearest .card to keep overlay bounds tight
     for (const el of picks) {
-      const card = el.closest('.card');
+      const card = el.closest?.('.card');
       if (card) return card;
     }
-    // otherwise return the first match
     return picks[0];
   }
 
@@ -100,7 +87,6 @@
       return null;
     }
 
-    // If clarification is empty, do not show the button
     const clar = getClarification();
     if (!clar) {
       if (btn) btn.remove();
@@ -156,7 +142,6 @@
     const clar = getClarification();
     if (!clar) return;
 
-    // Backdrop within the card bounds only
     const backdrop = document.createElement('div');
     backdrop.id = OVERLAY_ID;
     Object.assign(backdrop.style, {
@@ -170,7 +155,6 @@
       background: 'rgba(0,0,0,0.25)',
     });
 
-    // Panel using .card
     const panel = document.createElement('div');
     panel.className = 'card';
     Object.assign(panel.style, {
@@ -202,7 +186,7 @@
     title.style.margin = '0 24px 8px 0';
 
     const body = document.createElement('div');
-    body.classList.add('help'); // harmless if not defined
+    body.classList.add('help');
     Object.assign(body.style, {
       whiteSpace: 'pre-wrap',
       marginTop: '4px',
@@ -214,12 +198,10 @@
     panel.appendChild(body);
     backdrop.appendChild(panel);
 
-    // Close on backdrop click
     backdrop.addEventListener('click', (e) => {
       if (e.target === backdrop) closeOverlay();
     });
 
-    // Close on Esc
     const onKey = (e) => { if (e.key === 'Escape') closeOverlay(); };
     document.addEventListener('keydown', onKey, { once: true });
     backdrop._cleanup = () => document.removeEventListener('keydown', onKey);
@@ -244,13 +226,11 @@
     if (!card) return;
 
     cardObserver = new MutationObserver(() => {
-      // Re-evaluate the presence of clarification on any change within the card
       const clar = getClarification();
       if (clar !== lastClarText) {
         lastClarText = clar;
         ensureButton(card);
       } else {
-        // If clarification did not change, still ensure the button is mounted correctly
         ensureButton(card);
       }
     });
@@ -280,10 +260,7 @@
   }
 
   function init() {
-    if (document.body.getAttribute(OBS_TOKEN_ATTR) === '1') {
-      // already initialized
-      return;
-    }
+    if (document.body.getAttribute(OBS_TOKEN_ATTR) === '1') return;
     document.body.setAttribute(OBS_TOKEN_ATTR, '1');
 
     const card = locateQuestionCard();
@@ -295,16 +272,13 @@
       ensureButton(null);
     }
 
-    // Start a root observer to react when the card mounts/unmounts
     startRootObserver();
 
-    // A few delayed checks to catch async state hydration
     setTimeout(() => ensureButton(locateQuestionCard()), 250);
     setTimeout(() => ensureButton(locateQuestionCard()), 750);
     setTimeout(() => ensureButton(locateQuestionCard()), 1500);
   }
 
-  // Expose minimal API in case you want manual control
   globalThis.MSClarification = {
     open: openOverlay,
     close: closeOverlay,
@@ -316,13 +290,4 @@
   } else {
     init();
   }
-
-  // Support ESM side-effect import
-  try {
-    // If modules are supported, export a no-op init for explicit control if desired
-    // eslint-disable-next-line no-undef
-    if (typeof export !== 'undefined') {
-      // do nothing
-    }
-  } catch {}
 })();
