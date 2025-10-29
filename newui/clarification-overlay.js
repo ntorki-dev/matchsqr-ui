@@ -1,21 +1,12 @@
 
 /* clarification-overlay.js
- * v6 – From-scratch, minimal, reliable (ESM)
+ * v6.2 – Full-screen blur, readable text, larger panel (ESM)
  *
- * What it does
- * - Renders a small white "?" button at bottom-right inside a host element you provide.
- * - Opens a compact overlay over that host element only, with dim + blur backdrop.
- * - Uses existing .card and .help classes if present. No CSS edits. No DB calls.
- *
- * How to use from game.js
- *   import { initClarificationOverlay, setClarification, syncClarificationButton, setHostElement } from './clarification-overlay.js';
- *   // once, after the question DOM exists
- *   initClarificationOverlay();
- *   setHostElement(document.querySelector('#msQ')?.closest('.card') || document.querySelector('#msQ'));
- *   setClarification(state.question?.clarification || '');
- *   syncClarificationButton();
- *
- * You can call setClarification(...) on every question change.
+ * Exports:
+ *   initClarificationOverlay()
+ *   setHostElement(el)
+ *   setClarification(text)
+ *   syncClarificationButton()
  */
 
 let hostEl = null;
@@ -35,8 +26,6 @@ export function setClarification(text) {
 }
 
 export function initClarificationOverlay() {
-  // no-op placeholder in case you want future init hooks
-  // Keep to match the import you already wrote.
   ensureButton();
 }
 
@@ -51,7 +40,6 @@ function ensureRelPosition(el) {
 }
 
 function ensureButton() {
-  // remove if cannot render
   if (!hostEl || !lastClar) {
     const old = document.getElementById(BTN_ID);
     if (old) old.remove();
@@ -97,28 +85,37 @@ function openOverlay() {
   closeOverlay();
   if (!hostEl || !lastClar) return;
 
+  // FULL-PAGE backdrop for blur + dim
   const backdrop = document.createElement('div');
   backdrop.id = OVERLAY_ID;
   Object.assign(backdrop.style, {
-    position: 'absolute',
-    inset: '0',
-    zIndex: '10',
+    position: 'fixed',
+    left: '0',
+    top: '0',
+    right: '0',
+    bottom: '0',
+    zIndex: '9999',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backdropFilter: 'blur(6px)',
-    background: 'rgba(0,0,0,0.25)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    background: 'rgba(0,0,0,0.35)',
+    padding: '16px',
   });
 
+  // Centered panel using .card style, readable text enforced
   const panel = document.createElement('div');
   panel.className = 'card';
   Object.assign(panel.style, {
-    maxWidth: '680px',
-    width: '90%',
-    maxHeight: '70%',
+    maxWidth: '800px',
+    width: '92%',
+    maxHeight: '80%',
     overflow: 'auto',
-    padding: '16px 16px 8px 16px',
+    padding: '20px 20px 12px 20px',
     position: 'relative',
+    background: 'var(--card-bg, #fff)',
+    color: 'var(--card-fg, #111)',
   });
 
   const x = document.createElement('button');
@@ -127,24 +124,30 @@ function openOverlay() {
   Object.assign(x.style, {
     position: 'absolute',
     top: '8px',
-    right: '10px',
+    right: '12px',
     border: 'none',
     background: 'transparent',
-    fontSize: '20px',
+    fontSize: '22px',
     cursor: 'pointer',
+    color: 'inherit',
   });
   x.textContent = '×';
   x.addEventListener('click', closeOverlay);
 
   const title = document.createElement('h4');
   title.textContent = 'Clarification';
-  title.style.margin = '0 24px 8px 0';
+  Object.assign(title.style, {
+    margin: '0 28px 10px 0',
+    color: 'inherit',
+  });
 
   const body = document.createElement('div');
+  // Keep small-text class if present, but force readable color
   body.classList.add('help');
   Object.assign(body.style, {
     whiteSpace: 'pre-wrap',
-    marginTop: '4px',
+    marginTop: '6px',
+    color: 'inherit',
   });
   body.textContent = lastClar;
 
@@ -161,7 +164,8 @@ function openOverlay() {
   document.addEventListener('keydown', onKey, { once: true });
   backdrop._cleanup = () => document.removeEventListener('keydown', onKey);
 
-  hostEl.appendChild(backdrop);
+  // Attach to body to ensure full-page coverage
+  document.body.appendChild(backdrop);
 }
 
 function closeOverlay() {
