@@ -456,6 +456,7 @@ render(forceFull){
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.className='lobby-wrap';
         this.renderSeats();
+        try{ syncClarificationButton(); }catch{}
 
         const role=getRole(this.code);
         if (role==='host'){
@@ -670,12 +671,6 @@ export async function render(ctx){
       '<div class="answer-row" id="answerRow"></div>'+
     '</div>';
   await renderHeader(); ensureDebugTray();
-// Clarification overlay init (safe to call once)
-try{ initClarificationOverlay({
-  getCurrentQuestion: ()=> (Game && Game.state ? Game.state.question || null : null),
-  getQuestionHostEl: ()=> document.getElementById('msQ'),
-  getCardEl: ()=> document.getElementById('mainCard')
-}); }catch{}
   try{ document.body.classList.add('is-game'); }catch{}
   const _ms_onHash = () => { if (!location.hash.startsWith('#/game/')) { try{ document.body.classList.remove('is-game'); }catch{} window.removeEventListener('hashchange', _ms_onHash); } };
   window.addEventListener('hashchange', _ms_onHash);
