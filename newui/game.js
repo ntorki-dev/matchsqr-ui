@@ -492,14 +492,16 @@ render(forceFull){
       if (forceFull){
         const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
         q.innerHTML = '<h4 style="margin:0 0 8px 0;">'+(s.question?.text || '')+'</h4>';
-        \1
-try{
-  if (!this.__clarInit) { initClarificationOverlay(); this.__clarInit = true; }
-  const __hostEl = q.closest ? (q.closest('.card') || q) : q;
-  setHostElement(__hostEl);
-  setClarification((s.question && s.question.clarification) ? String(s.question.clarification) : '');
-  syncClarificationButton();
-}catch{}
+        main.appendChild(q);
+        
+        // Clarification overlay hook (bottom-right "?" + small over-card panel)
+        try {
+          if (!this.__clarInit) { initClarificationOverlay(); this.__clarInit = true; }
+          const __hostEl = q.closest ? (q.closest('.card') || q) : q;
+          setHostElement(__hostEl);
+          setClarification((s.question && s.question.clarification) ? String(s.question.clarification) : '');
+          syncClarificationButton();
+        } catch(_) {}
 // v10: Show guidance when game is running and there is no active turn
         try{
           const stRunning = (s.status||'') === 'running';
