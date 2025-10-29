@@ -1,14 +1,20 @@
 
-/* clarification-overlay.js (ESM)
- * v4 – Named exports for game.js
- * - Small white "?" bottom-right inside the question card.
- * - Panel over the card only, blur + dim backdrop.
- * - Uses existing .card and .help classes if present.
- * - No DB calls. Reads clarification via provided getCurrentQuestion callback.
+/* clarification-overlay.js
+ * v5 – ESM with named exports + safe auto-init
+ * - Renders a white "?" button bottom-right inside the current question card.
+ * - Opens a small panel over the card, with blur + dim backdrop.
+ * - Uses existing .card and .help classes if present. No CSS edits. No DB calls.
+ * - Reads clarification from, in order:
+ *     1) data-clarification attribute on the question host element (if present)
+ *     2) Game.state.question.clarification (or App/state fallbacks)
+ * - Exposes:
+ *     initClarificationOverlay({ getQuestionHostEl, getCurrentQuestion })
+ *     syncClarificationButton()
  */
 
-let hostGetter = null;
-let questionGetter = null;
+let getHost = null;
+let getQuestion = null;
+
 let mountedCard = null;
 let btn = null;
 let rootObserver = null;
@@ -18,8 +24,59 @@ let lastClarText = null;
 const BTN_ID = 'ms-clarify-btn';
 const OVERLAY_ID = 'ms-clarify-overlay';
 
+function defaultGetHost() {
+  // Prefer explicit ids/classes known in this project
+  const picks = [
+    document.getElementById('msQ'),
+    document.querySelector('#msQ .question-block'),
+    document.querySelector('#mainCard .question-block'),
+    document.querySelector('.question-block'),
+    document.querySelector('#mainCard .card'),
+    document.querySelector('.card .question-block'),
+  ].filter(Boolean);
+
+  if (picks.length === 0) return null;
+  for (const el of picks) {
+    const card = el.closest?.('.card');
+    if (card) return card;
+  }
+  return picks[0];
+}
+
+function pickQuestionFrom(obj) {
+  if (!obj) return null;
+  if (obj.question && typeof obj.question === 'object') return obj.question;
+  if (obj.state && obj.state.question) return obj.state.question;
+  return null;
+}
+
+function defaultGetQuestion() {
+  const candidates = [];
+  if (globalThis.Game && typeof Game === 'object') candidates.push(Game.state, Game);
+  if (globalThis.App && typeof App === 'object') candidates.push(App.state, App);
+  if (globalThis.state && typeof state === 'object') candidates.push(state);
+  for (const c of candidates) {
+    const q = pickQuestionFrom(c);
+    if (q && (q.text !== undefined || q.title !== undefined)) return q;
+  }
+  // last-resort shallow scan
+  for (const k of Object.keys(globalThis)) {
+    try {
+      const v = globalThis[k];
+      const q = pickQuestionFrom(v);
+      if (q && (q.text !== undefined || q.title !== undefined)) return q;
+    } catch {}
+  }
+  return null;
+}
+
 function getClarification() {
-  const q = questionGetter ? questionGetter() : null;
+  const host = (getHost || defaultGetHost)();
+  if (host) {
+    const attr = host.getAttribute?.('data-clarification');
+    if (attr && attr.trim()) return attr.trim();
+  }
+  const q = (getQuestion || defaultGetQuestion)();
   if (!q) return '';
   const txt = q.clarification ?? q.help ?? q.note ?? '';
   return typeof txt === 'string' ? txt.trim() : '';
@@ -63,7 +120,7 @@ function createButton() {
 
 function openOverlay() {
   closeOverlay();
-  const card = mountedCard || (hostGetter && hostGetter());
+  const card = mountedCard || (getHost || defaultGetHost)();
   if (!card) return;
 
   const clar = getClarification();
@@ -145,11 +202,11 @@ function closeOverlay() {
 }
 
 function ensureButtonMounted() {
-  const card = hostGetter ? hostGetter() : null;
+  const card = (getHost || defaultGetHost)();
   const clar = getClarification();
 
+  // remove if not applicable
   if (!card || !clar) {
-    // remove if present
     const old = document.getElementById(BTN_ID);
     if (old) old.remove();
     mountedCard = null;
@@ -166,8 +223,7 @@ function ensureButtonMounted() {
 }
 
 function watchCard() {
-  if (!hostGetter) return;
-  const card = hostGetter();
+  const card = (getHost || defaultGetHost)();
   if (!card) return;
   if (cardObserver) cardObserver.disconnect();
 
@@ -192,17 +248,15 @@ function startRootObserver() {
   rootObserver.observe(document.body, { childList: true, subtree: true });
 }
 
-export function initClarificationOverlay({ getCurrentQuestion, getQuestionHostEl }) {
-  // Required callbacks
-  questionGetter = getCurrentQuestion;
-  hostGetter = getQuestionHostEl;
+export function initClarificationOverlay({ getQuestionHostEl, getCurrentQuestion }) {
+  // Configure getters, or fall back to defaults
+  getHost = typeof getQuestionHostEl === 'function' ? getQuestionHostEl : null;
+  getQuestion = typeof getCurrentQuestion === 'function' ? getCurrentQuestion : null;
 
-  // First pass
   ensureButtonMounted();
   watchCard();
   startRootObserver();
 
-  // Extra delayed passes to catch async hydration
   setTimeout(ensureButtonMounted, 200);
   setTimeout(ensureButtonMounted, 600);
   setTimeout(ensureButtonMounted, 1200);
@@ -210,4 +264,22 @@ export function initClarificationOverlay({ getCurrentQuestion, getQuestionHostEl
 
 export function syncClarificationButton() {
   ensureButtonMounted();
+}
+
+/* Safe auto-init:
+ * If the app forgets to call init, we still try to mount after DOM ready.
+ * If init() is later called, supplied getters override defaults cleanly.
+ */
+if (typeof window !== 'undefined') {
+  const autoKick = () => {
+    ensureButtonMounted();
+    startRootObserver();
+    setTimeout(ensureButtonMounted, 250);
+    setTimeout(ensureButtonMounted, 750);
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', autoKick, { once: true });
+  } else {
+    autoKick();
+  }
 }
