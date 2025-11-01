@@ -66,9 +66,9 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
 
   async mount(code){
 
-    this.code=code;
-    try{ this.ui.draft = localStorage.getItem(draftKey(code)) || ''; }catch{ this.ui.draft=''; }
-    try{ if (sessionStorage.getItem(hostMarkerKey(code))==='1'){ setRole(code, 'host'); sessionStorage.removeItem(hostMarkerKey(code)); } }catch{}
+    this.code = String(code || "").trim().toUpperCase();
+    try{ this.ui.draft = localStorage.getItem(draftKey(this.code)) || ''; }catch{ this.ui.draft=''; }
+    try{ if (sessionStorage.getItem(hostMarkerKey(this.code))==='1'){ setRole(this.code, 'host'); sessionStorage.removeItem(hostMarkerKey(this.code)); } }catch{}
     await this.refresh();
     this.startPolling();
     this.startTick();
