@@ -41,24 +41,22 @@ export async function render(ctx){
     </div>`;
   await renderHeader(); ensureDebugTray();
   $('#logoutBtn').onclick = async () => {
-    try {
-      const sb = await ensureClient();
-      \1
-    // Clear client caches and remember flags so header updates immediately
-    try{
-      localStorage.removeItem('ms_lastKnownUser');
-      localStorage.removeItem('remember_me');
-      sessionStorage.removeItem('remember_me');
-      sessionStorage.removeItem('__redirect_after_login');
-    }catch{}
-    // Re-render header and route to login for a clean state (helps on mobile)
-    try{ await renderHeader(); }catch{}
-    location.hash = '#/login';
+  try {
+    const sb = await ensureClient();
+    await sb.auth.signOut();
+  } catch (_) {}
+  // Clear client caches and remember flags so header updates immediately
+  try{
+    localStorage.removeItem('ms_lastKnownUser');
+    localStorage.removeItem('remember_me');
+    sessionStorage.removeItem('remember_me');
+    sessionStorage.removeItem('__redirect_after_login');
+  }catch{}
+  // Re-render header and route to login for a clean state (helps on mobile)
+  try{ await renderHeader(); }catch{}
+  location.hash = '#/login';
+};
 
-} catch (_) {}
-    try { localStorage.removeItem('ms_lastKnownUser'); } catch (_) {}
-    location.hash = '#/';
-  };
 }
 
 async function renderLogin(){
