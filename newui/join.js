@@ -22,7 +22,7 @@ export async function render(){
   const nickInput = $('#nickname');
   const joinBtn = $('#joinBtn');
 
-  // 3) Support shared URLs like /#/join?gameCode=KE9DJY
+  // Support shared URLs like /#/join?gameCode=KE9DJY
   try{
     const h = location.hash || "";
     const m = h.match(/[?&]gameCode=([^&]+)/i);
@@ -32,17 +32,32 @@ export async function render(){
     }
   }catch{}
 
-  // 2) Prefill nickname from auth (same logic as game.js: user_metadata.name -> name), editable
+  // Prefill nickname using same logic as game.js
   try{
-    const sess = await getSession();
-    const user = sess?.user || null;
-    if (user && nickInput && !nickInput.value){
-      const display = (user?.user_metadata?.name) || (user?.name) || "";
-      if (display) nickInput.value = display;
+    let display = null;
+    try {
+      // game.js tries __msGetCachedUser first
+      // eslint-disable-next-line no-undef
+      const cached = (typeof __msGetCachedUser === 'function') ? __msGetCachedUser() : null;
+      if (cached) {
+        display = (cached?.user_metadata?.name) || (cached?.name) || null;
+      }
+    } catch(_){}
+
+    if (!display) {
+      const sess = await getSession();
+      const user = sess?.user || null;
+      if (user) {
+        // match game.js preference, no email alias fallback
+        display = (user?.user_metadata?.name) || (user?.user_metadata?.full_name) || (user?.name) || null;
+      }
+    }
+    if (display && nickInput && !nickInput.value) {
+      nickInput.value = String(display);
     }
   }catch{}
 
-  // 1) Uppercase normalization for backend + redirect, plus UX while typing/paste
+  // Uppercase normalization for backend + redirect, with UX while typing/paste
   if (codeInput){
     codeInput.addEventListener('input', () => {
       const start = codeInput.selectionStart, end = codeInput.selectionEnd;
