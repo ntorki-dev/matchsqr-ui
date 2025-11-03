@@ -301,7 +301,7 @@ body.is-game .app-footer { background: #4a4a4a; color: #ffffff; }
 
 
 /* === Game layout variables & shared widths === */
-body.is-game { --cardw: 220px; }
+body.is-game { --cardw: 240px; }
 
 /* Rows above/below the card align to card width */
 body.is-game #controlsRow,
@@ -328,7 +328,7 @@ body.is-game #answerWide {
 }
 
 /* Left sidebar for participants */
-.side-left{ min-width:220px; justify-self:end; }
+.side-left{ min-width:120px; justify-self:end; }
 
 /* Main card sizing and positioning */
 /* Timer container inside the card */
@@ -381,7 +381,7 @@ body.is-game #answerWide {
 
 /* Mobile: stack content and hide sidebar to avoid pushing/overlap */
 @media (max-width: 767px){
-  body.is-game { --cardw: min(90vw, 220px); }
+  body.is-game { --cardw: min(90vw, 240px); }
   .room-main{ display:flex; flex-direction:column; align-items:center; }
   .side-left{ display:none; }
   }
@@ -411,7 +411,7 @@ body.is-game #answerWide {
 
 
 /* --- Seats around card and responsive card sizing --- */
-:root { --card-w: 220px; --card-h: calc(var(--card-w) * 1.181818); } /* 220x260 aspect */
+:root { --card-w: 240px; --card-h: calc(var(--card-w) * 1.3); } /* 220x260 aspect */
 
 .card.seats{ display:flex; flex-direction:column; justify-content:space-between; height: var(--card-h); }
 .seats-left{ align-items:flex-end; text-align:right; padding-right:4px; }
@@ -420,21 +420,21 @@ body.is-game #answerWide {
 .seat-item.is-turn{ font-weight:700; }
 
 @media (max-width: 640px){
-  :root{ --card-w: clamp(150px, 42vw, 220px); }
+  :root{ --card-w: clamp(150px, 42vw, 240px); }
   .seat-item{ font-size:11px; }
   }
 
 /* === Authoritative game layout, last in file === */
-#roomMain{ display:grid; width:476px; margin-inline:auto; grid-template-columns:120px 220px 120px; gap:8px; justify-items:center; align-items:start; box-sizing:border-box; }
+#roomMain{ display:grid; width:476px; margin-inline:auto; grid-template-columns:120px 240px 120px; gap:8px; justify-items:center; align-items:start; box-sizing:border-box; }
 #sideLeft{ width:120px; max-width:120px; justify-self:end; text-align:right; padding-right:6px; box-sizing:border-box; overflow:hidden; }
 #sideRight{ width:120px; max-width:120px; justify-self:start; text-align:left; padding-left:6px; box-sizing:border-box; overflow:hidden; }
-#mainCard{ width:220px; max-width:220px; height:260px; position:relative; box-sizing:border-box; justify-self:center; }
-.card.main-card{ width:220px; max-width:220px; height:260px; }
+#mainCard{ width:240px; max-width:240px; height:280px; position:relative; box-sizing:border-box; justify-self:center; }
+.card.main-card{ width:240px; max-width:240px; height:280px; }
 
 @media screen and (max-width: 640px){
   #roomMain{ width: calc(60px + 180px + 60px + 12px); grid-template-columns:60px 180px 60px; gap:6px; }
   #sideLeft, #sideRight{ width:60px; max-width:60px; }
-  #mainCard, .card.main-card{ width:180px; max-width:180px; height:216px; }
+  #mainCard, .card.main-card{ width:180px; max-width:180px; height:230px; }
 }
 
 /* === Match Square: Header Actions Slot (non-intrusive) === */
@@ -498,13 +498,13 @@ body.is-game #answerWide {
 }
 
 .seat-initials{
-  width:40px;
-  height:40px;
+  width:35px;
+  height:35px;
   border-radius:50%;
   display:flex;
   align-items:center;
   justify-content:center;
-  font-weight:800;
+  font-weight:700;
   font-size:18px; /* slightly larger than names */
   line-height:1;
   background:#ffffff;
@@ -537,7 +537,7 @@ body.is-game #answerWide {
 
 /* Slightly smaller circle on very small screens */
 @media (max-width: 360px){
-  .seat-initials{ width:35px; height:35px; font-size:16px; }
+  .seat-initials{ width:30px; height:30px; font-size:14px; }
 }
 
 
