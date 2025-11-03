@@ -22,7 +22,7 @@ export async function render(){
   const nickInput = $('#nickname');
   const joinBtn = $('#joinBtn');
 
-  // 3) Hash param support: /#/join?gameCode=KE9DJY
+  // 3) Support shared URLs like /#/join?gameCode=KE9DJY
   try{
     const h = location.hash || "";
     const m = h.match(/[?&]gameCode=([^&]+)/i);
@@ -32,19 +32,17 @@ export async function render(){
     }
   }catch{}
 
-  // 2) Prefill nickname from auth, but keep it editable
+  // 2) Prefill nickname from auth (same logic as game.js: user_metadata.name -> name), editable
   try{
     const sess = await getSession();
     const user = sess?.user || null;
     if (user && nickInput && !nickInput.value){
-      const full = user?.user_metadata?.full_name || user?.user_metadata?.name || "";
-      const email = user?.email || user?.user_metadata?.email || "";
-      const fromEmail = email ? (email.split('@')[0] || "") : "";
-      nickInput.value = (full || fromEmail || "").trim();
+      const display = (user?.user_metadata?.name) || (user?.name) || "";
+      if (display) nickInput.value = display;
     }
   }catch{}
 
-  // 1) Uppercase normalization, UX while typing and on paste
+  // 1) Uppercase normalization for backend + redirect, plus UX while typing/paste
   if (codeInput){
     codeInput.addEventListener('input', () => {
       const start = codeInput.selectionStart, end = codeInput.selectionEnd;
