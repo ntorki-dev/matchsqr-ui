@@ -1,5 +1,5 @@
 // join.js
-import { API, getSession } from './api.js';
+import { API, getSession, getProfileName } from './api.js';
 import { renderHeader, ensureDebugTray, $, toast } from './ui.js';
 
 export async function render(){
@@ -22,7 +22,7 @@ export async function render(){
   const nickInput = $('#nickname');
   const joinBtn = $('#joinBtn');
 
-  // Support shared URLs like /#/join?gameCode=KE9DJY
+  // Capture shared URLs like /#/join?gameCode=KE9DJY and prefill
   try{
     const h = location.hash || "";
     const m = h.match(/[?&]gameCode=([^&]+)/i);
@@ -32,32 +32,19 @@ export async function render(){
     }
   }catch{}
 
-  // Prefill nickname using same logic as game.js
+  // Prefill nickname EXACTLY like account.js: getProfileName -> user_metadata.name -> email alias
   try{
-    let display = null;
-    try {
-      // game.js tries __msGetCachedUser first
-      // eslint-disable-next-line no-undef
-      const cached = (typeof __msGetCachedUser === 'function') ? __msGetCachedUser() : null;
-      if (cached) {
-        display = (cached?.user_metadata?.name) || (cached?.name) || null;
-      }
-    } catch(_){}
-
-    if (!display) {
-      const sess = await getSession();
-      const user = sess?.user || null;
-      if (user) {
-        // match game.js preference, no email alias fallback
-        display = (user?.user_metadata?.name) || (user?.user_metadata?.full_name) || (user?.name) || null;
-      }
-    }
-    if (display && nickInput && !nickInput.value) {
-      nickInput.value = String(display);
+    const session = await getSession();
+    const user = session?.user || null;
+    if (user && nickInput && !nickInput.value){
+      let name = await getProfileName(user.id);
+      if (!name) name = user?.user_metadata?.name || null;
+      if (!name && user?.email) name = user.email.split('@')[0];
+      if (name) nickInput.value = String(name);
     }
   }catch{}
 
-  // Uppercase normalization for backend + redirect, with UX while typing/paste
+  // Uppercase UX while typing and on paste
   if (codeInput){
     codeInput.addEventListener('input', () => {
       const start = codeInput.selectionStart, end = codeInput.selectionEnd;
@@ -76,16 +63,17 @@ export async function render(){
     });
   }
 
+  // Submit: uppercase for backend and redirect
   joinBtn.onclick=async()=>{
     const rawCode=(codeInput?.value||'').trim();
     const nickname=(nickInput?.value||'').trim();
     if (!rawCode) return toast('Enter game code');
     if (!nickname) return toast('Enter nickname');
-    const code = rawCode.toUpperCase(); // canonical for backend + redirect
+    const code = rawCode.toUpperCase();
     try{
       await API.join_game_guest({ code, nickname });
       try{ localStorage.setItem(`ms_nick_${code}`, nickname); }catch{}
-      location.hash = '#/game/' + code; // canonical uppercase URL
+      location.hash = '#/game/' + code;
     }
     catch(e){ toast(e.message||'Failed to join'); }
   };
