@@ -70,7 +70,7 @@ async function renderLogin(){
         <div class="grid">
           <input id="email" class="input" placeholder="Email" type="email">
           <input id="password" class="input" placeholder="Password" type="password">
-          <label><input id="remember" type="checkbox"> Remember me</label>
+          <label class="help"><input id="remember" type="checkbox"> Remember me</label>
           <button id="loginBtn" class="btn">Login</button>
           <div style="display:flex;gap:10px;justify-content:space-between;">
             <a class="help" href="#/account">Account</a>
