@@ -1,5 +1,5 @@
 // join.js
-import { API } from './api.js';
+import { API, getSession } from './api.js';
 import { renderHeader, ensureDebugTray, $, toast } from './ui.js';
 
 export async function render(){
@@ -17,14 +17,62 @@ export async function render(){
       </div>
     </div>`;
   await renderHeader(); ensureDebugTray();
-  $('#joinBtn').onclick=async()=>{
-    const code=$('#gameId').value.trim(); const nickname=$('#nickname').value.trim();
-    if (!code) return toast('Enter game code');
+
+  const codeInput = $('#gameId');
+  const nickInput = $('#nickname');
+  const joinBtn = $('#joinBtn');
+
+  // 3) Hash param support: /#/join?gameCode=KE9DJY
+  try{
+    const h = location.hash || "";
+    const m = h.match(/[?&]gameCode=([^&]+)/i);
+    if (m && codeInput){
+      const v = decodeURIComponent(m[1] || "").trim().toUpperCase();
+      if (v) codeInput.value = v;
+    }
+  }catch{}
+
+  // 2) Prefill nickname from auth, but keep it editable
+  try{
+    const sess = await getSession();
+    const user = sess?.user || null;
+    if (user && nickInput && !nickInput.value){
+      const full = user?.user_metadata?.full_name || user?.user_metadata?.name || "";
+      const email = user?.email || user?.user_metadata?.email || "";
+      const fromEmail = email ? (email.split('@')[0] || "") : "";
+      nickInput.value = (full || fromEmail || "").trim();
+    }
+  }catch{}
+
+  // 1) Uppercase normalization, UX while typing and on paste
+  if (codeInput){
+    codeInput.addEventListener('input', () => {
+      const start = codeInput.selectionStart, end = codeInput.selectionEnd;
+      codeInput.value = (codeInput.value || "").toUpperCase();
+      if (start != null && end != null) codeInput.setSelectionRange(start, end);
+    });
+    codeInput.addEventListener('paste', (e) => {
+      try{
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text') || '';
+        const up = text.toUpperCase();
+        const s = codeInput.selectionStart ?? codeInput.value.length;
+        const t = codeInput.selectionEnd ?? codeInput.value.length;
+        codeInput.setRangeText(up, s, t, 'end');
+      }catch{}
+    });
+  }
+
+  joinBtn.onclick=async()=>{
+    const rawCode=(codeInput?.value||'').trim();
+    const nickname=(nickInput?.value||'').trim();
+    if (!rawCode) return toast('Enter game code');
     if (!nickname) return toast('Enter nickname');
+    const code = rawCode.toUpperCase(); // canonical for backend + redirect
     try{
       await API.join_game_guest({ code, nickname });
       try{ localStorage.setItem(`ms_nick_${code}`, nickname); }catch{}
-      location.hash='#/game/'+code;
+      location.hash = '#/game/' + code; // canonical uppercase URL
     }
     catch(e){ toast(e.message||'Failed to join'); }
   };
