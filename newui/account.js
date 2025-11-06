@@ -5,6 +5,7 @@ import { renderHeader, ensureDebugTray, $, toast } from './ui.js';
 export async function render(ctx){
   const tab = ctx?.tab || 'account';
   if (tab === 'login') return renderLogin();
+  if (tab === 'register') return renderRegister();
 
   const app = document.getElementById('app');
   // Confirm real session before rendering protected UI
@@ -70,7 +71,7 @@ async function renderLogin(){
         <div class="grid">
           <input id="email" class="input" placeholder="Email" type="email">
           <input id="password" class="input" placeholder="Password" type="password">
-          <label class="help"><input id="remember" type="checkbox"> Remember me</label>
+          <label><input id="remember" type="checkbox"> Remember me</label>
           <button id="loginBtn" class="btn">Login</button>
           <div style="display:flex;gap:10px;justify-content:space-between;">
             <a class="help" href="#/account">Account</a>
@@ -90,5 +91,106 @@ async function renderLogin(){
       location.hash = redirectTo;
       sessionStorage.removeItem('__redirect_after_login');
     }catch(e){ toast(e.message||'Login failed'); }
+  };
+}
+
+
+
+async function renderRegister(){
+  const app = document.getElementById('app');
+  const redirectAfter = '#/account';
+  app.innerHTML = `
+    <div class="offline-banner">You are offline. Trying to reconnect…</div>
+    <div class="container">
+      <div style="max-width:720px;margin:28px auto;">
+        <h2>Hey, happy to see you!</h2>
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;">
+          <div>
+            <label class="muted">Create a new account</label>
+            <input id="reg_name" class="input" placeholder="Name" autocomplete="name">
+            <div style="display:flex;align-items:center;gap:16px;margin:6px 0 2px;">
+              <label style="display:flex;align-items:center;gap:6px;">
+                <input type="radio" name="reg_gender" id="reg_gender_male" value="male">
+                <span>Male</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;">
+                <input type="radio" name="reg_gender" id="reg_gender_female" value="female">
+                <span>Female</span>
+              </label>
+            </div>
+            <input id="reg_email" class="input" placeholder="Email" type="email" autocomplete="email">
+          </div>
+          <div>
+            <label class="muted">I have an account</label>
+            <input id="reg_dob" class="input" placeholder="Date of birth" type="date">
+            <small class="muted">Format helper: DD-MM-YYYY (we convert on submit)</small>
+            <input id="reg_password" class="input" placeholder="Password" type="password" autocomplete="new-password">
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+          <input id="reg_consent" type="checkbox">
+          <span>I agree to the Terms and Privacy Policy</span>
+        </label>
+        <div style="margin-top:12px;">
+          <button id="reg_submit" class="btn">Submit</button>
+          <a href="#/login" class="link" style="margin-left:12px;">Already have an account? Login</a>
+        </div>
+        <div id="reg_msg" class="muted" style="margin-top:10px;"></div>
+      </div>
+    </div>`;
+  await renderHeader(); ensureDebugTray();
+
+  function computeAge(isoDate){
+    try{
+      const d = new Date(isoDate);
+      const today = new Date();
+      let age = today.getFullYear() - d.getFullYear();
+      const m = today.getMonth() - d.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--;
+      return age;
+    }catch(_){ return NaN; }
+  }
+
+  $('#reg_submit').onclick = async () => {
+    try{
+      const name = ($('#reg_name')?.value||'').trim();
+      const genderUi = (document.querySelector('input[name=reg_gender]:checked')||{}).value || '';
+      const gender = genderUi === 'male' ? 'man' : (genderUi === 'female' ? 'woman' : null);
+      const email = ($('#reg_email')?.value||'').trim();
+      const password = $('#reg_password')?.value||'';
+      const dobISO = ($('#reg_dob')?.value||'').trim(); // native date input gives yyyy-mm-dd
+
+      if (!name) throw new Error('Please enter your name.');
+      if (!gender) throw new Error('Please select Male or Female.');
+      if (!dobISO) throw new Error('Please select your date of birth.');
+      const age = computeAge(dobISO);
+      if (!(age >= 12 && age <= 100)) throw new Error('Your age must be between 12 and 100.');
+      if (!email) throw new Error('Please enter your email.');
+      if (!password || password.length < 6) throw new Error('Please choose a password (min 6 chars).');
+      if (!$('#reg_consent').checked) throw new Error('Please accept the Terms and Privacy Policy.');
+
+      const sb = await ensureClient();
+      const { data, error } = await sb.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { name, birthdate: dobISO, gender },
+          emailRedirectTo: location.origin + '/#/account'
+        }
+      });
+      if (error) throw error;
+
+      $('#reg_submit').disabled = true;
+      const msg = (data?.user && !data?.session)
+        ? 'We have sent you a confirmation email. Please confirm to access your account.'
+        : 'Registration successful. Redirecting...';
+      $('#reg_msg').textContent = msg;
+
+      if (data?.session) {
+        location.hash = redirectAfter;
+      }
+    }catch(e){
+      toast(e.message || 'Registration failed');
+    }
   };
 }

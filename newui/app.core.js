@@ -71,6 +71,7 @@ register('#/host', Host.render);
 register('#/join', Join.render);
 register('#/game', Game.render); // module handles host auth internally
 register('#/login', (ctx)=>Account.render({ ...ctx, tab: 'login' }));
+register('#/register', (ctx)=>Account.render({ ...ctx, tab: 'register' }));
 register('#/account', (ctx)=>Account.render({ ...ctx, tab: 'account' }));
 register('#/billing', Billing.render);
 register('#/terms', (ctx)=>StaticPages.render({ page: 'terms' }));
