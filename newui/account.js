@@ -1,98 +1,69 @@
 
 /**
- * account.js
+ * account.js (reverted interface, minimal + correct exposure)
+ * Exposes a single global: window.Account.render(ctx)
+ * Keeps: Login, Register (Male/Female -> man/woman), Account, ensureProfileOnce, attachGuestIfPending
  */
 
-window.Account = (() => {
-  const el = (sel) => document.querySelector(sel);
+(function () {
   const html = String.raw;
+  const $ = (s) => document.querySelector(s);
 
-  /** Parse query params from location.hash (supports #/route?x=1&y=2) */
   function parseHashQuery() {
-    const hash = window.location.hash || "";
-    const qIndex = hash.indexOf("?");
-    if (qIndex === -1) return {};
-    const query = hash.substring(qIndex + 1);
-    const params = new URLSearchParams(query);
-    const out = {};
-    for (const [k, v] of params.entries()) out[k] = v;
-    return out;
+    const h = location.hash || "";
+    const i = h.indexOf("?");
+    if (i === -1) return {};
+    const p = new URLSearchParams(h.substring(i + 1));
+    const o = {}; for (const [k, v] of p.entries()) o[k] = v; return o;
   }
 
-  /** Show a notification area inside the target container */
   function setNotice(container, type, message) {
-    const host = container.querySelector(".notice") || document.createElement("div");
-    host.className = `notice ${type}`; // types: success | error | info
+    let host = container.querySelector(".notice");
+    if (!host) { host = document.createElement("div"); container.prepend(host); }
+    host.className = `notice ${type}`;
     host.textContent = message;
-    if (!host.parentNode) container.prepend(host);
+    host.style.display = "";
   }
-
   function clearNotice(container) {
     const host = container.querySelector(".notice");
     if (host) host.remove();
   }
 
-  /** Minor util: compute age from YYYY-MM-DD */
   function ageFromISO(dateStr) {
     try {
       const d = new Date(dateStr);
       if (Number.isNaN(d.getTime())) return null;
-      const today = new Date();
-      let age = today.getFullYear() - d.getFullYear();
-      const m = today.getMonth() - d.getMonth();
-      if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--;
-      return age;
-    } catch {
-      return null;
-    }
+      const t = new Date();
+      let a = t.getFullYear() - d.getFullYear();
+      const m = t.getMonth() - d.getMonth();
+      if (m < 0 || (m === 0 && t.getDate() < d.getDate())) a--;
+      return a;
+    } catch { return null; }
   }
 
-  /** ensureProfileOnce: checks public.profiles row and inserts if missing */
   async function ensureProfileOnce() {
     try {
-      const { data: userRes } = await supabase.auth.getUser();
-      const user = userRes?.user;
-      if (!user) return;
-
-      const userId = user.id;
-      // Has this already been ensured in this browser?
-      const key = `ms_prof_ensured_${userId}`;
+      const { data: ur } = await supabase.auth.getUser();
+      const user = ur?.user; if (!user) return;
+      const key = `ms_prof_ensured_${user.id}`;
       if (localStorage.getItem(key) === "1") return;
 
-      // Check if a profile exists
-      const { data: prof, error: selErr } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("id", userId)
-        .maybeSingle();
+      const { data: prof, error: selErr } = await supabase.from("profiles").select("id").eq("id", user.id).maybeSingle();
+      if (selErr) { console.warn("ensureProfileOnce select error:", selErr); return; }
+      if (prof) { localStorage.setItem(key, "1"); return; }
 
-      if (selErr) {
-        console.warn("ensureProfileOnce select error:", selErr);
-        return;
-      }
-      if (prof) {
-        localStorage.setItem(key, "1");
-        return; // already exists
-      }
-
-      // Create from user metadata
       const meta = user.user_metadata || {};
       const payload = {
-        id: userId,
+        id: user.id,
         name: meta.name || "",
         birthdate: meta.birthdate || null,
         gender: (meta.gender === "man" || meta.gender === "woman" || meta.gender === "other") ? meta.gender : null,
       };
-
       const { error: insErr } = await supabase.from("profiles").insert(payload);
-      if (!insErr) localStorage.setItem(key, "1");
-      else console.warn("ensureProfileOnce insert error:", insErr);
-    } catch (e) {
-      console.warn("ensureProfileOnce error:", e);
-    }
+      if (!insErr) localStorage.setItem(key, "1"); else console.warn("ensureProfileOnce insert error:", insErr);
+    } catch (e) { console.warn("ensureProfileOnce error:", e); }
   }
 
-  /** attachGuestIfPending: calls edge function convert_guest_to_user if payload exists */
   async function attachGuestIfPending(container) {
     try {
       const raw = localStorage.getItem("ms_attach_payload");
@@ -100,15 +71,12 @@ window.Account = (() => {
       const payload = JSON.parse(raw);
       if (!payload?.game_id || !payload?.temp_player_id) return;
 
-      // Verify we have an authenticated user
-      const { data: userRes } = await supabase.auth.getUser();
-      if (!userRes?.user) return;
+      const { data: ur } = await supabase.auth.getUser();
+      if (!ur?.user) return;
 
-      // Call edge function
-      const { data, error } = await supabase.functions.invoke("convert_guest_to_user", {
+      const { error } = await supabase.functions.invoke("convert_guest_to_user", {
         body: { game_id: payload.game_id, temp_player_id: payload.temp_player_id },
       });
-
       if (error) {
         console.warn("convert_guest_to_user error:", error);
         if (container) setNotice(container, "error", "We couldn't attach your previous session automatically. You can still view your report after your next game.");
@@ -116,14 +84,11 @@ window.Account = (() => {
         if (container) setNotice(container, "success", "Your previous session was attached to your account. You can now receive your full report.");
         localStorage.removeItem("ms_attach_payload");
       }
-    } catch (e) {
-      console.warn("attachGuestIfPending error:", e);
-    }
+    } catch (e) { console.warn("attachGuestIfPending error:", e); }
   }
 
-  /** Login View */
   function renderLogin() {
-    const root = el("#app");
+    const root = $("#app");
     root.innerHTML = html`
       <section class="auth auth-login">
         <h2>Login</h2>
@@ -141,40 +106,25 @@ window.Account = (() => {
       </section>
     `;
 
-    const container = root.querySelector(".auth-card");
-    const btn = root.querySelector("#btn-login");
-
-    btn.addEventListener("click", async () => {
-      clearNotice(container);
-      const email = root.querySelector("#login-email").value.trim();
-      const password = root.querySelector("#login-password").value;
-
-      if (!email || !password) {
-        setNotice(container, "error", "Please enter your email and password.");
-        return;
-      }
-
-      btn.disabled = true;
+    const c = root.querySelector(".auth-card");
+    $("#btn-login").addEventListener("click", async () => {
+      clearNotice(c);
+      const email = $("#login-email").value.trim();
+      const password = $("#login-password").value;
+      if (!email || !password) { setNotice(c, "error", "Please enter your email and password."); return; }
+      const btn = $("#btn-login"); btn.disabled = true;
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       btn.disabled = false;
-
-      if (error) {
-        setNotice(container, "error", error.message || "Login failed.");
-        return;
-      }
-
-      // Ensure profile and attach guest if any
+      if (error) { setNotice(c, "error", error.message || "Login failed."); return; }
       await ensureProfileOnce();
-      await attachGuestIfPending(container);
-      window.location.hash = "#/account";
+      await attachGuestIfPending(c);
+      location.hash = "#/account";
     });
   }
 
-  /** Register View (Male/Female UI -> man/woman saved) */
   function renderRegister() {
-    const root = el("#app");
+    const root = $("#app");
     const q = parseHashQuery();
-    // If we came with ?gameId=...&tempPlayerId=..., persist for later attachment
     if (q.gameId && q.tempPlayerId) {
       localStorage.setItem("ms_attach_payload", JSON.stringify({ game_id: q.gameId, temp_player_id: q.tempPlayerId }));
     }
@@ -224,41 +174,26 @@ window.Account = (() => {
       </section>
     `;
 
-    const container = root.querySelector(".auth-card");
-    const btn = root.querySelector("#btn-register");
-
-    btn.addEventListener("click", async () => {
-      clearNotice(container);
-      const name = root.querySelector("#reg-name").value.trim();
-      const dob = root.querySelector("#reg-dob").value; // yyyy-mm-dd from native input
-      const email = root.querySelector("#reg-email").value.trim();
-      const password = root.querySelector("#reg-password").value;
-      const consent = root.querySelector("#reg-consent").checked;
+    const c = root.querySelector(".auth-card");
+    $("#btn-register").addEventListener("click", async () => {
+      clearNotice(c);
+      const name = $("#reg-name").value.trim();
+      const dob = $("#reg-dob").value;
+      const email = $("#reg-email").value.trim();
+      const password = $("#reg-password").value;
+      const consent = $("#reg-consent").checked;
       const genderEl = root.querySelector('input[name="gender"]:checked');
       const gender = genderEl ? genderEl.value : null;
 
-      if (!name || !dob || !email || !password || !gender) {
-        setNotice(container, "error", "Please complete all fields.");
-        return;
-      }
-      if (password.length < 6) {
-        setNotice(container, "error", "Password should be at least 6 characters.");
-        return;
-      }
-      if (!consent) {
-        setNotice(container, "error", "You must agree to the Terms and Privacy Policy.");
-        return;
-      }
+      if (!name || !dob || !email || !password || !gender) { setNotice(c, "error", "Please complete all fields."); return; }
+      if (password.length < 6) { setNotice(c, "error", "Password should be at least 6 characters."); return; }
+      if (!consent) { setNotice(c, "error", "You must agree to the Terms and Privacy Policy."); return; }
       const age = ageFromISO(dob);
-      if (age === null || age < 12 || age > 100) {
-        setNotice(container, "error", "Please enter a valid date of birth (age must be 12–100).");
-        return;
-      }
+      if (age === null || age < 12 || age > 100) { setNotice(c, "error", "Please enter a valid date of birth (age must be 12–100)."); return; }
 
-      btn.disabled = true;
+      const btn = $("#btn-register"); btn.disabled = true;
       const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
+        email, password,
         options: {
           data: { name, birthdate: dob, gender },
           emailRedirectTo: `${location.origin}/#/account`,
@@ -266,32 +201,23 @@ window.Account = (() => {
       });
       btn.disabled = false;
 
-      if (error) {
-        setNotice(container, "error", error.message || "Registration failed.");
-        return;
-      }
+      if (error) { setNotice(c, "error", error.message || "Registration failed."); return; }
 
-      // If email confirmation is required, no session is returned
       if (!data.session) {
-        setNotice(container, "success", "Check your email to confirm your account. You’ll be redirected to your Account after confirmation.");
+        setNotice(c, "success", "Check your email to confirm your account. You’ll be redirected to your Account after confirmation.");
       } else {
-        // Session exists (confirmation disabled). Ensure profile and attach guest.
         await ensureProfileOnce();
-        await attachGuestIfPending(container);
-        window.location.hash = "#/account";
+        await attachGuestIfPending(c);
+        location.hash = "#/account";
       }
     });
   }
 
-  /** Account View (very light) */
   async function renderAccount() {
-    const root = el("#app");
-    const { data: userRes } = await supabase.auth.getUser();
-    const user = userRes?.user;
-    if (!user) {
-      window.location.hash = "#/login";
-      return;
-    }
+    const root = $("#app");
+    const { data: ur } = await supabase.auth.getUser();
+    const user = ur?.user;
+    if (!user) { location.hash = "#/login"; return; }
 
     root.innerHTML = html`
       <section class="auth auth-account">
@@ -307,25 +233,26 @@ window.Account = (() => {
       </section>
     `;
 
-    const container = root.querySelector(".auth-card");
-    // Make sure profile exists and attach guest if needed
+    const c = root.querySelector(".auth-card");
     await ensureProfileOnce();
-    await attachGuestIfPending(container);
+    await attachGuestIfPending(c);
 
-    root.querySelector("#btn-logout").addEventListener("click", async () => {
+    $("#btn-logout").addEventListener("click", async () => {
       await supabase.auth.signOut();
-      window.location.hash = "#/login";
+      location.hash = "#/login";
     });
   }
 
-  /** Public render entry */
   async function render(ctx = {}) {
-    const tab = ctx.tab || (location.hash.includes("/register") ? "register" :
-                            location.hash.includes("/account") ? "account" : "login");
+    const tab =
+      ctx.tab ||
+      (location.hash.includes("/register") ? "register" :
+       location.hash.includes("/account") ? "account" : "login");
     if (tab === "register") return renderRegister();
     if (tab === "account") return renderAccount();
     return renderLogin();
   }
 
-  return { render };
+  // ***** Critical: expose exactly what app.core.js expects *****
+  window.Account = { render };
 })();
