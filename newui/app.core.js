@@ -41,9 +41,15 @@ function parseHash(){
 }
 
 // Route guard for protected pages
-async function guard(path){
+async function guard(path, ctx){
   // Account and Billing require auth
   if (path === '#/account' || path === '#/billing') {
+    // Allow unauthenticated access to account recovery tabs
+    const tab = ctx?.query?.tab;
+    if (path === '#/account' && (tab === 'forgot' || tab === 'reset')) {
+      return true;
+    }
+
     const session = await getSession();
     if (!session || !session.user) {
       try { sessionStorage.setItem('__redirect_after_login', path); } catch {}
@@ -59,7 +65,7 @@ async function navigate(){
   const { path, ctx } = parseHash();
   const handler = routes.get(path) || Home.render;
 
-  const ok = await guard(path);
+  const ok = await guard(path, ctx);
   if (!ok) return;
 
   await handler(ctx);
@@ -72,7 +78,8 @@ register('#/join', Join.render);
 register('#/game', Game.render); // module handles host auth internally
 register('#/login', (ctx)=>Account.render({ ...ctx, tab: 'login' }));
 register('#/register', (ctx)=>Account.render({ ...ctx, tab: 'register' }));
-register('#/account', (ctx)=>Account.render({ ...ctx, tab: 'account' }));
+// Pass through ?tab=... for account (e.g., change-password, profile, forgot, reset)
+register('#/account', (ctx)=>Account.render({ ...ctx, tab: (ctx?.query?.tab || 'account') }));
 register('#/billing', Billing.render);
 register('#/terms', (ctx)=>StaticPages.render({ page: 'terms' }));
 register('#/privacy', (ctx)=>StaticPages.render({ page: 'privacy' }));
