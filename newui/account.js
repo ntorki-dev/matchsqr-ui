@@ -2,7 +2,7 @@
 import { ensureClient, getSession, getProfileName } from './api.js';
 import { renderHeader, ensureDebugTray, $, toast } from './ui.js';
 
-/** Attach guest session (Option B) */
+/** Attach guest session (Option B) after auth */
 async function attachGuestIfPending(sb) {
   try {
     const raw = localStorage.getItem('ms_attach_payload');
@@ -16,7 +16,11 @@ async function attachGuestIfPending(sb) {
     const { error } = await sb.functions.invoke('convert_guest_to_user', {
       body: { game_id: payload.game_id, temp_player_id: payload.temp_player_id },
     });
-    if (error) { console.warn('convert_guest_to_user error', error); toast('We could not attach your previous session automatically.'); return false; }
+    if (error) {
+      console.warn('convert_guest_to_user error', error);
+      toast('We could not attach your previous session automatically.');
+      return false;
+    }
     localStorage.removeItem('ms_attach_payload');
     toast('Your previous session was attached to your account.');
     return true;
@@ -71,7 +75,7 @@ export async function render(ctx){
     app.innerHTML = `
       <div class="offline-banner"></div>
       <div class="container">
-        <div class="grid" style="max-width:520px;margin:28px auto;">
+        <div class="host-wrap">
           <h2>Account</h2>
           <p>You need to log in to view your account.</p>
           <p><a class="btn" href="#/login?next=%2F#%2Faccount">Go to Login</a></p>
@@ -153,9 +157,9 @@ async function renderRegister(){
   app.innerHTML = `
     <div class="offline-banner"></div>
     <div class="container">
+      <h2 style="text-align:center;">Hey, happy to see you!</h2>
       <div class="host-wrap">
-        <h2>Hey, happy to see you!</h2>
-        <div class="grid" style="grid-template-columns:1fr 1fr;">
+        <div class="grid" style="grid-template-columns: 1fr 1fr;">
           <div>
             <label class="help" style="color:var(--green);font-weight:700;">Create a new account</label>
             <input id="reg_name" class="input" placeholder="Name" autocomplete="name">
@@ -167,7 +171,7 @@ async function renderRegister(){
           </div>
           <div>
             <a href="#/login" class="help" style="text-decoration:underline;">I have an account</a>
-            <input id="reg_dob" class="input" placeholder="Date of birth" type="date">
+            <input id="reg_dob" class="input" type="date">
             <input id="reg_password" class="input" placeholder="Password" type="password" autocomplete="new-password">
           </div>
         </div>
@@ -177,7 +181,7 @@ async function renderRegister(){
           <label class="help"><input id="reg_consent_privacy" type="checkbox"> I consent to the processing of my personal data according to the <a class="help" href="#/privacy" style="text-decoration:underline;">Privacy Notice</a></label>
         </div>
 
-        <div class="grid">
+        <div class="controls-row">
           <button id="reg_submit" class="btn">Submit</button>
         </div>
         <div id="reg_msg" class="help"></div>
