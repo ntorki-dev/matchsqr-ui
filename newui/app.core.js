@@ -1,6 +1,5 @@
 // app.core.js
 // Boot, tiny router, route table, and layout switching.
-// This file wires page modules together. No business logic here.
 
 import * as Home from './home.js';
 import * as Host from './host.js';
@@ -14,20 +13,17 @@ import { getSession } from './api.js';
 
 // Simple route registry
 const routes = new Map();
-
-function register(path, handler){
-  routes.set(path, handler);
-}
+function register(path, handler){ routes.set(path, handler); }
 
 // Hash parser -> returns { path, query, ctx }
-
 function parseHash(){
+  // Normalize double '?' in the hash (e.g., "#/account?tab=reset?token=...")
   const raw0 = location.hash || '#/';
   let raw = raw0;
   const q1 = raw.indexOf('?');
   if (q1 !== -1) {
     const after = raw.slice(q1 + 1);
-    const fix = after.replace('?', '&'); // normalize double '?'
+    const fix = after.replace('?', '&'); // only if present
     raw = raw.slice(0, q1 + 1) + fix;
   }
 
@@ -47,6 +43,7 @@ function parseHash(){
   let path = hashPart;
   const ctx = { path: hashPart, query };
 
+  // Dynamic game route: #/game/:code
   const gm = hashPart.match(/^#\/game\/([^/?#]+)/);
   if (gm) {
     ctx.code = gm[1];
@@ -56,11 +53,9 @@ function parseHash(){
   return { path, query, ctx };
 }
 
-
-// Route guard for protected pages
-async function guard(path){
-  // Account and Billing require auth
-  if (path === '#/account' || path === '#/billing') {
+// Router guard: keep it minimal; let Account.js enforce its own tab auth
+async function guard(path, ctx){
+  if (path === '#/billing') {
     const session = await getSession();
     if (!session || !session.user) {
       try { sessionStorage.setItem('__redirect_after_login', path); } catch {}
@@ -68,34 +63,31 @@ async function guard(path){
       return false;
     }
   }
-  // Game route stays open here, module guards host-only actions internally.
   return true;
 }
 
 async function navigate(){
   const { path, ctx } = parseHash();
   const handler = routes.get(path) || Home.render;
-
-  const ok = await guard(path);
+  const ok = await guard(path, ctx);
   if (!ok) return;
-
   await handler(ctx);
 }
 
-// Route table
+// Routes
 register('#/', Home.render);
 register('#/host', Host.render);
 register('#/join', Join.render);
-register('#/game', Game.render); // module handles host auth internally
+register('#/game', Game.render);
 register('#/login', (ctx)=>Account.render({ ...ctx, tab: 'login' }));
 register('#/register', (ctx)=>Account.render({ ...ctx, tab: 'register' }));
-register('#/account', (ctx)=>Account.render({ ...ctx, tab: 'account' }));
+register('#/account', (ctx)=>Account.render({ ...ctx, tab: (ctx?.query?.tab || 'account') }));
 register('#/billing', Billing.render);
 register('#/terms', (ctx)=>StaticPages.render({ page: 'terms' }));
 register('#/privacy', (ctx)=>StaticPages.render({ page: 'privacy' }));
 register('#/help', (ctx)=>StaticPages.render({ page: 'help' }));
 
-// Initial boot
+// Boot
 if (!location.hash) location.hash = '#/';
 ensureDebugTray();
 setOfflineBanner(!navigator.onLine);
