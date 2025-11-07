@@ -2,11 +2,6 @@
 import { ensureClient, getSession, getProfileName } from './api.js';
 import { renderHeader, ensureDebugTray, $, toast } from './ui.js';
 
-/* ------------------------------- Path-safe base ------------------------------ */
-const BASE = (location.href.split('#')[0] || '').replace(/index\.html?$/,''); 
-const URL_ACCOUNT = `${BASE}#/account`;
-const URL_RESET   = `${BASE}#/account?tab=reset`;
-
 /* -------------------------------- Utilities -------------------------------- */
 
 function parseHashQuery() {
@@ -15,6 +10,10 @@ function parseHashQuery() {
   if (i === -1) return {};
   const p = new URLSearchParams(h.substring(i + 1));
   const o = {}; for (const [k, v] of p.entries()) o[k] = v; return o;
+}
+
+function computeAge(isoDate){
+  try{ const d=new Date(isoDate), t=new Date(); let a=t.getFullYear()-d.getFullYear(); const m=t.getMonth()-d.getMonth(); if(m<0||(m===0&&t.getDate()<d.getDate())) a--; return a; }catch{ return NaN; }
 }
 
 /** Attach guest session (Option B) after auth */
@@ -40,10 +39,6 @@ async function attachGuestIfPending(sb) {
     toast('Your previous session was attached to your account.');
     return true;
   } catch (e) { console.warn('attachGuestIfPending failed', e); return false; }
-}
-
-function computeAge(isoDate){
-  try{ const d=new Date(isoDate), t=new Date(); let a=t.getFullYear()-d.getFullYear(); const m=t.getMonth()-d.getMonth(); if(m<0||(m===0&&t.getDate()<d.getDate())) a--; return a; }catch{ return NaN; }
 }
 
 /* ----------------------------- Resend confirmation ----------------------------- */
@@ -80,7 +75,7 @@ function mountResendControls(container, email) {
       await sb.auth.resend({
         type: 'signup',
         email,
-        options: { emailRedirectTo: URL_ACCOUNT }
+        options: { emailRedirectTo: location.origin + '/#/account?tab=reset' }
       });
       startCooldown(60);
     } catch {
@@ -113,14 +108,27 @@ async function renderConfirmEmailScreen(email){
 /* --------------------------------- Router --------------------------------- */
 
 export async function render(ctx){
+  // Normalize tab first
   const q = parseHashQuery();
-  const tab = ctx?.tab || q.tab || 'account';
+  const rawTab = ctx?.tab || q.tab || 'account';
+  let tab = String(rawTab).split(/[?&]/)[0]; // e.g., "reset?token=..." -> "reset"
 
-  if (tab === 'login') return renderLogin();
+  // If Supabase recovery params are in location.search, force tab=reset
+  const searchQS = (location.search || '').replace(/^\?/, '');
+  if (tab !== 'reset' && searchQS) {
+    const qs = new URLSearchParams(searchQS);
+    if (qs.get('type') === 'recovery' || qs.has('token') || qs.has('access_token')) {
+      tab = 'reset';
+    }
+  }
+
+  // Public tabs must render BEFORE any session check
+  if (tab === 'login')    return renderLogin();
   if (tab === 'register') return renderRegister();
-  if (tab === 'forgot') return renderForgotPassword();
-  if (tab === 'reset') return renderResetPassword();
+  if (tab === 'forgot')   return renderForgotPassword();
+  if (tab === 'reset')    return renderResetPassword();
 
+  // Private areas from here on
   const app = document.getElementById('app');
   const session = await getSession();
   const user = session?.user || null;
@@ -141,8 +149,9 @@ export async function render(ctx){
   }
 
   if (tab === 'change-password') return renderChangePassword(user);
-  if (tab === 'profile') return renderProfile(user);
+  if (tab === 'profile')         return renderProfile(user);
 
+  // Default account home
   const dbName = await getProfileName(user.id);
   const name = dbName || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0] : 'Account');
   app.innerHTML = `
@@ -160,6 +169,7 @@ export async function render(ctx){
   await renderHeader(); ensureDebugTray();
 
   try { const sb = await ensureClient(); await attachGuestIfPending(sb); } catch {}
+
   $('#logoutBtn').onclick = async () => {
     try { const sb = await ensureClient(); await sb.auth.signOut(); } catch {}
     try{ localStorage.removeItem('ms_lastKnownUser'); localStorage.removeItem('remember_me'); sessionStorage.removeItem('remember_me'); sessionStorage.removeItem('__redirect_after_login'); }catch{}
@@ -245,7 +255,9 @@ async function renderForgotPassword(){
     try {
       $('#fp_send').disabled = true;
       const sb = await ensureClient();
-      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: URL_RESET });
+      const { error } = await sb.auth.resetPasswordForEmail(email, {
+        redirectTo: location.origin + '/#/account?tab=reset'
+      });
       if (error) throw error;
       $('#fp_msg').textContent = 'Check your email for a reset link.';
     } catch(e) {
@@ -265,6 +277,7 @@ async function renderResetPassword(){
     <div class="container">
       <div class="host-wrap">
         <h2>Reset password</h2>
+        <p class="help">If you arrived here from the email link, you can set a new password.</p>
         <div id="resetCard" class="grid">
           <input id="rp_new" class="input" type="password" placeholder="New password" autocomplete="new-password">
           <input id="rp_confirm" class="input" type="password" placeholder="Confirm new password" autocomplete="new-password">
@@ -274,6 +287,28 @@ async function renderResetPassword(){
       </div>
     </div>`;
   await renderHeader(); ensureDebugTray();
+
+  // On landing, if token is present (either ?token=... or in hash query), exchange it for a session
+  try {
+    const sb = await ensureClient();
+    const searchQS = (location.search || '').replace(/^\?/, '');
+    const hashQS = (location.hash.split('?')[1] || '');
+    const merged = new URLSearchParams(searchQS);
+    const h = new URLSearchParams(hashQS);
+    for (const [k,v] of h.entries()) if (!merged.has(k)) merged.set(k,v);
+    const token = merged.get('token') || merged.get('access_token');
+    const type = merged.get('type');
+
+    if (type === 'recovery' && token) {
+      const { data, error } = await sb.auth.verifyOtp({ type: 'recovery', token_hash: token });
+      if (error) {
+        console.warn('verifyOtp failed', error);
+        $('#rp_msg').textContent = 'The recovery link is invalid or expired. Please request a new one.';
+      }
+    }
+  } catch (e) {
+    console.warn('Recovery exchange failed', e);
+  }
 
   $('#rp_update').onclick = async () => {
     const p1 = $('#rp_new').value;
@@ -331,7 +366,7 @@ async function renderChangePassword(user){
 
       $('#cp_update').disabled = true;
       const sb = await ensureClient();
-      const email = user.email;
+      const email = (await getSession())?.user?.email;
       const { error: reauthError } = await sb.auth.signInWithPassword({ email, password: curr });
       if (reauthError) throw new Error('Current password is incorrect.');
 
@@ -353,6 +388,7 @@ async function renderChangePassword(user){
 
 async function renderProfile(user){
   const app = document.getElementById('app');
+  // Prefill from metadata; we'll prefer row from profiles if present
   let name = user?.user_metadata?.name || '';
   let birthdate = user?.user_metadata?.birthdate || '';
   let genderMeta = user?.user_metadata?.gender || '';
@@ -427,7 +463,7 @@ async function renderProfile(user){
   };
 }
 
-/* -------------------------------- Register (existing) ------------------------------- */
+/* -------------------------------- Register -------------------------------- */
 
 async function renderRegister(){
   const app = document.getElementById('app');
@@ -455,6 +491,7 @@ async function renderRegister(){
           <input id="reg_password" class="input" placeholder="Password" type="password" autocomplete="new-password" style="grid-column:2;grid-row:4;">
         </div>
 
+        <!-- Consent: spacing -->
         <div class="grid" style="gap:14px;margin-top:16px;">
           <label class="help"><input id="reg_consent_tc" type="checkbox"> I agree to the <a class="help" href="#/terms" style="text-decoration:underline;">Terms and Conditions</a></label>
           <label class="help"><input id="reg_consent_privacy" type="checkbox"> I consent to the processing of my personal data according to the <a class="help" href="#/privacy" style="text-decoration:underline;">Privacy Notice</a></label>
@@ -489,7 +526,7 @@ async function renderRegister(){
       const sb = await ensureClient();
       const { data, error } = await sb.auth.signUp({
         email, password,
-        options: { data: { name, birthdate: dobISO, gender }, emailRedirectTo: URL_ACCOUNT }
+        options: { data: { name, birthdate: dobISO, gender }, emailRedirectTo: location.origin + '/#/account?tab=reset' }
       });
       if (error) throw error;
 
