@@ -2,6 +2,11 @@
 import { ensureClient, getSession, getProfileName } from './api.js';
 import { renderHeader, ensureDebugTray, $, toast } from './ui.js';
 
+/* ------------------------------- Path-safe base ------------------------------ */
+const BASE = (location.href.split('#')[0] || '').replace(/index\.html?$/,''); 
+const URL_ACCOUNT = `${BASE}#/account`;
+const URL_RESET   = `${BASE}#/account?tab=reset`;
+
 /* -------------------------------- Utilities -------------------------------- */
 
 function parseHashQuery() {
@@ -75,7 +80,7 @@ function mountResendControls(container, email) {
       await sb.auth.resend({
         type: 'signup',
         email,
-        options: { emailRedirectTo: location.origin + '/#/account?tab=reset' }
+        options: { emailRedirectTo: URL_ACCOUNT }
       });
       startCooldown(60);
     } catch {
@@ -108,7 +113,6 @@ async function renderConfirmEmailScreen(email){
 /* --------------------------------- Router --------------------------------- */
 
 export async function render(ctx){
-  // Prefer explicit ctx.tab; fallback to hash query (?tab=...)
   const q = parseHashQuery();
   const tab = ctx?.tab || q.tab || 'account';
 
@@ -117,7 +121,6 @@ export async function render(ctx){
   if (tab === 'forgot') return renderForgotPassword();
   if (tab === 'reset') return renderResetPassword();
 
-  // Account and its sub-tabs require auth (except forgot/reset above)
   const app = document.getElementById('app');
   const session = await getSession();
   const user = session?.user || null;
@@ -140,7 +143,6 @@ export async function render(ctx){
   if (tab === 'change-password') return renderChangePassword(user);
   if (tab === 'profile') return renderProfile(user);
 
-  // Default account home
   const dbName = await getProfileName(user.id);
   const name = dbName || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0] : 'Account');
   app.innerHTML = `
@@ -158,7 +160,6 @@ export async function render(ctx){
   await renderHeader(); ensureDebugTray();
 
   try { const sb = await ensureClient(); await attachGuestIfPending(sb); } catch {}
-
   $('#logoutBtn').onclick = async () => {
     try { const sb = await ensureClient(); await sb.auth.signOut(); } catch {}
     try{ localStorage.removeItem('ms_lastKnownUser'); localStorage.removeItem('remember_me'); sessionStorage.removeItem('remember_me'); sessionStorage.removeItem('__redirect_after_login'); }catch{}
@@ -244,9 +245,7 @@ async function renderForgotPassword(){
     try {
       $('#fp_send').disabled = true;
       const sb = await ensureClient();
-      const { error } = await sb.auth.resetPasswordForEmail(email, {
-        redirectTo: location.origin + '/#/account?tab=reset'
-      });
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: URL_RESET });
       if (error) throw error;
       $('#fp_msg').textContent = 'Check your email for a reset link.';
     } catch(e) {
@@ -490,7 +489,7 @@ async function renderRegister(){
       const sb = await ensureClient();
       const { data, error } = await sb.auth.signUp({
         email, password,
-        options: { data: { name, birthdate: dobISO, gender }, emailRedirectTo: location.origin + '/#/account?tab=reset' }
+        options: { data: { name, birthdate: dobISO, gender }, emailRedirectTo: URL_ACCOUNT }
       });
       if (error) throw error;
 
