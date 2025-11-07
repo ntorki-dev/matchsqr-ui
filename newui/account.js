@@ -1,4 +1,4 @@
-/* account.js — surgical recovery fix */
+// account.js — recovery-safe, surgical update
 import { ensureClient, getSession, getProfileName } from './api.js';
 import { renderHeader, ensureDebugTray, $, toast } from './ui.js';
 
@@ -75,7 +75,8 @@ function mountResendControls(container, email) {
       await sb.auth.resend({
         type: 'signup',
         email,
-        options: { emailRedirectTo: location.origin + '/#/account?tab=reset' }
+        // Keep your current base — do NOT use location.origin here
+        options: { emailRedirectTo: location.href.split('#')[0] + '#/account?tab=reset' }
       });
       startCooldown(60);
     } catch {
@@ -108,10 +109,10 @@ async function renderConfirmEmailScreen(email){
 /* --------------------------------- Router --------------------------------- */
 
 export async function render(ctx){
-  // Normalize tab first  <<<<<<<<<<<<<<<< ADDED
+  // Normalize tab first so "reset?token=..." becomes "reset"
   const q = parseHashQuery();
-  const rawTab = ctx?.tab || q.tab || 'account';                // ADDED
-  const tab = String(rawTab).split(/[?&]/)[0];                   // ADDED
+  const rawTab = ctx?.tab || q.tab || 'account';
+  const tab = String(rawTab).split(/[?&]/)[0];
 
   // Public tabs BEFORE any session check
   if (tab === 'login')    return renderLogin();
@@ -246,7 +247,8 @@ async function renderForgotPassword(){
       $('#fp_send').disabled = true;
       const sb = await ensureClient();
       const { error } = await sb.auth.resetPasswordForEmail(email, {
-        redirectTo: location.origin + '/#/account?tab=reset'
+        // Keep your current base — do NOT use location.origin here
+        redirectTo: location.href.split('#')[0] + '#/account?tab=reset'
       });
       if (error) throw error;
       $('#fp_msg').textContent = 'Check your email for a reset link.';
@@ -277,7 +279,7 @@ async function renderResetPassword(){
     </div>`;
   await renderHeader(); ensureDebugTray();
 
-  // Exchange recovery token for a session if present  <<<<<<<<<<<<<<<< ADDED
+  // Exchange recovery token for a session if present
   try {
     const sb = await ensureClient();
     const searchQS = (location.search || '').replace(/^\?/, '');
@@ -458,32 +460,25 @@ async function renderRegister(){
       <h2 style="text-align:center;">Hey, happy to see you!</h2>
       <div class="host-wrap">
         <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-          <!-- Row 1 -->
           <label class="help" style="color:var(--green);font-weight:700;grid-column:1;grid-row:1;">Create a new account</label>
           <a href="#/login" class="help" style="text-decoration:underline;grid-column:2;grid-row:1;">I have an account</a>
-          <!-- Row 2 -->
           <input id="reg_name" class="input" placeholder="Name" autocomplete="name" style="grid-column:1;grid-row:2;">
           <input id="reg_dob" class="input" type="date" style="grid-column:2;grid-row:2;">
-          <!-- Row 3 -->
           <div class="inline-actions" style="grid-column:1;grid-row:3;">
             <label class="inline-actions"><input type="radio" name="reg_gender" value="male"> <span>Male</span></label>
             <label class="inline-actions"><input type="radio" name="reg_gender" value="female"> <span>Female</span></label>
           </div>
           <div style="grid-column:2;grid-row:3;"></div>
-          <!-- Row 4: Email / Password aligned -->
           <input id="reg_email" class="input" placeholder="Email" type="email" autocomplete="email" style="grid-column:1;grid-row:4;">
           <input id="reg_password" class="input" placeholder="Password" type="password" autocomplete="new-password" style="grid-column:2;grid-row:4;">
         </div>
-
         <div class="grid" style="gap:14px;margin-top:16px;">
           <label class="help"><input id="reg_consent_tc" type="checkbox"> I agree to the <a class="help" href="#/terms" style="text-decoration:underline;">Terms and Conditions</a></label>
           <label class="help"><input id="reg_consent_privacy" type="checkbox"> I consent to the processing of my personal data according to the <a class="help" href="#/privacy" style="text-decoration:underline;">Privacy Notice</a></label>
         </div>
-
         <div class="controls-row">
           <button id="reg_submit" class="btn">Submit</button>
         </div>
-
         <div id="feedbackArea" class="grid"></div>
       </div>
     </div>`;
@@ -509,7 +504,8 @@ async function renderRegister(){
       const sb = await ensureClient();
       const { data, error } = await sb.auth.signUp({
         email, password,
-        options: { data: { name, birthdate: dobISO, gender }, emailRedirectTo: location.origin + '/#/account?tab=reset' }
+        // Keep your current base — do NOT use location.origin here
+        options: { data: { name, birthdate: dobISO, gender }, emailRedirectTo: location.href.split('#')[0] + '#/account?tab=reset' }
       });
       if (error) throw error;
 
