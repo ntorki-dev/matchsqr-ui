@@ -13,6 +13,23 @@ import { ensureDebugTray, setOfflineBanner } from './ui.js';
 import { getSession } from './api.js';
 
 // Simple route registry
+
+// Normalize Supabase recovery fragments (e.g., "#access_token=...&type=recovery...")
+function normalizeRecoveryFragment() {
+  const h = location.hash || '';
+  if (h && !h.startsWith('#/')) {
+    const frag = h.startsWith('#') ? h.slice(1) : h;
+    const qs = new URLSearchParams(frag);
+    const type = qs.get('type');
+    if (type === 'recovery') {
+      const extra = frag ? ('&' + frag) : '';
+      location.hash = '#/account?tab=reset' + extra;
+      return true;
+    }
+  }
+  return false;
+}
+
 const routes = new Map();
 
 function register(path, handler){
@@ -20,20 +37,8 @@ function register(path, handler){
 }
 
 // Hash parser -> returns { path, query, ctx }
-
 function parseHash(){
   const raw = location.hash || '#/';
-  // Handle Supabase recovery fragments like "#access_token=...&type=recovery..."
-  // When there's no "/...?" path, but a pure param fragment, we normalize to account reset.
-  if (!raw.startsWith('#/')) {
-    const frag = raw.startsWith('#') ? raw.slice(1) : raw;
-    const qs = new URLSearchParams(frag);
-    const type = qs.get('type');
-    const ctx = { path: '#/account', query: Object.fromEntries(qs.entries()) };
-    if (!ctx.query.tab && type === 'recovery') ctx.query.tab = 'reset';
-    return { path: '#/account', query: ctx.query, ctx };
-  }
-
   const qIndex = raw.indexOf('?');
   const hashPart = qIndex >= 0 ? raw.slice(0, qIndex) : raw;
   const queryString = qIndex >= 0 ? raw.slice(qIndex + 1) : '';
@@ -51,7 +56,6 @@ function parseHash(){
 
   return { path, query, ctx };
 }
-
 
 // Route guard for protected pages
 async function guard(path){
@@ -95,5 +99,5 @@ register('#/help', (ctx)=>StaticPages.render({ page: 'help' }));
 if (!location.hash) location.hash = '#/';
 ensureDebugTray();
 setOfflineBanner(!navigator.onLine);
-addEventListener('hashchange', navigate);
-navigate();
+addEventListener('hashchange', () => { if (!normalizeRecoveryFragment()) if (!normalizeRecoveryFragment()) navigate(); });
+if (!normalizeRecoveryFragment()) navigate();
