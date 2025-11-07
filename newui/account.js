@@ -114,7 +114,9 @@ async function renderConfirmEmailScreen(email){
 
 export async function render(ctx){
   const q = parseHashQuery();
-  const tab = ctx?.tab || q.tab || 'account';
+const rawTab = ctx?.tab || q.tab || 'account';
+const tab = String(rawTab).split('&')[0].split('?')[0];  // <- normalize
+
 
   if (tab === 'login') return renderLogin();
   if (tab === 'register') return renderRegister();
