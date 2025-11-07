@@ -37,6 +37,62 @@ async function attachGuestIfPending(sb) {
   }
 }
 
+/** Show a Resend Confirmation inline control with cooldown.
+ * Appears only when login fails with an "email not confirmed" error,
+ * or after signUp returns no session on Register.
+ */
+function showResendControl({ container, email }) {
+  // Reuse existing styles: .help for small link, .btn for button, .muted for text
+  let row = container.querySelector('#resendRow');
+  if (!row) {
+    row = document.createElement('div');
+    row.id = 'resendRow';
+    row.style.marginTop = '10px';
+    row.innerHTML = `
+      <button id="resendBtn" class="btn">Resend confirmation email</button>
+      <span id="resendMsg" class="muted" style="margin-left:8px;"></span>
+    `;
+    container.appendChild(row);
+  }
+  const btn = row.querySelector('#resendBtn');
+  const msg = row.querySelector('#resendMsg');
+  btn.disabled = false;
+  msg.textContent = '';
+
+  let cooldown = null;
+  const startCooldown = (secs=60) => {
+    let left = secs;
+    btn.disabled = true;
+    const tick = () => {
+      if (left <= 0) {
+        btn.disabled = false;
+        msg.textContent = '';
+        cooldown && clearInterval(cooldown);
+        cooldown = null;
+        return;
+      }
+      msg.textContent = `Email sent. You can resend in ${left}s.`;
+      left -= 1;
+    };
+    tick();
+    cooldown = setInterval(tick, 1000);
+  };
+
+  btn.onclick = async () => {
+    try {
+      const sb = await ensureClient();
+      await sb.auth.resend({
+        type: 'signup',
+        email: email,
+        options: { emailRedirectTo: location.origin + '/#/account' }
+      });
+      startCooldown(60);
+    } catch (e) {
+      toast('Could not resend right now. Please try again soon.');
+    }
+  };
+}
+
 export async function render(ctx){
   const tab = ctx?.tab || 'account';
   if (tab === 'login') return renderLogin();
@@ -56,7 +112,7 @@ export async function render(ctx){
         <div style="max-width:520px;margin:28px auto;">
           <h2>Account</h2>
           <p>You need to log in to view your account.</p>
-          <p><a class="btn btn-primary" href="#/login?next=%2F#%2Faccount">Go to Login</a></p>
+          <p><a class="btn" href="#/login?next=%2F#%2Faccount">Go to Login</a></p>
         </div>
       </div>`;
     await renderHeader(); ensureDebugTray();
@@ -89,14 +145,12 @@ export async function render(ctx){
       const sb = await ensureClient();
       await sb.auth.signOut();
     } catch (_) {}
-    // Clear client caches and remember flags so header updates immediately
     try{
       localStorage.removeItem('ms_lastKnownUser');
       localStorage.removeItem('remember_me');
       sessionStorage.removeItem('remember_me');
       sessionStorage.removeItem('__redirect_after_login');
     }catch{}
-    // Re-render header and route to login for a clean state (helps on mobile)
     try{ await renderHeader(); }catch{}
     location.hash = '#/login';
   };
@@ -110,10 +164,10 @@ async function renderLogin(){
     <div class="container">
       <div style="max-width:520px;margin:28px auto;">
         <h2>Login</h2>
-        <div class="grid">
-          <input id="email" class="input" placeholder="Email" type="email">
-          <input id="password" class="input" placeholder="Password" type="password">
-          <label><input id="remember" type="checkbox"> Remember me</label>
+        <div id="loginCard" class="grid">
+          <input id="email" class="input" placeholder="Email" type="email" autocomplete="email">
+          <input id="password" class="input" placeholder="Password" type="password" autocomplete="current-password">
+          <label class="muted"><input id="remember" type="checkbox"> Remember me</label>
           <button id="loginBtn" class="btn">Login</button>
           <div style="display:flex;gap:10px;justify-content:space-between;">
             <a class="help" href="#/account">Account</a>
@@ -123,11 +177,21 @@ async function renderLogin(){
       </div>
     </div>`;
   await renderHeader(); ensureDebugTray();
+
   $('#loginBtn').onclick=async()=>{
+    const email = $('#email').value.trim();
+    const password = $('#password').value;
     try{
       const sb = await ensureClient();
-      const { error } = await sb.auth.signInWithPassword({ email:$('#email').value.trim(), password:$('#password').value });
-      if (error) throw error;
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) {
+        const msg = ('' + (error?.message || '')).toLowerCase();
+        // Detect unconfirmed email message heuristically
+        if (msg.includes('confirm') || msg.includes('verified')) {
+          showResendControl({ container: $('#loginCard'), email });
+        }
+        throw error;
+      }
 
       const remember = !!$('#remember').checked;
       (remember?localStorage:sessionStorage).setItem('remember_me', JSON.stringify(remember));
@@ -148,12 +212,12 @@ async function renderRegister(){
     <div class="offline-banner">You are offline. Trying to reconnect…</div>
     <div class="container">
       <div style="max-width:720px;margin:28px auto;">
-        <h2>Hey, happy to see you!</h2>
+        <h2 style="text-align:center;font-size:clamp(24px,4vw,40px);font-weight:800;margin:0 0 16px;">Hey, happy to see you!</h2>
         <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;">
           <div>
-            <label class="muted">Create a new account</label>
+            <label class="help" style="color:#22a447;font-weight:700;">Create a new account</label>
             <input id="reg_name" class="input" placeholder="Name" autocomplete="name">
-            <div style="display:flex;align-items:center;gap:16px;margin:6px 0 2px;">
+            <div style="display:flex;align-items:center;gap:16px;margin:10px 0 10px;">
               <label style="display:flex;align-items:center;gap:6px;">
                 <input type="radio" name="reg_gender" id="reg_gender_male" value="male">
                 <span>Male</span>
@@ -166,21 +230,28 @@ async function renderRegister(){
             <input id="reg_email" class="input" placeholder="Email" type="email" autocomplete="email">
           </div>
           <div>
-            <label class="muted">I have an account</label>
+            <a href="#/login" class="help" style="text-decoration:underline;">I have an account</a>
             <input id="reg_dob" class="input" placeholder="Date of birth" type="date">
-            <small class="muted">Format helper: DD-MM-YYYY (we convert on submit)</small>
             <input id="reg_password" class="input" placeholder="Password" type="password" autocomplete="new-password">
           </div>
         </div>
-        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;">
-          <input id="reg_consent" type="checkbox">
-          <span>I agree to the Terms and Privacy Policy</span>
-        </label>
+
+        <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
+          <label class="muted" style="display:flex;align-items:center;gap:8px;">
+            <input id="reg_consent_tc" type="checkbox">
+            <span>I agree to the <a class="help" href="#/terms" style="text-decoration:underline;">Terms and Conditions</a></span>
+          </label>
+          <label class="muted" style="display:flex;align-items:center;gap:8px;">
+            <input id="reg_consent_privacy" type="checkbox">
+            <span>I consent to the processing of my personal data according to the <a class="help" href="#/privacy" style="text-decoration:underline;">Privacy Notice</a></span>
+          </label>
+        </div>
+
         <div style="margin-top:12px;">
           <button id="reg_submit" class="btn">Submit</button>
-          <a href="#/login" class="link" style="margin-left:12px;">Already have an account? Login</a>
         </div>
         <div id="reg_msg" class="muted" style="margin-top:10px;"></div>
+        <div id="resendWrap" class="muted" style="margin-top:6px;"></div>
       </div>
     </div>`;
   await renderHeader(); ensureDebugTray();
@@ -197,14 +268,14 @@ async function renderRegister(){
   }
 
   $('#reg_submit').onclick = async () => {
-    try{
-      const name = ($('#reg_name')?.value||'').trim();
-      const genderUi = (document.querySelector('input[name=reg_gender]:checked')||{}).value || '';
-      const gender = genderUi === 'male' ? 'man' : (genderUi === 'female' ? 'woman' : null);
-      const email = ($('#reg_email')?.value||'').trim();
-      const password = $('#reg_password')?.value||'';
-      const dobISO = ($('#reg_dob')?.value||'').trim(); // native date input gives yyyy-mm-dd
+    const name = ($('#reg_name')?.value||'').trim();
+    const genderUi = (document.querySelector('input[name=reg_gender]:checked')||{}).value || '';
+    const gender = genderUi === 'male' ? 'man' : (genderUi === 'female' ? 'woman' : null);
+    const email = ($('#reg_email')?.value||'').trim();
+    const password = $('#reg_password')?.value||'';
+    const dobISO = ($('#reg_dob')?.value||'').trim(); // native date input gives yyyy-mm-dd
 
+    try{
       if (!name) throw new Error('Please enter your name.');
       if (!gender) throw new Error('Please select Male or Female.');
       if (!dobISO) throw new Error('Please select your date of birth.');
@@ -212,7 +283,8 @@ async function renderRegister(){
       if (!(age >= 12 && age <= 100)) throw new Error('Your age must be between 12 and 100.');
       if (!email) throw new Error('Please enter your email.');
       if (!password || password.length < 6) throw new Error('Please choose a password (min 6 chars).');
-      if (!$('#reg_consent').checked) throw new Error('Please accept the Terms and Privacy Policy.');
+      if (!$('#reg_consent_tc').checked) throw new Error('Please accept the Terms and Conditions.');
+      if (!$('#reg_consent_privacy').checked) throw new Error('Please accept the Privacy Notice.');
 
       const sb = await ensureClient();
       const { data, error } = await sb.auth.signUp({
@@ -226,14 +298,13 @@ async function renderRegister(){
       if (error) throw error;
 
       $('#reg_submit').disabled = true;
-      const msg = (data?.user && !data?.session)
-        ? 'We have sent you a confirmation email. Please confirm to access your account.'
-        : 'Registration successful. Redirecting...';
-      $('#reg_msg').textContent = msg;
-
-      if (data?.session) {
-        // If confirmation is disabled and we already have a session,
-        // attempt Option B attach immediately, then go to account.
+      const needsConfirm = (!!data?.user && !data?.session);
+      if (needsConfirm) {
+        $('#reg_msg').textContent = 'Check your email to confirm your account.';
+        // Show resend control on Register too (as requested)
+        showResendControl({ container: $('#resendWrap'), email });
+      } else {
+        $('#reg_msg').textContent = 'Registration successful. Redirecting...';
         await attachGuestIfPending(sb);
         location.hash = redirectAfter;
       }
