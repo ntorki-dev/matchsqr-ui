@@ -1,4 +1,4 @@
-// account.js
+/* account.js — surgical recovery fix */
 import { ensureClient, getSession, getProfileName } from './api.js';
 import { renderHeader, ensureDebugTray, $, toast } from './ui.js';
 
@@ -108,21 +108,12 @@ async function renderConfirmEmailScreen(email){
 /* --------------------------------- Router --------------------------------- */
 
 export async function render(ctx){
-  // Normalize tab first
+  // Normalize tab first  <<<<<<<<<<<<<<<< ADDED
   const q = parseHashQuery();
-  const rawTab = ctx?.tab || q.tab || 'account';
-  let tab = String(rawTab).split(/[?&]/)[0]; // e.g., "reset?token=..." -> "reset"
+  const rawTab = ctx?.tab || q.tab || 'account';                // ADDED
+  const tab = String(rawTab).split(/[?&]/)[0];                   // ADDED
 
-  // If Supabase recovery params are in location.search, force tab=reset
-  const searchQS = (location.search || '').replace(/^\?/, '');
-  if (tab !== 'reset' && searchQS) {
-    const qs = new URLSearchParams(searchQS);
-    if (qs.get('type') === 'recovery' || qs.has('token') || qs.has('access_token')) {
-      tab = 'reset';
-    }
-  }
-
-  // Public tabs must render BEFORE any session check
+  // Public tabs BEFORE any session check
   if (tab === 'login')    return renderLogin();
   if (tab === 'register') return renderRegister();
   if (tab === 'forgot')   return renderForgotPassword();
@@ -151,7 +142,6 @@ export async function render(ctx){
   if (tab === 'change-password') return renderChangePassword(user);
   if (tab === 'profile')         return renderProfile(user);
 
-  // Default account home
   const dbName = await getProfileName(user.id);
   const name = dbName || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0] : 'Account');
   app.innerHTML = `
@@ -277,7 +267,6 @@ async function renderResetPassword(){
     <div class="container">
       <div class="host-wrap">
         <h2>Reset password</h2>
-        <p class="help">If you arrived here from the email link, you can set a new password.</p>
         <div id="resetCard" class="grid">
           <input id="rp_new" class="input" type="password" placeholder="New password" autocomplete="new-password">
           <input id="rp_confirm" class="input" type="password" placeholder="Confirm new password" autocomplete="new-password">
@@ -288,7 +277,7 @@ async function renderResetPassword(){
     </div>`;
   await renderHeader(); ensureDebugTray();
 
-  // On landing, if token is present (either ?token=... or in hash query), exchange it for a session
+  // Exchange recovery token for a session if present  <<<<<<<<<<<<<<<< ADDED
   try {
     const sb = await ensureClient();
     const searchQS = (location.search || '').replace(/^\?/, '');
@@ -297,17 +286,13 @@ async function renderResetPassword(){
     const h = new URLSearchParams(hashQS);
     for (const [k,v] of h.entries()) if (!merged.has(k)) merged.set(k,v);
     const token = merged.get('token') || merged.get('access_token');
-    const type = merged.get('type');
-
+    const type  = merged.get('type');
     if (type === 'recovery' && token) {
-      const { data, error } = await sb.auth.verifyOtp({ type: 'recovery', token_hash: token });
-      if (error) {
-        console.warn('verifyOtp failed', error);
-        $('#rp_msg').textContent = 'The recovery link is invalid or expired. Please request a new one.';
-      }
+      const { error } = await sb.auth.verifyOtp({ type: 'recovery', token_hash: token });
+      if (error) console.warn('verifyOtp failed', error);
     }
   } catch (e) {
-    console.warn('Recovery exchange failed', e);
+    console.warn('Recovery token exchange failed', e);
   }
 
   $('#rp_update').onclick = async () => {
@@ -388,7 +373,6 @@ async function renderChangePassword(user){
 
 async function renderProfile(user){
   const app = document.getElementById('app');
-  // Prefill from metadata; we'll prefer row from profiles if present
   let name = user?.user_metadata?.name || '';
   let birthdate = user?.user_metadata?.birthdate || '';
   let genderMeta = user?.user_metadata?.gender || '';
@@ -491,7 +475,6 @@ async function renderRegister(){
           <input id="reg_password" class="input" placeholder="Password" type="password" autocomplete="new-password" style="grid-column:2;grid-row:4;">
         </div>
 
-        <!-- Consent: spacing -->
         <div class="grid" style="gap:14px;margin-top:16px;">
           <label class="help"><input id="reg_consent_tc" type="checkbox"> I agree to the <a class="help" href="#/terms" style="text-decoration:underline;">Terms and Conditions</a></label>
           <label class="help"><input id="reg_consent_privacy" type="checkbox"> I consent to the processing of my personal data according to the <a class="help" href="#/privacy" style="text-decoration:underline;">Privacy Notice</a></label>
