@@ -20,8 +20,20 @@ function register(path, handler){
 }
 
 // Hash parser -> returns { path, query, ctx }
+
 function parseHash(){
   const raw = location.hash || '#/';
+  // Handle Supabase recovery fragments like "#access_token=...&type=recovery..."
+  // When there's no "/...?" path, but a pure param fragment, we normalize to account reset.
+  if (!raw.startsWith('#/')) {
+    const frag = raw.startsWith('#') ? raw.slice(1) : raw;
+    const qs = new URLSearchParams(frag);
+    const type = qs.get('type');
+    const ctx = { path: '#/account', query: Object.fromEntries(qs.entries()) };
+    if (!ctx.query.tab && type === 'recovery') ctx.query.tab = 'reset';
+    return { path: '#/account', query: ctx.query, ctx };
+  }
+
   const qIndex = raw.indexOf('?');
   const hashPart = qIndex >= 0 ? raw.slice(0, qIndex) : raw;
   const queryString = qIndex >= 0 ? raw.slice(qIndex + 1) : '';
@@ -40,16 +52,11 @@ function parseHash(){
   return { path, query, ctx };
 }
 
+
 // Route guard for protected pages
-async function guard(path, ctx){
+async function guard(path){
   // Account and Billing require auth
   if (path === '#/account' || path === '#/billing') {
-    // Allow unauthenticated access to account recovery tabs
-    const tab = ctx?.query?.tab;
-    if (path === '#/account' && (tab === 'forgot' || tab === 'reset')) {
-      return true;
-    }
-
     const session = await getSession();
     if (!session || !session.user) {
       try { sessionStorage.setItem('__redirect_after_login', path); } catch {}
@@ -65,7 +72,7 @@ async function navigate(){
   const { path, ctx } = parseHash();
   const handler = routes.get(path) || Home.render;
 
-  const ok = await guard(path, ctx);
+  const ok = await guard(path);
   if (!ok) return;
 
   await handler(ctx);
@@ -78,8 +85,7 @@ register('#/join', Join.render);
 register('#/game', Game.render); // module handles host auth internally
 register('#/login', (ctx)=>Account.render({ ...ctx, tab: 'login' }));
 register('#/register', (ctx)=>Account.render({ ...ctx, tab: 'register' }));
-// Pass through ?tab=... for account (e.g., change-password, profile, forgot, reset)
-register('#/account', (ctx)=>Account.render({ ...ctx, tab: (ctx?.query?.tab || 'account') }));
+register('#/account', (ctx)=>Account.render({ ...ctx, tab: 'account' }));
 register('#/billing', Billing.render);
 register('#/terms', (ctx)=>StaticPages.render({ page: 'terms' }));
 register('#/privacy', (ctx)=>StaticPages.render({ page: 'privacy' }));
