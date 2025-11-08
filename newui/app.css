@@ -10,12 +10,12 @@ a{color:inherit;text-decoration: none;}
 .container{max-width:1080px;margin:0 auto;padding:16px}
 
 /* Underlined links that lose underline on hover */
-a.link {
+a.help {
   text-decoration: underline;
 }
 
-a.link:hover,
-a.link:focus {
+a.help:hover,
+a.help:focus {
   text-decoration: none;
 }
 
