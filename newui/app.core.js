@@ -82,6 +82,7 @@ register('#/game', Game.render);
 register('#/login', (ctx)=>Account.render({ ...ctx, tab: 'login' }));
 register('#/register', (ctx)=>Account.render({ ...ctx, tab: 'register' }));
 register('#/account', (ctx)=>Account.render({ ...ctx, tab: (ctx?.query?.tab || 'account') }));
+register('#/reset',   (ctx)=>Account.render({ ...ctx, tab: 'reset' }));   // NEW dedicated recovery route
 register('#/billing', Billing.render);
 register('#/terms', (ctx)=>StaticPages.render({ page: 'terms' }));
 register('#/privacy', (ctx)=>StaticPages.render({ page: 'privacy' }));
