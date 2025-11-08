@@ -278,11 +278,6 @@ async function renderResetPassword(ctx){
     </div>`;
   await renderHeader(); ensureDebugTray();
 
-  - async function renderResetPassword(){
-+ async function renderResetPassword(ctx){
-
-  // ... after await renderHeader(); ensureDebugTray();
-
  // Establish session from URL params for recovery landing
  try {
    const sb = await ensureClient();
