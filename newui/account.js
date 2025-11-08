@@ -122,7 +122,7 @@ export async function render(ctx){
   if (tab === 'login') return renderLogin();
   if (tab === 'register') return renderRegister();
   if (tab === 'forgot') return renderForgotPassword();
-  if (tab === 'reset') return renderResetPassword();
+  if (tab === 'reset') return renderResetPassword(ctx);
 
   const app = document.getElementById('app');
   const session = await getSession();
@@ -261,7 +261,7 @@ async function renderForgotPassword(){
 
 /* ------------------------------ Reset Password ------------------------------ */
 
-async function renderResetPassword(){
+async function renderResetPassword(ctx){
   const app = document.getElementById('app');
   app.innerHTML = `
     <div class="offline-banner"></div>
@@ -278,21 +278,37 @@ async function renderResetPassword(){
     </div>`;
   await renderHeader(); ensureDebugTray();
 
-  // Establish recovery session from token on arrival
-  try {
-    const sb = await ensureClient();
-    const searchQS = (location.search || '').replace(/^\?/, '');
-    const hashQS = (location.hash.split('?')[1] || '');
-    const merged = new URLSearchParams(searchQS);
-    const h = new URLSearchParams(hashQS);
-    for (const [k,v] of h.entries()) if (!merged.has(k)) merged.set(k,v);
-    const token = merged.get('token') || merged.get('access_token');
-    const type  = merged.get('type');
-    if (type === 'recovery' && token) {
-      const { error } = await sb.auth.verifyOtp({ type: 'recovery', token_hash: token });
-      if (error) console.warn('verifyOtp failed', error);
-    }
-  } catch (e) { console.warn('Recovery token exchange failed', e); }
+  - async function renderResetPassword(){
++ async function renderResetPassword(ctx){
+
+  // ... after await renderHeader(); ensureDebugTray();
+
+ // Establish session from URL params for recovery landing
+ try {
+   const sb = await ensureClient();
+   const q = (ctx && ctx.query) ? ctx.query : {};
+   const access_token  = q.access_token || null;
+   const refresh_token = q.refresh_token || null;
+   const type          = (q.type || '').toLowerCase();
+   const token_hash    = q.token || null;
+
+   if (access_token && refresh_token) {
+     const { error: sErr } = await sb.auth.setSession({ access_token, refresh_token });
+     if (sErr) console.warn('setSession failed', sErr);
+   } else if (type === 'recovery' && token_hash) {
+     const { error: vErr } = await sb.auth.verifyOtp({ type: 'recovery', token_hash });
+     if (vErr) console.warn('verifyOtp failed', vErr);
+   }
+
+   const { data: sess } = await sb.auth.getSession();
+   if (!sess || !sess.session || !sess.session.user) {
+     const msg = document.getElementById('rp_msg');
+     if (msg) msg.textContent = 'Auth session missing. Please open the reset link again or request a new one.';
+   }
+ } catch (e) {
+   console.warn('Recovery session init failed', e);
+ }
+
 
   $('#rp_update').onclick = async () => {
     const p1 = $('#rp_new').value;
