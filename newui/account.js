@@ -1,6 +1,11 @@
-// account.js — recovery-safe, surgical update
+// account.js
 import { ensureClient, getSession, getProfileName } from './api.js';
 import { renderHeader, ensureDebugTray, $, toast } from './ui.js';
+
+/* ------------------------------- Path-safe base ------------------------------ */
+const BASE = (location.href.split('#')[0] || '').replace(/index\.html?$/,''); 
+const URL_ACCOUNT = `${BASE}#/account`;
+const URL_RESET   = `${BASE}#/reset`;   // CHANGED to dedicated route
 
 /* -------------------------------- Utilities -------------------------------- */
 
@@ -10,10 +15,6 @@ function parseHashQuery() {
   if (i === -1) return {};
   const p = new URLSearchParams(h.substring(i + 1));
   const o = {}; for (const [k, v] of p.entries()) o[k] = v; return o;
-}
-
-function computeAge(isoDate){
-  try{ const d=new Date(isoDate), t=new Date(); let a=t.getFullYear()-d.getFullYear(); const m=t.getMonth()-d.getMonth(); if(m<0||(m===0&&t.getDate()<d.getDate())) a--; return a; }catch{ return NaN; }
 }
 
 /** Attach guest session (Option B) after auth */
@@ -39,6 +40,10 @@ async function attachGuestIfPending(sb) {
     toast('Your previous session was attached to your account.');
     return true;
   } catch (e) { console.warn('attachGuestIfPending failed', e); return false; }
+}
+
+function computeAge(isoDate){
+  try{ const d=new Date(isoDate), t=new Date(); let a=t.getFullYear()-d.getFullYear(); const m=t.getMonth()-d.getMonth(); if(m<0||(m===0&&t.getDate()<d.getDate())) a--; return a; }catch{ return NaN; }
 }
 
 /* ----------------------------- Resend confirmation ----------------------------- */
@@ -75,8 +80,7 @@ function mountResendControls(container, email) {
       await sb.auth.resend({
         type: 'signup',
         email,
-        // Keep your current base — do NOT use location.origin here
-        options: { emailRedirectTo: location.href.split('#')[0] + '#/account?tab=reset' }
+        options: { emailRedirectTo: URL_ACCOUNT }
       });
       startCooldown(60);
     } catch {
@@ -109,18 +113,17 @@ async function renderConfirmEmailScreen(email){
 /* --------------------------------- Router --------------------------------- */
 
 export async function render(ctx){
-  // Normalize tab first so "reset?token=..." becomes "reset"
   const q = parseHashQuery();
-  const rawTab = ctx?.tab || q.tab || 'account';
-  const tab = String(rawTab).split(/[?&]/)[0];
+  const tab = (ctx?.tab || q.tab || 'account');
 
-  // Public tabs BEFORE any session check
-  if (tab === 'login')    return renderLogin();
+  // Rewrite legacy path to the new dedicated route
+  if (tab === 'reset' && location.hash.startsWith('#/account')) { location.hash = '#/reset'; return; }
+
+  if (tab === 'login') return renderLogin();
   if (tab === 'register') return renderRegister();
-  if (tab === 'forgot')   return renderForgotPassword();
-  if (tab === 'reset')    return renderResetPassword();
+  if (tab === 'forgot') return renderForgotPassword();
+  if (tab === 'reset') return renderResetPassword();
 
-  // Private areas from here on
   const app = document.getElementById('app');
   const session = await getSession();
   const user = session?.user || null;
@@ -141,7 +144,7 @@ export async function render(ctx){
   }
 
   if (tab === 'change-password') return renderChangePassword(user);
-  if (tab === 'profile')         return renderProfile(user);
+  if (tab === 'profile') return renderProfile(user);
 
   const dbName = await getProfileName(user.id);
   const name = dbName || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0] : 'Account');
@@ -160,7 +163,6 @@ export async function render(ctx){
   await renderHeader(); ensureDebugTray();
 
   try { const sb = await ensureClient(); await attachGuestIfPending(sb); } catch {}
-
   $('#logoutBtn').onclick = async () => {
     try { const sb = await ensureClient(); await sb.auth.signOut(); } catch {}
     try{ localStorage.removeItem('ms_lastKnownUser'); localStorage.removeItem('remember_me'); sessionStorage.removeItem('remember_me'); sessionStorage.removeItem('__redirect_after_login'); }catch{}
@@ -246,10 +248,7 @@ async function renderForgotPassword(){
     try {
       $('#fp_send').disabled = true;
       const sb = await ensureClient();
-      const { error } = await sb.auth.resetPasswordForEmail(email, {
-        // Keep your current base — do NOT use location.origin here
-        redirectTo: location.href.split('#')[0] + '#/account?tab=reset'
-      });
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: URL_RESET });
       if (error) throw error;
       $('#fp_msg').textContent = 'Check your email for a reset link.';
     } catch(e) {
@@ -279,7 +278,7 @@ async function renderResetPassword(){
     </div>`;
   await renderHeader(); ensureDebugTray();
 
-  // Exchange recovery token for a session if present
+  // Establish recovery session from token on arrival
   try {
     const sb = await ensureClient();
     const searchQS = (location.search || '').replace(/^\?/, '');
@@ -293,9 +292,7 @@ async function renderResetPassword(){
       const { error } = await sb.auth.verifyOtp({ type: 'recovery', token_hash: token });
       if (error) console.warn('verifyOtp failed', error);
     }
-  } catch (e) {
-    console.warn('Recovery token exchange failed', e);
-  }
+  } catch (e) { console.warn('Recovery token exchange failed', e); }
 
   $('#rp_update').onclick = async () => {
     const p1 = $('#rp_new').value;
@@ -353,7 +350,7 @@ async function renderChangePassword(user){
 
       $('#cp_update').disabled = true;
       const sb = await ensureClient();
-      const email = (await getSession())?.user?.email;
+      const email = user.email;
       const { error: reauthError } = await sb.auth.signInWithPassword({ email, password: curr });
       if (reauthError) throw new Error('Current password is incorrect.');
 
@@ -449,7 +446,7 @@ async function renderProfile(user){
   };
 }
 
-/* -------------------------------- Register -------------------------------- */
+/* -------------------------------- Register (existing) ------------------------------- */
 
 async function renderRegister(){
   const app = document.getElementById('app');
@@ -460,25 +457,32 @@ async function renderRegister(){
       <h2 style="text-align:center;">Hey, happy to see you!</h2>
       <div class="host-wrap">
         <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <!-- Row 1 -->
           <label class="help" style="color:var(--green);font-weight:700;grid-column:1;grid-row:1;">Create a new account</label>
           <a href="#/login" class="help" style="text-decoration:underline;grid-column:2;grid-row:1;">I have an account</a>
+          <!-- Row 2 -->
           <input id="reg_name" class="input" placeholder="Name" autocomplete="name" style="grid-column:1;grid-row:2;">
           <input id="reg_dob" class="input" type="date" style="grid-column:2;grid-row:2;">
+          <!-- Row 3 -->
           <div class="inline-actions" style="grid-column:1;grid-row:3;">
             <label class="inline-actions"><input type="radio" name="reg_gender" value="male"> <span>Male</span></label>
             <label class="inline-actions"><input type="radio" name="reg_gender" value="female"> <span>Female</span></label>
           </div>
           <div style="grid-column:2;grid-row:3;"></div>
+          <!-- Row 4: Email / Password aligned -->
           <input id="reg_email" class="input" placeholder="Email" type="email" autocomplete="email" style="grid-column:1;grid-row:4;">
           <input id="reg_password" class="input" placeholder="Password" type="password" autocomplete="new-password" style="grid-column:2;grid-row:4;">
         </div>
+
         <div class="grid" style="gap:14px;margin-top:16px;">
           <label class="help"><input id="reg_consent_tc" type="checkbox"> I agree to the <a class="help" href="#/terms" style="text-decoration:underline;">Terms and Conditions</a></label>
           <label class="help"><input id="reg_consent_privacy" type="checkbox"> I consent to the processing of my personal data according to the <a class="help" href="#/privacy" style="text-decoration:underline;">Privacy Notice</a></label>
         </div>
+
         <div class="controls-row">
           <button id="reg_submit" class="btn">Submit</button>
         </div>
+
         <div id="feedbackArea" class="grid"></div>
       </div>
     </div>`;
@@ -504,8 +508,7 @@ async function renderRegister(){
       const sb = await ensureClient();
       const { data, error } = await sb.auth.signUp({
         email, password,
-        // Keep your current base — do NOT use location.origin here
-        options: { data: { name, birthdate: dobISO, gender }, emailRedirectTo: location.href.split('#')[0] + '#/account?tab=reset' }
+        options: { data: { name, birthdate: dobISO, gender }, emailRedirectTo: URL_ACCOUNT }
       });
       if (error) throw error;
 
