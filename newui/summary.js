@@ -191,9 +191,22 @@ export function mount(opts){
   selectedSeat = opts?.selectedSeat ?? null;
   code = opts?.code || null;
   myPid = opts?.myPid || null;
+
+  // Ensure myPid is found even for guests (multiple fallback sources)
   if (!myPid && code){
-    try{ myPid = JSON.parse(localStorage.getItem(msPidKey(code)) || 'null'); }catch(_){}
+    try {
+      // 1. Try to read from sessionStorage (guest flow)
+      myPid = JSON.parse(sessionStorage.getItem(msPidKey(code)) || 'null');
+      // 2. If still not found, try localStorage
+      if (!myPid) myPid = JSON.parse(localStorage.getItem(msPidKey(code)) || 'null');
+      // 3. If still missing, check if any participant has a tempId matching this device
+      if (!myPid && state?.participants?.length){
+        const foundGuest = state.participants.find(p => p?.tempId);
+        if (foundGuest) myPid = foundGuest.participant_id || foundGuest.id || foundGuest.tempId;
+      }
+    } catch(_) { myPid = null; }
   }
+
   isHost = !!opts?.isHost;
 
   // Cache session for display names, then render
@@ -202,6 +215,7 @@ export function mount(opts){
     renderCore();
   }).catch(()=>renderCore());
 }
+
 
 export function update(opts){
   if (opts && 'state' in opts) state = opts.state;
