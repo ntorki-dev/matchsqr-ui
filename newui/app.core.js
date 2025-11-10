@@ -71,7 +71,39 @@ function parseHash(){
   return { path, query, ctx };
 }
 
+/* ---------------------- Centralized URL error handling ---------------------- */
+// Map known error codes to friendly messages + destinations
+const ERROR_HANDLERS = {
+  otp_expired:       { msg: 'That link expired. Request a new one.',      dest: '#/account?tab=forgot' },
+  otp_invalid:       { msg: 'That link is not valid. Request a new one.', dest: '#/account?tab=forgot' },
+  access_denied:     { msg: 'Access denied. Please try again.',           dest: '#/login' },
+  provider_disabled: { msg: 'This sign-in method is disabled.',           dest: '#/login' },
+  email_link_signin: { msg: 'Please use the latest email link.',          dest: '#/account?tab=forgot' },
+};
 
+function handleAuthErrors(ctx) {
+  const code = (ctx?.query?.error_code || ctx?.query?.error || '').toLowerCase();
+  const raw  = ctx?.query?.error_description || '';
+  const desc = raw ? decodeURIComponent(raw) : '';
+
+  if (!code && !desc) return; // nothing to do
+
+  const conf = ERROR_HANDLERS[code] || {
+    msg: desc || 'Something went wrong. Please try again.',
+    dest: '#/login'
+  };
+
+  // Toast the user-friendly message (best effort)
+  try { import('./ui.js').then(ui => ui.toast(conf.msg)).catch(()=>{}); } catch {}
+
+  // Clean the URL and route once (no loop)
+  const u = new URL(location.href);
+  u.search = ''; // remove ?error=...
+  u.hash = conf.dest;
+  history.replaceState(null, '', u.toString());
+}
+
+/* --------------------------------- Guard ---------------------------------- */
 // Router guard: keep it minimal; let Account.js enforce its own tab auth
 async function guard(path, ctx){
   if (path === '#/billing') {
@@ -87,6 +119,10 @@ async function guard(path, ctx){
 
 async function navigate(){
   const { path, ctx } = parseHash();
+
+  // Handle URL auth errors first
+  handleAuthErrors(ctx);
+
   const handler = routes.get(path) || Home.render;
   const ok = await guard(path, ctx);
   if (!ok) return;
@@ -101,7 +137,7 @@ register('#/game', Game.render);
 register('#/login', (ctx)=>Account.render({ ...ctx, tab: 'login' }));
 register('#/register', (ctx)=>Account.render({ ...ctx, tab: 'register' }));
 register('#/account', (ctx)=>Account.render({ ...ctx, tab: (ctx?.query?.tab || 'account') }));
-register('#/reset',   (ctx)=>Account.render({ ...ctx, tab: 'reset' }));   // NEW dedicated recovery route
+register('#/reset',   (ctx)=>Account.render({ ...ctx, tab: 'reset' }));   // Dedicated recovery route
 register('#/billing', Billing.render);
 register('#/terms', (ctx)=>StaticPages.render({ page: 'terms' }));
 register('#/privacy', (ctx)=>StaticPages.render({ page: 'privacy' }));
