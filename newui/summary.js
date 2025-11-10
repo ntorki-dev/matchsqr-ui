@@ -1,18 +1,65 @@
 // summary.js
-// Renders the Summary parade and per-viewer action panel.
-// Reuses existing CSS classes from app.css. No new styles are introduced.
+// Summary parade with shared selection via Supabase Realtime.
+// Uses only existing classes from app.css. No new CSS.
+
+/* Expected exports from api.js:
+   - jpost(name, body)
+   - getSession()
+   - resolveGameId(id)
+   - msPidKey(gameCode)
+   Optionally one of:
+   - getClient() -> Supabase client
+   Or global window.supabase already initialized
+*/
 
 import { jpost, getSession, resolveGameId, msPidKey } from './api.js';
 import { $, toast } from './ui.js';
 
+// ---------- Module state ----------
 let state = null;
 let container = null;
-let selectedSeat = null;
+let selectedSeat = null;   // which seat is currently shown
 let code = null;
-let myPid = null;
+let myPid = null;          // viewer participant id/temp id
 let isHost = false;
 
-// Local persistence for selection so polling doesn't reset it
+// Realtime channel (front-end only, no new edge function)
+let rtClient = null;
+let rtChannel = null;
+
+// ---------- Helpers ----------
+function getSupabaseClient(){
+  try {
+    // Prefer a client the app may already expose
+    if (typeof window.getClient === 'function') return window.getClient();
+    if (typeof window.supabase !== 'undefined' && window.supabase) return window.supabase;
+  } catch(_){}
+  return null;
+}
+
+function ensureRealtime(gameCode){
+  if (rtChannel) return;
+  rtClient = getSupabaseClient();
+  if (!rtClient || !gameCode) return;
+
+  // Use a lightweight broadcast channel, no presence needed
+  rtChannel = rtClient.channel(`ms-summary-${String(gameCode)}`, { config: { broadcast: { self: false } } });
+
+  rtChannel.on('broadcast', { event: 'cursor' }, (msg) => {
+    try{
+      const seat = Number(msg?.payload?.seat);
+      if (Number.isFinite(seat)){
+        selectedSeat = seat;
+        saveSelected(code, seat);
+        renderCore();  // guests update immediately
+      }
+    }catch(_){}
+  });
+
+  rtChannel.subscribe().catch(()=>{ /* ignore */ });
+}
+
+// Local persistence for selection to avoid flicker between polls
 function selKey(c){ return 'ms_summary_selected_' + String(c||''); }
 function loadSelected(c){
   try{ const v = localStorage.getItem(selKey(c)); if (v!=null) return Number(v); }catch(_){}
@@ -22,7 +69,7 @@ function saveSelected(c, seat){
   try{ localStorage.setItem(selKey(c), String(seat)); }catch(_){}
 }
 
-// Temporary static summaries for MVP
+// Static summaries for MVP
 const STATIC_SUMMARIES = [
   { title: 'The Empath',      text: 'You connected deeply with others and listened with care.' },
   { title: 'The Thinker',     text: 'You reflected on each question and gave thoughtful answers.' },
@@ -36,9 +83,7 @@ const STATIC_SUMMARIES = [
 
 function pickStaticSummary(idx){
   const list = STATIC_SUMMARIES;
-  if (!Array.isArray(list) || list.length === 0){
-    return { title: 'Summary', text: 'Thanks for playing.' };
-  }
+  if (!Array.isArray(list) || !list.length) return { title:'Summary', text:'Thanks for playing.' };
   const i = Math.abs(Number(idx || 0)) % list.length;
   return list[i];
 }
@@ -62,48 +107,71 @@ function displayName(p, sessionUser){
   return name;
 }
 
+function sendCursor(nextSeat){
+  // Host only: broadcast the new seat to all listeners
+  if (!isHost) return;
+  try{
+    ensureRealtime(code);
+    if (rtChannel){
+      rtChannel.send({ type: 'broadcast', event: 'cursor', payload: { seat: Number(nextSeat) } });
+    }
+  }catch(_){}
+}
+
+// ---------- Render ----------
 function renderCore(){
   if (!container || !state) return;
+
+  // Ensure realtime channel is ready
+  ensureRealtime(code);
+
   const sessionUser = window.__MS_SESSION || null;
   const isLoggedIn = !!(sessionUser && sessionUser.id);
   const participants = seatsSorted(state.participants || []);
 
   if (!participants.length){
-    container.innerHTML = '<div class="inline-actions"><h3>Game Summary</h3></div><p class="help">No participants found.</p>';
+    container.innerHTML =
+      '<div class="inline-actions"><h3>Game Summary</h3></div>' +
+      '<p class="help">No participants found.</p>';
     return;
   }
 
-  // Determine selected seat
+  // Compute seat list and current selection
   const seats = participants.map(p => p.seat_index);
   if (selectedSeat == null){
+    // Try to restore what we showed last time locally
     selectedSeat = loadSelected(code);
     if (selectedSeat == null) selectedSeat = seats[0];
   }
-  const idx = seats.indexOf(selectedSeat);
-  const current = participants[Math.max(0, idx)] || participants[0];
+  const iSel = Math.max(0, seats.indexOf(selectedSeat));
+  const current = participants[iSel] || participants[0];
   const currentSeat = current?.seat_index;
-  const currentPid = current?.participant_id || current?.id || null;
 
-  // Determine viewer participant to enforce button visibility
+  // Viewer identity to control button visibility
+  // myPid can be temp_id or participant_id; match against either field
   let viewerP = null;
   for (const pp of participants){
-    const pid = pp?.participant_id || pp?.id || null;
-    if (pid && myPid && String(pid) === String(myPid)){ viewerP = pp; break; }
+    const pid   = pp?.participant_id || pp?.id || null;
+    const temp  = pp?.tempId || pp?.temp_id || null;
+    if ((pid && myPid && String(pid) === String(myPid)) ||
+        (temp && myPid && String(temp) === String(myPid))){
+      viewerP = pp; break;
+    }
   }
   const viewerSeat = viewerP?.seat_index;
 
   const staticSum = pickStaticSummary(currentSeat);
   const name = displayName(current, sessionUser);
 
-  // Host-only navigation
-  const navHtml = isHost ? (
-    '<div class="inline-actions">'
-      + '<a id="msPrev" class="help" href="#"><img src="./assets/previous.png" alt="Previous" width="16" height="16"/> Previous Player</a>'
-      + '<a id="msNext" class="help" href="#">Next Player <img src="./assets/forward.png" alt="Next" width="16" height="16"/></a>'
-    + '</div>'
-  ) : '';
+  // Host-only navigation with icons 16x16
+  const navHtml = isHost
+    ? '<div class="inline-actions">'
+        + '<a id="msPrev" class="help" href="#"><img src="./assets/previous.png" alt="Previous" width="16" height="16"/> Previous Player</a>'
+        + '<a id="msNext" class="help" href="#">Next Player <img src="./assets/forward.png" alt="Next" width="16" height="16"/></a>'
+      + '</div>'
+    : '';
 
-  // Per-viewer panel, only for the displayed participant
+  // Action panel only for the displayed participant
   let viewerPanel = '';
   if (viewerSeat != null && currentSeat != null && Number(viewerSeat) === Number(currentSeat)){
     if (isLoggedIn){
@@ -120,7 +188,7 @@ function renderCore(){
     }
   }
 
-  // Compose
+  // Compose main card content
   container.innerHTML =
     '<div class="inline-actions"><h3>Game Summary</h3></div>'
     + '<p><strong>'+ name +'</strong></p>'
@@ -128,17 +196,19 @@ function renderCore(){
     + navHtml
     + viewerPanel;
 
-  // Wire navigation
+  // Prev/Next behavior, shared via broadcast so guests align with host
   const prevBtn = $('#msPrev');
   const nextBtn = $('#msNext');
   if (prevBtn){
     prevBtn.onclick = (evt)=>{
       evt.preventDefault();
+      if (!isHost) return;
       try{
-        const i = Math.max(0, seats.indexOf(selectedSeat));
-        const next = seats[(i - 1 + seats.length) % seats.length];
-        selectedSeat = next;
-        saveSelected(code, next);
+        const idx = Math.max(0, seats.indexOf(selectedSeat));
+        const nextSeat = seats[(idx - 1 + seats.length) % seats.length];
+        selectedSeat = nextSeat;               // local immediate feedback for host
+        saveSelected(code, nextSeat);
+        sendCursor(nextSeat);                  // broadcast to guests
         renderCore();
       }catch(e){ toast(e.message || 'Failed'); }
     };
@@ -146,11 +216,13 @@ function renderCore(){
   if (nextBtn){
     nextBtn.onclick = (evt)=>{
       evt.preventDefault();
+      if (!isHost) return;
       try{
-        const i = Math.max(0, seats.indexOf(selectedSeat));
-        const next = seats[(i + 1) % seats.length];
-        selectedSeat = next;
-        saveSelected(code, next);
+        const idx = Math.max(0, seats.indexOf(selectedSeat));
+        const nextSeat = seats[(idx + 1) % seats.length];
+        selectedSeat = nextSeat;               // local immediate feedback for host
+        saveSelected(code, nextSeat);
+        sendCursor(nextSeat);                  // broadcast to guests
         renderCore();
       }catch(e){ toast(e.message || 'Failed'); }
     };
@@ -185,6 +257,7 @@ function renderCore(){
   }
 }
 
+// ---------- Public API ----------
 export function mount(opts){
   state = opts?.state || null;
   container = opts?.container || null;
@@ -192,30 +265,21 @@ export function mount(opts){
   code = opts?.code || null;
   myPid = opts?.myPid || null;
 
-  // Ensure myPid is found even for guests (multiple fallback sources)
+  // For guests, recover myPid from storage if not provided
   if (!myPid && code){
     try {
-      // 1. Try to read from sessionStorage (guest flow)
       myPid = JSON.parse(sessionStorage.getItem(msPidKey(code)) || 'null');
-      // 2. If still not found, try localStorage
       if (!myPid) myPid = JSON.parse(localStorage.getItem(msPidKey(code)) || 'null');
-      // 3. If still missing, check if any participant has a tempId matching this device
-      if (!myPid && state?.participants?.length){
-        const foundGuest = state.participants.find(p => p?.tempId);
-        if (foundGuest) myPid = foundGuest.participant_id || foundGuest.id || foundGuest.tempId;
-      }
-    } catch(_) { myPid = null; }
+    } catch(_){ myPid = null; }
   }
 
   isHost = !!opts?.isHost;
 
-  // Cache session for display names, then render
-  getSession().then(s=>{
-    window.__MS_SESSION = s?.user || null;
-    renderCore();
-  }).catch(()=>renderCore());
+  // Cache session for name resolution, then render
+  getSession()
+    .then(s => { window.__MS_SESSION = s?.user || null; renderCore(); })
+    .catch(() => renderCore());
 }
-
 
 export function update(opts){
   if (opts && 'state' in opts) state = opts.state;
@@ -232,4 +296,7 @@ export function unmount(){
   code = null;
   myPid = null;
   isHost = false;
+  // Keep channel open across mounts for this route; remove if you want hard teardown:
+  // try{ if (rtChannel) rtChannel.unsubscribe(); }catch(_){}
+  // rtChannel = null; rtClient = null;
 }
