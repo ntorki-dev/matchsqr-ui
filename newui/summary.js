@@ -1,65 +1,19 @@
 // summary.js
-// Summary parade with shared selection via Supabase Realtime.
+// Summary parade without realtime dependency.
 // Uses only existing classes from app.css. No new CSS.
-
-/* Expected exports from api.js:
-   - jpost(name, body)
-   - getSession()
-   - resolveGameId(id)
-   - msPidKey(gameCode)
-   Optionally one of:
-   - getClient() -> Supabase client
-   Or global window.supabase already initialized
-*/
 
 import { jpost, getSession, resolveGameId, msPidKey } from './api.js';
 import { $, toast } from './ui.js';
 
-// ---------- Module state ----------
+// Module state
 let state = null;
 let container = null;
-let selectedSeat = null;   // which seat is currently shown
+let selectedSeat = null;   // which seat is shown on this viewer
 let code = null;
 let myPid = null;          // viewer participant id/temp id
 let isHost = false;
 
-// Realtime channel (front-end only, no new edge function)
-let rtClient = null;
-let rtChannel = null;
-
-// ---------- Helpers ----------
-function getSupabaseClient(){
-  try {
-    // Prefer a client the app may already expose
-    if (typeof window.getClient === 'function') return window.getClient();
-    if (typeof window.supabase !== 'undefined' && window.supabase) return window.supabase;
-  } catch(_){}
-  return null;
-}
-
-function ensureRealtime(gameCode){
-  if (rtChannel) return;
-  rtClient = getSupabaseClient();
-  if (!rtClient || !gameCode) return;
-
-  // Use a lightweight broadcast channel, no presence needed
-  rtChannel = rtClient.channel(`ms-summary-${String(gameCode)}`, { config: { broadcast: { self: false } } });
-
-  rtChannel.on('broadcast', { event: 'cursor' }, (msg) => {
-    try{
-      const seat = Number(msg?.payload?.seat);
-      if (Number.isFinite(seat)){
-        selectedSeat = seat;
-        saveSelected(code, seat);
-        renderCore();  // guests update immediately
-      }
-    }catch(_){}
-  });
-
-  rtChannel.subscribe().catch(()=>{ /* ignore */ });
-}
-
-// Local persistence for selection to avoid flicker between polls
+// Local persistence for host selection to avoid flicker on polling
 function selKey(c){ return 'ms_summary_selected_' + String(c||''); }
 function loadSelected(c){
   try{ const v = localStorage.getItem(selKey(c)); if (v!=null) return Number(v); }catch(_){}
@@ -107,23 +61,21 @@ function displayName(p, sessionUser){
   return name;
 }
 
-function sendCursor(nextSeat){
-  // Host only: broadcast the new seat to all listeners
-  if (!isHost) return;
-  try{
-    ensureRealtime(code);
-    if (rtChannel){
-      rtChannel.send({ type: 'broadcast', event: 'cursor', payload: { seat: Number(nextSeat) } });
+function resolveViewerParticipant(participants, pidCandidate){
+  // pidCandidate can be participant_id or tempId (for guests)
+  for (const pp of participants){
+    const pid   = pp?.participant_id || pp?.id || null;
+    const temp  = pp?.tempId || pp?.temp_id || null;
+    if ((pid && pidCandidate && String(pid) === String(pidCandidate)) ||
+        (temp && pidCandidate && String(temp) === String(pidCandidate))){
+      return pp;
     }
-  }catch(_){}
+  }
+  return null;
 }
 
-// ---------- Render ----------
 function renderCore(){
   if (!container || !state) return;
-
-  // Ensure realtime channel is ready
-  ensureRealtime(code);
 
   const sessionUser = window.__MS_SESSION || null;
   const isLoggedIn = !!(sessionUser && sessionUser.id);
@@ -136,34 +88,34 @@ function renderCore(){
     return;
   }
 
-  // Compute seat list and current selection
+  // Compute seat list
   const seats = participants.map(p => p.seat_index);
-  if (selectedSeat == null){
-    // Try to restore what we showed last time locally
-    selectedSeat = loadSelected(code);
-    if (selectedSeat == null) selectedSeat = seats[0];
+
+  // Determine the viewer participant first
+  let viewerP = resolveViewerParticipant(participants, myPid);
+
+  // Selection rules, no realtime:
+  // - Host: keep a local selection with persistence so host can parade
+  // - Guest: always show the viewer's own seat so their personal panel is visible
+  if (isHost){
+    if (selectedSeat == null){
+      selectedSeat = loadSelected(code);
+      if (selectedSeat == null) selectedSeat = seats[0];
+    }
+  }else{
+    // Guest view: force to own seat if known, else fall back to first seat
+    selectedSeat = viewerP?.seat_index ?? seats[0];
   }
+
   const iSel = Math.max(0, seats.indexOf(selectedSeat));
   const current = participants[iSel] || participants[0];
   const currentSeat = current?.seat_index;
 
-  // Viewer identity to control button visibility
-  // myPid can be temp_id or participant_id; match against either field
-  let viewerP = null;
-  for (const pp of participants){
-    const pid   = pp?.participant_id || pp?.id || null;
-    const temp  = pp?.tempId || pp?.temp_id || null;
-    if ((pid && myPid && String(pid) === String(myPid)) ||
-        (temp && myPid && String(temp) === String(myPid))){
-      viewerP = pp; break;
-    }
-  }
   const viewerSeat = viewerP?.seat_index;
-
   const staticSum = pickStaticSummary(currentSeat);
   const name = displayName(current, sessionUser);
 
-  // Host-only navigation with icons 16x16
+  // Host-only navigation with icons 16x16, as links
   const navHtml = isHost
     ? '<div class="inline-actions">'
         + '<a id="msPrev" class="help" href="#"><img src="./assets/previous.png" alt="Previous" width="16" height="16"/> Previous Player</a>'
@@ -173,7 +125,8 @@ function renderCore(){
 
   // Action panel only for the displayed participant
   let viewerPanel = '';
-  if (viewerSeat != null && currentSeat != null && Number(viewerSeat) === Number(currentSeat)){
+  const isViewerTurn = (viewerSeat != null && currentSeat != null && Number(viewerSeat) === Number(currentSeat));
+  if (isViewerTurn){
     if (isLoggedIn){
       viewerPanel =
         '<div class="inline-actions">'
@@ -196,7 +149,7 @@ function renderCore(){
     + navHtml
     + viewerPanel;
 
-  // Prev/Next behavior, shared via broadcast so guests align with host
+  // Prev/Next for host only
   const prevBtn = $('#msPrev');
   const nextBtn = $('#msNext');
   if (prevBtn){
@@ -206,9 +159,8 @@ function renderCore(){
       try{
         const idx = Math.max(0, seats.indexOf(selectedSeat));
         const nextSeat = seats[(idx - 1 + seats.length) % seats.length];
-        selectedSeat = nextSeat;               // local immediate feedback for host
+        selectedSeat = nextSeat;
         saveSelected(code, nextSeat);
-        sendCursor(nextSeat);                  // broadcast to guests
         renderCore();
       }catch(e){ toast(e.message || 'Failed'); }
     };
@@ -220,9 +172,8 @@ function renderCore(){
       try{
         const idx = Math.max(0, seats.indexOf(selectedSeat));
         const nextSeat = seats[(idx + 1) % seats.length];
-        selectedSeat = nextSeat;               // local immediate feedback for host
+        selectedSeat = nextSeat;
         saveSelected(code, nextSeat);
-        sendCursor(nextSeat);                  // broadcast to guests
         renderCore();
       }catch(e){ toast(e.message || 'Failed'); }
     };
@@ -257,15 +208,15 @@ function renderCore(){
   }
 }
 
-// ---------- Public API ----------
+// Public API
 export function mount(opts){
   state = opts?.state || null;
   container = opts?.container || null;
-  selectedSeat = opts?.selectedSeat ?? null;
+  selectedSeat = opts?.selectedSeat ?? null; // host may pass first seat
   code = opts?.code || null;
-  myPid = opts?.myPid || null;
 
-  // For guests, recover myPid from storage if not provided
+  // myPid from caller or storage, covers guests
+  myPid = opts?.myPid || null;
   if (!myPid && code){
     try {
       myPid = JSON.parse(sessionStorage.getItem(msPidKey(code)) || 'null');
@@ -275,7 +226,7 @@ export function mount(opts){
 
   isHost = !!opts?.isHost;
 
-  // Cache session for name resolution, then render
+  // Cache session for display names, then render once
   getSession()
     .then(s => { window.__MS_SESSION = s?.user || null; renderCore(); })
     .catch(() => renderCore());
@@ -283,7 +234,7 @@ export function mount(opts){
 
 export function update(opts){
   if (opts && 'state' in opts) state = opts.state;
-  if (opts && 'selectedSeat' in opts) selectedSeat = opts.selectedSeat;
+  if (opts && 'selectedSeat' in opts) selectedSeat = opts.selectedSeat; // host can still pass first seat
   if (opts && 'isHost' in opts) isHost = !!opts.isHost;
   renderCore();
 }
@@ -296,7 +247,4 @@ export function unmount(){
   code = null;
   myPid = null;
   isHost = false;
-  // Keep channel open across mounts for this route; remove if you want hard teardown:
-  // try{ if (rtChannel) rtChannel.unsubscribe(); }catch(_){}
-  // rtChannel = null; rtClient = null;
 }
