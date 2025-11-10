@@ -82,15 +82,43 @@ const ERROR_HANDLERS = {
 };
 
 function handleAuthErrors(ctx) {
-  const code = (ctx?.query?.error_code || ctx?.query?.error || '').toLowerCase();
-  const raw  = ctx?.query?.error_description || '';
-  const desc = raw ? decodeURIComponent(raw) : '';
+  // Primary: from merged ctx.query (search, hash query, second-hash tail)
+  let code = (ctx?.query?.error_code || ctx?.query?.error || '').toLowerCase();
+  let raw  = ctx?.query?.error_description || '';
+  let desc = raw ? decodeURIComponent(raw) : '';
+
+  // Fallback: errors embedded at the top level of the hash, e.g. "#error=...&error_code=..."
+  if (!code && !desc) {
+    const h = (location.hash || '').slice(1); // drop leading "#"
+    if (h && (h.startsWith('error=') || h.includes('&error='))) {
+      const hp = new URLSearchParams(h);
+      code = (hp.get('error_code') || hp.get('error') || '').toLowerCase();
+      raw  = hp.get('error_description') || '';
+      desc = raw ? decodeURIComponent(raw) : '';
+    }
+  }
 
   if (!code && !desc) return; // nothing to do
 
-  const conf = ERROR_HANDLERS[code] || {
-    msg: desc || 'Something went wrong. Please try again.',
-    dest: '#/login'
+  const conf = {
+    msg: (
+      {
+        otp_expired:       'That link expired. Request a new one.',
+        otp_invalid:       'That link is not valid. Request a new one.',
+        access_denied:     'Access denied. Please try again.',
+        provider_disabled: 'This sign-in method is disabled.',
+        email_link_signin: 'Please use the latest email link.',
+      }[code] || desc || 'Something went wrong. Please try again.'
+    ),
+    dest: (
+      {
+        otp_expired:       '#/account?tab=forgot',
+        otp_invalid:       '#/account?tab=forgot',
+        access_denied:     '#/login',
+        provider_disabled: '#/login',
+        email_link_signin: '#/account?tab=forgot',
+      }[code] || '#/login'
+    ),
   };
 
   // Toast the user-friendly message (best effort)
@@ -98,10 +126,11 @@ function handleAuthErrors(ctx) {
 
   // Clean the URL and route once (no loop)
   const u = new URL(location.href);
-  u.search = ''; // remove ?error=...
-  u.hash = conf.dest;
+  u.search = ''; // remove ?error=... if present
+  u.hash = conf.dest; // also wipes "#error=..." style hashes
   history.replaceState(null, '', u.toString());
 }
+
 
 /* --------------------------------- Guard ---------------------------------- */
 // Router guard: keep it minimal; let Account.js enforce its own tab auth
