@@ -57,7 +57,7 @@ function renderCore(){
   const isLoggedIn = !!(sessionUser && sessionUser.id);
   const participants = seatsSorted(state.participants||[]);
   if (!participants.length){
-    container.innerHTML = '<div class="card"><h3>Summary</h3><p class="help">No participants found.</p></div>';
+    container.innerHTML = '<h3>Summary</h3><p class="help">No participants found.</p>';
     return;
   }
 
@@ -107,7 +107,7 @@ function renderCore(){
   }
 
   container.innerHTML =
-    '<div class="card">'+
+    ''+
       '<h3>Summary</h3>'+
       '<p class="help" style="margin-top:-8px;">Game ended. Host controls which player is shown.</p>'+
       '<h4 style="margin-top:12px;">'+ name +'</h4>'+
