@@ -12,6 +12,9 @@ let code = null;
 let myPid = null;
 let isHost = false;
 
+// Realtime channel handle
+let rtChannel = null;
+
 // Persist selection, so polling does not reset it
 function selKey(c){ return 'ms_summary_selected_' + String(c||''); }
 function loadSelected(c){
@@ -60,7 +63,6 @@ function displayName(p, sessionUser){
 
 // Resolve this viewer's participant at click time, with multiple fallbacks
 function resolveMyParticipant(participants, sessionUser){
-  // 1) by myPid from storage
   if (myPid){
     const byPid = participants.find(p=>{
       const pid = p?.participant_id || p?.id || null;
@@ -69,14 +71,48 @@ function resolveMyParticipant(participants, sessionUser){
     });
     if (byPid) return byPid;
   }
-  // 2) by session user id
   if (sessionUser?.id){
     const byUser = participants.find(p=>String(p?.user_id||'')===String(sessionUser.id));
     if (byUser) return byUser;
   }
-  // 3) fallback to first seat for safety
   return participants[0] || null;
 }
+
+// ---------- Realtime sync (host -> all) ----------
+function setupRealtime(gameCode){
+  try{
+    // if Supabase not present, skip
+    const sb = window?.supabase;
+    if (!sb || !gameCode) return;
+
+    // create or reuse channel
+    if (rtChannel) try{ rtChannel.unsubscribe(); }catch(_){}
+    rtChannel = sb.channel('ms_summary_'+String(gameCode));
+
+    // guests listen to selection broadcasts
+    rtChannel.on('broadcast', { event: 'summary_select' }, payload=>{
+      try{
+        if (isHost) return; // host already local
+        const seat = Number(payload?.payload?.seat);
+        if (!Number.isFinite(seat)) return;
+        selectedSeat = seat;
+        saveSelected(code, seat);
+        renderCore();
+      }catch(_){}
+    });
+
+    rtChannel.subscribe();
+  }catch(_){}
+}
+
+function broadcastSelection(seat){
+  try{
+    const sb = window?.supabase;
+    if (!sb || !rtChannel) return;
+    rtChannel.send({ type:'broadcast', event:'summary_select', payload:{ seat: Number(seat) } });
+  }catch(_){}
+}
+// ---------- end realtime ----------
 
 function renderCore(){
   if (!container || !state) return;
@@ -112,8 +148,7 @@ function renderCore(){
     + '</div>'
   ) : '';
 
-  // Fixed action panel, always visible below the summary card
-  // Logic runs on click to resolve the correct participant for this viewer
+  // Fixed action panel, always visible
   const actionPanel =
     '<div class="inline-actions" id="msActionPanel" style="margin-top:8px;">'
       + (isLoggedIn
@@ -142,6 +177,7 @@ function renderCore(){
         selectedSeat = next;
         saveSelected(code, next);
         renderCore();
+        if (isHost) broadcastSelection(next);
       }catch(e){ toast(e.message || 'Failed'); }
     };
   }
@@ -154,6 +190,7 @@ function renderCore(){
         selectedSeat = next;
         saveSelected(code, next);
         renderCore();
+        if (isHost) broadcastSelection(next);
       }catch(e){ toast(e.message || 'Failed'); }
     };
   }
@@ -201,13 +238,15 @@ export function mount(opts){
   // Try to recover myPid for guests on this device
   if (!myPid && code){
     try{
-      // prefer sessionStorage for this session, then localStorage
       myPid = JSON.parse(sessionStorage.getItem(msPidKey(code)) || 'null');
       if (!myPid) myPid = JSON.parse(localStorage.getItem(msPidKey(code)) || 'null');
     }catch(_){ myPid = null; }
   }
 
   isHost = !!opts?.isHost;
+
+  // Setup realtime sync if available
+  setupRealtime(code);
 
   // Cache session for display names, then render
   getSession().then(s=>{
@@ -225,6 +264,8 @@ export function update(opts){
 
 export function unmount(){
   if (container) container.innerHTML = '';
+  try{ if (rtChannel) rtChannel.unsubscribe(); }catch(_){}
+  rtChannel = null;
   state = null;
   container = null;
   selectedSeat = null;
