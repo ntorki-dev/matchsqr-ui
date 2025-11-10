@@ -671,8 +671,7 @@ render(forceFull){
           code: this.code,
           myPid,
           isHost
-        },
-          onNavigate: (nextSeat)=>{ try{ Game.ui.summarySelectedSeat = nextSeat; Summary.update({ selectedSeat: nextSeat }); }catch(_){} }
+        }
         });
       }catch(e){ try{ toast(e.message||'Failed to render summary'); }catch(_){} }
 
