@@ -2,7 +2,7 @@
 // Renders the Summary parade and per-viewer action panel.
 // Reuses existing CSS classes from app.css. No new styles are introduced.
 
-import { jpost, getSession, resolveGameId } from './api.js';
+import { jpost, getSession, resolveGameId, msPidKey } from './api.js';
 import { $, toast } from './ui.js';
 
 let state = null;
@@ -97,10 +97,10 @@ function renderCore(){
 
   // Host-only navigation
   const navHtml = isHost ? (
-    '<div class="inline-actions">'+
-      '<a id="msPrev" class="help"><img src="./assets/previous.png" alt="Previous"/> Previous Player</a>'+
-      '<a id="msNext" class="help">Next Player <img src="./assets/forward.png" alt="Next"/></a>'+
-    '</div>'
+    '<div class="inline-actions">'
+      + '<a id="msPrev" class="help" href="#"><img src="./assets/previous.png" alt="Previous" width="16" height="16"/> Previous Player</a>'
+      + '<a id="msNext" class="help" href="#">Next Player <img src="./assets/forward.png" alt="Next" width="16" height="16"/></a>'
+    + '</div>'
   ) : '';
 
   // Per-viewer panel, only for the displayed participant
@@ -108,25 +108,25 @@ function renderCore(){
   if (viewerSeat != null && currentSeat != null && Number(viewerSeat) === Number(currentSeat)){
     if (isLoggedIn){
       viewerPanel =
-        '<div class="inline-actions">'+
-          '<button id="msFullReport" class="btn">Get my full report</button>'+
-        '</div>';
+        '<div class="inline-actions">'
+          + '<button id="msFullReport" class="btn">Get my full report</button>'
+        + '</div>';
     }else{
       viewerPanel =
-        '<p class="help">Please register below in the next 30 minutes to get a full report.</p>'+
-        '<div class="inline-actions">'+
-          '<button id="msRegister" class="btn">Register</button>'+
-        '</div>';
+        '<p class="help">Please register below in the next 30 minutes to get a full report.</p>'
+        + '<div class="inline-actions">'
+          + '<button id="msRegister" class="btn">Register</button>'
+        + '</div>';
     }
   }
 
   // Compose
   container.innerHTML =
-    '<div class="inline-actions"><h3>Game Summary</h3></div>'+
-    '<p><strong>'+ name +'</strong></p>'+
-    '<p class="help">'+ staticSum.text +'</p>'+
-    navHtml +
-    viewerPanel;
+    '<div class="inline-actions"><h3>Game Summary</h3></div>'
+    + '<p><strong>'+ name +'</strong></p>'
+    + '<p class="help">'+ staticSum.text +'</p>'
+    + navHtml
+    + viewerPanel;
 
   // Wire navigation
   const prevBtn = $('#msPrev');
@@ -191,6 +191,9 @@ export function mount(opts){
   selectedSeat = opts?.selectedSeat ?? null;
   code = opts?.code || null;
   myPid = opts?.myPid || null;
+  if (!myPid && code){
+    try{ myPid = JSON.parse(localStorage.getItem(msPidKey(code)) || 'null'); }catch(_){}
+  }
   isHost = !!opts?.isHost;
 
   // Cache session for display names, then render
@@ -198,7 +201,6 @@ export function mount(opts){
     window.__MS_SESSION = s?.user || null;
     renderCore();
   }).catch(()=>renderCore());
-  renderCore();
 }
 
 export function update(opts){
