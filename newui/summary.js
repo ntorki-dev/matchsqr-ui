@@ -8,6 +8,16 @@ import { $, toast } from './ui.js';
 let state = null;
 let container = null;
 let selectedSeat = null;
+
+
+function selKey(code){ return 'ms_summary_selected_' + String(code||''); }
+function loadSelected(code){
+  try{ const v = localStorage.getItem(selKey(code)); if (v!=null) return Number(v); }catch(_){}
+  return null;
+}
+function saveSelected(code, seat){
+  try{ localStorage.setItem(selKey(code), String(seat)); }catch(_){}
+}
 let code = null;
 let myPid = null;
 let isHost = false;
@@ -63,7 +73,7 @@ function renderCore(){
 
   // Determine selected seat
   const seats = participants.map(p=>p.seat_index);
-  if (selectedSeat==null) selectedSeat = seats[0];
+  if (selectedSeat==null) selectedSeat = loadSelected(code) ?? seats[0];
   const idx = seats.indexOf(selectedSeat);
   const current = participants[Math.max(0, idx)] || participants[0];
   const currentSeat = current?.seat_index;
@@ -82,61 +92,27 @@ function renderCore(){
   const name = displayName(current, sessionUser);
 
   // Host-only navigation controls
-  const navHtml = isHost ? (
-    '<div class="inline-actions" style="justify-content:center;gap:8px;">'+
-      '<button id="msPrev" class="btn secondary">Previous</button>'+
-      '<button id="msNext" class="btn">Next</button>'+
-    '</div>'
-  ) : '';
-
-  // Per-viewer action panel, only when viewer is the displayed participant
-  let viewerPanel = '';
-  if (viewerSeat!=null && currentSeat!=null && Number(viewerSeat)===Number(currentSeat)){
-    if (isLoggedIn){
-      viewerPanel =
-        '<div class="inline-actions" style="justify-content:center;margin-top:8px;">'+
-          '<button id="msFullReport" class="btn">Get my full report</button>'+
-        '</div>';
-    }else{
-      viewerPanel =
-        '<p class="help" style="margin-top:8px;">Please register below in the next 30 minutes to get a full report.</p>'+
-        '<div class="inline-actions" style="justify-content:center;">'+
-          '<button id="msRegister" class="btn">Register</button>'+
-        '</div>';
-    }
-  }
-
-  container.innerHTML =
-    ''+
-      '<h3>Summary</h3>'+
-      '<p class="help" style="margin-top:-8px;">Game ended. Host controls which player is shown.</p>'+
-      '<h4 style="margin-top:12px;">'+ name +'</h4>'+
-      '<p>'+ staticSum.text +'</p>'+
-      navHtml +
-      viewerPanel +
-      '<div class="inline-actions" style="justify-content:center;margin-top:12px;">'+
-        '<a class="btn" href="#/host">Host a new game</a>'+
-        '<button id="msShare" class="btn secondary">Share</button>'+
-      '</div>'+
-    '</div>';
+  const navHtml = isHost ? ('</div>';
 
   // Wire buttons
   const prevBtn = $('#msPrev');
   const nextBtn = $('#msNext');
-  if (prevBtn) prevBtn.onclick = ()=>{
+  if (prevBtn) prevBtn.onclick = (evt)=>{ evt.preventDefault();
     try{
       const arr = seats;
       const i = Math.max(0, arr.indexOf(selectedSeat));
       const next = arr[(i-1+arr.length)%arr.length];
+      if (onNavigate) onNavigate(next);
       selectedSeat = next;
       renderCore();
     }catch(e){ toast(e.message||'Failed'); }
   };
-  if (nextBtn) nextBtn.onclick = ()=>{
+  if (nextBtn) nextBtn.onclick = (evt)=>{ evt.preventDefault();
     try{
       const arr = seats;
       const i = Math.max(0, arr.indexOf(selectedSeat));
       const next = arr[(i+1)%arr.length];
+      if (onNavigate) onNavigate(next);
       selectedSeat = next;
       renderCore();
     }catch(e){ toast(e.message||'Failed'); }
@@ -187,6 +163,7 @@ export function mount(opts){
   code = opts?.code || null;
   myPid = opts?.myPid || null;
   isHost = !!opts?.isHost;
+
   // Cache session for name resolution
   getSession().then(s=>{ window.__MS_SESSION = s?.user || null; renderCore(); }).catch(()=>renderCore());
   renderCore();
