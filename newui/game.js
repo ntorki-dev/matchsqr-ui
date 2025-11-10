@@ -1,6 +1,7 @@
 // game.js
 import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey, inferAndPersistHostRole, getSession } from './api.js';
 import { renderHeader, ensureDebugTray, $, toast, setHeaderActions, clearHeaderActions } from './ui.js';
+import * as Summary from './summary.js';
 import { initClarificationOverlay, setHostElement, setClarification, syncClarificationButton } from './clarification-overlay.js';
 
 const Game = {
@@ -66,9 +67,9 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
 
   async mount(code){
 
-    this.code = String(code || "").trim().toUpperCase();
-    try{ this.ui.draft = localStorage.getItem(draftKey(this.code)) || ''; }catch{ this.ui.draft=''; }
-    try{ if (sessionStorage.getItem(hostMarkerKey(this.code))==='1'){ setRole(this.code, 'host'); sessionStorage.removeItem(hostMarkerKey(this.code)); } }catch{}
+    this.code=code;
+    try{ this.ui.draft = localStorage.getItem(draftKey(code)) || ''; }catch{ this.ui.draft=''; }
+    try{ if (sessionStorage.getItem(hostMarkerKey(code))==='1'){ setRole(code, 'host'); sessionStorage.removeItem(hostMarkerKey(code)); } }catch{}
     await this.refresh();
     this.startPolling();
     this.startTick();
@@ -642,23 +643,39 @@ render(forceFull){
       return;
     }
 
-    if (s.status==='ended'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
-  controls.innerHTML='';
-  // Render seats around the card
-  this.renderSeats();
-  // Put summary inside the main card instead of replacing the whole grid
-  main.innerHTML = '<div style="text-align:center; max-width:640px;">'+
-          '<h3>Summary</h3>'+
-          '<p class="help">The game has ended. You can start a new one from Host page.</p>'+
-          '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">'+
-            '<a class="btn" href="#/host">Host a new game</a>'+
-            '<button id="shareBtn" class="btn secondary">Share</button>'+
-          '</div>'+
-        '</div>';
-      $('#shareBtn').onclick=()=>{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); };;
-  const shareBtn = document.getElementById('shareBtn'); if (shareBtn){ shareBtn.onclick=()=>{ try{ navigator.clipboard.writeText(location.origin+location.pathname+'#/'); toast('Link copied'); }catch(_){} }; }
-  return;
-}
+    if (s.status==='ended'){
+      try{ const tar=document.getElementById('msBox'); if (tar) tar.value=''; }catch(_){}
+      clearHeaderActions();
+      controls.innerHTML='';
+      // Keep seats around the card
+      this.renderSeats();
+
+      // Mount Summary module into main card area
+      const main = document.getElementById('mainCard');
+      try{
+        const code=this.code;
+        const myPid = JSON.parse(localStorage.getItem(msPidKey(code))||'null');
+        const role=getRole(this.code);
+        const isHost = role==='host';
+
+        if (!this.ui) this.ui={};
+        if (this.ui.summarySelectedSeat==null){
+          const seats = (this.state.participants||[]).map(p=>p?.seat_index).filter(n=>typeof n==='number').sort((a,b)=>a-b);
+          this.ui.summarySelectedSeat = seats.length? seats[0]: null;
+        }
+
+        Summary.mount({
+          container: main,
+          state: this.state,
+          selectedSeat: this.ui.summarySelectedSeat,
+          code: this.code,
+          myPid,
+          isHost
+        });
+      }catch(e){ try{ toast(e.message||'Failed to render summary'); }catch(_){} }
+
+      return;
+    }
   }
 };
 
