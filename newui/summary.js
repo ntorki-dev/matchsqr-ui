@@ -8,16 +8,6 @@ import { $, toast } from './ui.js';
 let state = null;
 let container = null;
 let selectedSeat = null;
-
-
-function selKey(code){ return 'ms_summary_selected_' + String(code||''); }
-function loadSelected(code){
-  try{ const v = localStorage.getItem(selKey(code)); if (v!=null) return Number(v); }catch(_){}
-  return null;
-}
-function saveSelected(code, seat){
-  try{ localStorage.setItem(selKey(code), String(seat)); }catch(_){}
-}
 let code = null;
 let myPid = null;
 let isHost = false;
@@ -73,7 +63,7 @@ function renderCore(){
 
   // Determine selected seat
   const seats = participants.map(p=>p.seat_index);
-  if (selectedSeat==null) selectedSeat = loadSelected(code) ?? seats[0];
+  if (selectedSeat==null) selectedSeat = seats[0];
   const idx = seats.indexOf(selectedSeat);
   const current = participants[Math.max(0, idx)] || participants[0];
   const currentSeat = current?.seat_index;
@@ -102,7 +92,6 @@ function renderCore(){
       const arr = seats;
       const i = Math.max(0, arr.indexOf(selectedSeat));
       const next = arr[(i-1+arr.length)%arr.length];
-      if (onNavigate) onNavigate(next);
       selectedSeat = next;
       renderCore();
     }catch(e){ toast(e.message||'Failed'); }
@@ -112,7 +101,6 @@ function renderCore(){
       const arr = seats;
       const i = Math.max(0, arr.indexOf(selectedSeat));
       const next = arr[(i+1)%arr.length];
-      if (onNavigate) onNavigate(next);
       selectedSeat = next;
       renderCore();
     }catch(e){ toast(e.message||'Failed'); }
@@ -163,7 +151,6 @@ export function mount(opts){
   code = opts?.code || null;
   myPid = opts?.myPid || null;
   isHost = !!opts?.isHost;
-
   // Cache session for name resolution
   getSession().then(s=>{ window.__MS_SESSION = s?.user || null; renderCore(); }).catch(()=>renderCore());
   renderCore();
