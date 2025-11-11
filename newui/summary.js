@@ -1,17 +1,22 @@
 // summary.js
-// Card content renders in #mainCard. Single action button renders in #toolsRow (mic/keyboard row).
-// Participants come from state.participants passed by game.js.
-// Host nav is shown whenever opts.isHost is true; backend enforces permission on click.
+// Renders summary card in #mainCard and the single action button in #toolsRow.
+// Participants come from state.participants. Host-only navigation writes the
+// selected seat via the summary edge function.
+//
+// Changes in this version:
+//  - Robust game id resolution (prevents "forbidden" when host clicks Next/Previous)
+//  - Button is truly centered under the card by matching #mainCard geometry
+//  - Nav shows only if isHost AND a session exists (prevents false "only the host..." toasts)
 
 import { jpost, getSession, msPidKey, resolveGameId } from './api.js';
 import { $, toast } from './ui.js';
 
 let state = null;
-let container = null;   // #mainCard
+let container = null;     // #mainCard
 let code = null;
+let isHostFlag = false;
 let myPid = null;
 let selectedSeat = null;
-let isHostFlag = false;
 
 // ---------- helpers ----------
 function seats(){ return Array.isArray(state?.participants) ? state.participants.map(p=>p.seat_index) : []; }
@@ -55,20 +60,34 @@ function shortSummaryForSeat(seatIndex){
   const i = Math.abs(Number(seatIndex||0)) % t.length;
   return t[i];
 }
-function gid(){ return resolveGameId(state?.id || null); }
+
+// Resolve the canonical game UUID robustly
+function gameId(){
+  // Try direct uuid on state
+  const cand = state?.id || state?.game_id || state?.game?.id;
+  try { const v = resolveGameId(cand || code || null); if (v) return v; } catch(_){}
+  // Last resort: try passing the room code if resolveGameId supports it
+  try { const v2 = resolveGameId(code || null); if (v2) return v2; } catch(_){}
+  return null;
+}
 
 // ---------- edge calls (seat only) ----------
 async function getSelectedSeat(){
-  const out = await jpost('summary', { action:'get_selected', game_id: gid() });
+  const gid = gameId();
+  if (!gid) return null;
+  const out = await jpost('summary', { action:'get_selected', game_id: gid });
   return (out && typeof out.selected_seat === 'number') ? out.selected_seat : null;
 }
 async function setSelectedSeat(seat){
-  await jpost('summary', { action:'set_selected', game_id: gid(), seat_index: seat });
+  const gid = gameId();
+  if (!gid) throw new Error('Missing game id');
+  await jpost('summary', { action:'set_selected', game_id: gid, seat_index: seat });
 }
 
 // ---------- render ----------
 function renderCard(){
   const seatList = seats();
+
   // Make the card a column so the nav can sit at the bottom
   container.style.display = 'flex';
   container.style.flexDirection = 'column';
@@ -94,8 +113,8 @@ function renderCard(){
       (haveSession ? '' : '<p class="help" style="margin:10px 0 0 0">Please register below in the next 30 minutes to get a full report.</p>') +
     '</div>';
 
-  // Show nav whenever game.js says viewer is host. Backend still enforces on click.
-  const showNav = !!isHostFlag;
+  // Show nav only if game.js says host AND we have a session token.
+  const showNav = !!(isHostFlag && haveSession && gameId());
   const nav = showNav
     ? ('<div style="display:flex;justify-content:space-between;align-items:center;margin-top:auto;">' +
          '<a id="msPrev" class="help" href="#"><img src="./assets/previous.png" width="16" height="16" alt="Previous"/> Previous</a>' +
@@ -133,17 +152,26 @@ function renderCard(){
   }
 }
 
-// Center the button exactly under the card by matching the card width
-function sizeActionWrapper(){
+// Position the under-card button exactly under the card by matching card geometry
+function placeActionUnderCard(){
+  const tools = document.getElementById('toolsRow');
   const inner = document.getElementById('summaryActionInner');
-  if (!inner || !container) return;
-  const w = container.getBoundingClientRect().width;
-  inner.style.width = w ? `${w}px` : 'auto';
-  inner.style.margin = '0 auto';
+  if (!tools || !inner || !container) return;
+
+  const cardRect = container.getBoundingClientRect();
+  const toolsRect = tools.getBoundingClientRect();
+
+  const width = Math.round(cardRect.width);
+  const offsetLeft = Math.round(cardRect.left - toolsRect.left);
+
+  inner.style.width = `${width}px`;
+  inner.style.marginLeft = `${offsetLeft}px`;
+  inner.style.marginRight = '0';
+  inner.style.marginTop = '0';
 }
 
 function renderAction(){
-  const tools = document.getElementById('toolsRow'); // mic/keyboard row
+  const tools = document.getElementById('toolsRow'); // mic/keyboard row under the card
   if (!tools) return;
 
   const sessionUser = window.__MS_SESSION || null;
@@ -151,7 +179,7 @@ function renderAction(){
 
   if (haveSession){
     tools.innerHTML =
-      '<div id="summaryActionInner" style="display:block;width:auto;margin:0 auto;">' +
+      '<div id="summaryActionInner" style="display:block;">' +
         '<div class="inline-actions"><button id="msFullReport" class="btn">Get my full report</button></div>' +
       '</div>';
     $('#msFullReport')?.addEventListener('click', async ()=>{
@@ -159,35 +187,33 @@ function renderAction(){
       const pid = mine?.id || mine?.participant_id || myPid || null;
       if (!pid){ toast('No participant found'); return; }
       try{
-        await jpost('email_full_report', { game_id: gid(), participant_id: pid });
+        await jpost('email_full_report', { game_id: gameId(), participant_id: pid });
         toast('Report will be emailed to you');
       }catch(_){ toast('Report request received'); }
     });
   }else{
     tools.innerHTML =
-      '<div id="summaryActionInner" style="display:block;width:auto;margin:0 auto;">' +
+      '<div id="summaryActionInner" style="display:block;">' +
         '<div class="inline-actions"><button id="msRegister" class="btn">Register</button></div>' +
       '</div>';
     $('#msRegister')?.addEventListener('click', ()=>{
       try{
         const mine = meFrom(null);
         const pid = mine?.id || mine?.participant_id || myPid || null;
-        localStorage.setItem('ms_attach_payload', JSON.stringify({ game_id: gid(), temp_player_id: pid }));
+        localStorage.setItem('ms_attach_payload', JSON.stringify({ game_id: gameId(), temp_player_id: pid }));
       }catch(_){}
       location.hash = '#/register';
     });
   }
 
-  // match card width and center on desktop
-  sizeActionWrapper();
-  // keep it responsive
-  window.addEventListener('resize', sizeActionWrapper);
+  placeActionUnderCard();
+  window.addEventListener('resize', placeActionUnderCard);
 }
 
 // ---------- public API ----------
 export async function mount(opts){
   state = opts?.state || null;
-  container = opts?.container || null;
+  container = opts?.container || null;     // #mainCard
   code = opts?.code || null;
   isHostFlag = !!opts?.isHost;
   selectedSeat = (typeof opts?.selectedSeat === 'number') ? opts.selectedSeat : null;
@@ -224,12 +250,11 @@ export async function update(opts){
   }catch(_){}
 
   renderCard();
-  // action button stays; just resize wrapper if container width changed
-  sizeActionWrapper();
+  placeActionUnderCard();
 }
 
 export function unmount(){
-  window.removeEventListener('resize', sizeActionWrapper);
+  window.removeEventListener('resize', placeActionUnderCard);
   if (container){
     container.style.display = '';
     container.style.flexDirection = '';
