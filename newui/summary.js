@@ -1,12 +1,19 @@
 // summary.js
-// Renders summary card in #mainCard and the single action button in #toolsRow.
-// Participants come from state.participants. Host-only navigation writes the
-// selected seat via the summary edge function.
+// Post-game Summary UI.
 //
-// Changes in this version:
-//  - Robust game id resolution (prevents "forbidden" when host clicks Next/Previous)
-//  - Button is truly centered under the card by matching #mainCard geometry
-//  - Nav shows only if isHost AND a session exists (prevents false "only the host..." toasts)
+// Renders:
+//   • Card content inside #mainCard
+//   • A single action button inside #toolsRow (same row used for mic/keyboard)
+//
+// Data:
+//   • Participants come from state.participants passed by game.js.
+//   • Edge function "summary" only stores/reads selected seat.
+//   • Host navigation shows if game.js says isHost and a session exists.
+//   • Backend enforces host on click.
+//
+// Future AI:
+//   • Keep this UI unchanged. Return AI blurbs from the edge function later,
+//     and read them alongside selected_seat. For now we show static text.
 
 import { jpost, getSession, msPidKey, resolveGameId } from './api.js';
 import { $, toast } from './ui.js';
@@ -14,12 +21,14 @@ import { $, toast } from './ui.js';
 let state = null;
 let container = null;     // #mainCard
 let code = null;
-let isHostFlag = false;
 let myPid = null;
 let selectedSeat = null;
+let isHostFlag = false;
 
 // ---------- helpers ----------
-function seats(){ return Array.isArray(state?.participants) ? state.participants.map(p=>p.seat_index) : []; }
+function seats(){
+  return Array.isArray(state?.participants) ? state.participants.map(p=>p.seat_index) : [];
+}
 function bySeat(seat){
   const list = Array.isArray(state?.participants) ? state.participants : [];
   return list.find(p => Number(p.seat_index) === Number(seat)) || null;
@@ -61,14 +70,10 @@ function shortSummaryForSeat(seatIndex){
   return t[i];
 }
 
-// Resolve the canonical game UUID robustly
+// Robust game id resolution (UUID or room code supported by resolveGameId)
 function gameId(){
-  // Try direct uuid on state
-  const cand = state?.id || state?.game_id || state?.game?.id;
-  try { const v = resolveGameId(cand || code || null); if (v) return v; } catch(_){}
-  // Last resort: try passing the room code if resolveGameId supports it
-  try { const v2 = resolveGameId(code || null); if (v2) return v2; } catch(_){}
-  return null;
+  const cand = state?.id || state?.game_id || state?.game?.id || code || null;
+  try { return resolveGameId(cand); } catch(_) { return null; }
 }
 
 // ---------- edge calls (seat only) ----------
@@ -82,6 +87,24 @@ async function setSelectedSeat(seat){
   const gid = gameId();
   if (!gid) throw new Error('Missing game id');
   await jpost('summary', { action:'set_selected', game_id: gid, seat_index: seat });
+}
+
+// ---------- layout helpers ----------
+function placeActionUnderCard(){
+  const tools = document.getElementById('toolsRow');
+  const inner = document.getElementById('summaryActionInner');
+  if (!tools || !inner || !container) return;
+
+  const cardRect = container.getBoundingClientRect();
+  const toolsRect = tools.getBoundingClientRect();
+
+  const width = Math.round(cardRect.width);
+  const offsetLeft = Math.round(cardRect.left - toolsRect.left);
+
+  inner.style.width = `${width}px`;
+  inner.style.marginLeft = `${offsetLeft}px`;
+  inner.style.marginRight = '0';
+  inner.style.marginTop = '0';
 }
 
 // ---------- render ----------
@@ -113,7 +136,7 @@ function renderCard(){
       (haveSession ? '' : '<p class="help" style="margin:10px 0 0 0">Please register below in the next 30 minutes to get a full report.</p>') +
     '</div>';
 
-  // Show nav only if game.js says host AND we have a session token.
+  // Show nav if game.js says host and we have a session; backend enforces on click.
   const showNav = !!(isHostFlag && haveSession && gameId());
   const nav = showNav
     ? ('<div style="display:flex;justify-content:space-between;align-items:center;margin-top:auto;">' +
@@ -133,9 +156,7 @@ function renderCard(){
         await setSelectedSeat(ns);
         selectedSeat = ns;
         renderCard();
-      }catch(err){
-        toast('Only the host can change the shown player.');
-      }
+      }catch(_){ toast('Only the host can change the shown player.'); }
     });
     $('#msNext')?.addEventListener('click', async (e)=>{
       e.preventDefault();
@@ -145,43 +166,27 @@ function renderCard(){
         await setSelectedSeat(ns);
         selectedSeat = ns;
         renderCard();
-      }catch(err){
-        toast('Only the host can change the shown player.');
-      }
+      }catch(_){ toast('Only the host can change the shown player.'); }
     });
   }
 }
 
-// Position the under-card button exactly under the card by matching card geometry
-function placeActionUnderCard(){
-  const tools = document.getElementById('toolsRow');
-  const inner = document.getElementById('summaryActionInner');
-  if (!tools || !inner || !container) return;
-
-  const cardRect = container.getBoundingClientRect();
-  const toolsRect = tools.getBoundingClientRect();
-
-  const width = Math.round(cardRect.width);
-  const offsetLeft = Math.round(cardRect.left - toolsRect.left);
-
-  inner.style.width = `${width}px`;
-  inner.style.marginLeft = `${offsetLeft}px`;
-  inner.style.marginRight = '0';
-  inner.style.marginTop = '0';
-}
-
 function renderAction(){
-  const tools = document.getElementById('toolsRow'); // mic/keyboard row under the card
+  const tools = document.getElementById('toolsRow'); // mic/keyboard row
   if (!tools) return;
 
   const sessionUser = window.__MS_SESSION || null;
   const haveSession = !!(sessionUser && sessionUser.id);
 
+  const wrapperStart = '<div id="summaryActionInner" style="display:block;">';
+  const wrapperEnd = '</div>';
+
   if (haveSession){
     tools.innerHTML =
-      '<div id="summaryActionInner" style="display:block;">' +
+      wrapperStart +
         '<div class="inline-actions"><button id="msFullReport" class="btn">Get my full report</button></div>' +
-      '</div>';
+      wrapperEnd;
+
     $('#msFullReport')?.addEventListener('click', async ()=>{
       const mine = meFrom(sessionUser);
       const pid = mine?.id || mine?.participant_id || myPid || null;
@@ -193,14 +198,18 @@ function renderAction(){
     });
   }else{
     tools.innerHTML =
-      '<div id="summaryActionInner" style="display:block;">' +
+      wrapperStart +
         '<div class="inline-actions"><button id="msRegister" class="btn">Register</button></div>' +
-      '</div>';
+      wrapperEnd;
+
     $('#msRegister')?.addEventListener('click', ()=>{
       try{
         const mine = meFrom(null);
         const pid = mine?.id || mine?.participant_id || myPid || null;
-        localStorage.setItem('ms_attach_payload', JSON.stringify({ game_id: gameId(), temp_player_id: pid }));
+        localStorage.setItem('ms_attach_payload', JSON.stringify({
+          game_id: gameId(),
+          temp_player_id: pid
+        }));
       }catch(_){}
       location.hash = '#/register';
     });
@@ -213,7 +222,7 @@ function renderAction(){
 // ---------- public API ----------
 export async function mount(opts){
   state = opts?.state || null;
-  container = opts?.container || null;     // #mainCard
+  container = opts?.container || null;  // #mainCard
   code = opts?.code || null;
   isHostFlag = !!opts?.isHost;
   selectedSeat = (typeof opts?.selectedSeat === 'number') ? opts.selectedSeat : null;
