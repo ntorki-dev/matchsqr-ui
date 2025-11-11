@@ -1,10 +1,7 @@
 // summary.js
-// Clean summary UI using existing layout.
-// - Card content goes into #mainCard.
-// - Single action button goes into #toolsRow (same row used for mic/keyboard during play).
-// - Participants come from state.participants passed by game.js.
-// - Only authenticated host sees Prev/Next and can change the shown seat.
-// - Edge function 'summary' only stores/reads the selected seat.
+// Card content renders in #mainCard. Single action button renders in #toolsRow (mic/keyboard row).
+// Participants come from state.participants passed by game.js.
+// Host nav is shown whenever opts.isHost is true; backend enforces permission on click.
 
 import { jpost, getSession, msPidKey, resolveGameId } from './api.js';
 import { $, toast } from './ui.js';
@@ -14,6 +11,7 @@ let container = null;   // #mainCard
 let code = null;
 let myPid = null;
 let selectedSeat = null;
+let isHostFlag = false;
 
 // ---------- helpers ----------
 function seats(){ return Array.isArray(state?.participants) ? state.participants.map(p=>p.seat_index) : []; }
@@ -83,9 +81,7 @@ function renderCard(){
   }
 
   const sessionUser = window.__MS_SESSION || null;
-  const authedUserId = sessionUser?.id ? String(sessionUser.id) : null;
-  const hostUserId = state?.host_user_id ? String(state.host_user_id) : null;
-  const viewerIsAuthedHost = !!(authedUserId && hostUserId && authedUserId === hostUserId);
+  const haveSession = !!(sessionUser && sessionUser.id);
 
   const seat = (typeof selectedSeat === 'number') ? selectedSeat : seatList[0];
   const current = bySeat(seat) || bySeat(seatList[0]);
@@ -95,10 +91,12 @@ function renderCard(){
     '<div>' +
       '<p><strong>'+ displayName(current, sessionUser) +'</strong></p>' +
       '<p class="help" style="margin-top:6px;margin-bottom:0">'+ shortSummaryForSeat(current?.seat_index) +'</p>' +
-      (authedUserId ? '' : '<p class="help" style="margin:10px 0 0 0">Please register below in the next 30 minutes to get a full report.</p>') +
+      (haveSession ? '' : '<p class="help" style="margin:10px 0 0 0">Please register below in the next 30 minutes to get a full report.</p>') +
     '</div>';
 
-  const nav = viewerIsAuthedHost
+  // Show nav whenever game.js says viewer is host. Backend still enforces on click.
+  const showNav = !!isHostFlag;
+  const nav = showNav
     ? ('<div style="display:flex;justify-content:space-between;align-items:center;margin-top:auto;">' +
          '<a id="msPrev" class="help" href="#"><img src="./assets/previous.png" width="16" height="16" alt="Previous"/> Previous</a>' +
          '<a id="msNext" class="help" href="#">Next <img src="./assets/forward.png" width="16" height="16" alt="Next"/></a>' +
@@ -107,36 +105,55 @@ function renderCard(){
 
   container.innerHTML = title + body + nav;
 
-  if (viewerIsAuthedHost){
+  if (showNav){
     $('#msPrev')?.addEventListener('click', async (e)=>{
       e.preventDefault();
       const i = Math.max(0, seatList.indexOf(seat));
       const ns = seatList[(i-1+seatList.length)%seatList.length];
-      await setSelectedSeat(ns);
-      selectedSeat = ns;
-      renderCard();
+      try{
+        await setSelectedSeat(ns);
+        selectedSeat = ns;
+        renderCard();
+      }catch(err){
+        toast('Only the host can change the shown player.');
+      }
     });
     $('#msNext')?.addEventListener('click', async (e)=>{
       e.preventDefault();
       const i = Math.max(0, seatList.indexOf(seat));
       const ns = seatList[(i+1)%seatList.length];
-      await setSelectedSeat(ns);
-      selectedSeat = ns;
-      renderCard();
+      try{
+        await setSelectedSeat(ns);
+        selectedSeat = ns;
+        renderCard();
+      }catch(err){
+        toast('Only the host can change the shown player.');
+      }
     });
   }
 }
 
+// Center the button exactly under the card by matching the card width
+function sizeActionWrapper(){
+  const inner = document.getElementById('summaryActionInner');
+  if (!inner || !container) return;
+  const w = container.getBoundingClientRect().width;
+  inner.style.width = w ? `${w}px` : 'auto';
+  inner.style.margin = '0 auto';
+}
+
 function renderAction(){
-  // Use the existing mic/keyboard row slot under the card
-  const tools = document.getElementById('toolsRow');
+  const tools = document.getElementById('toolsRow'); // mic/keyboard row
   if (!tools) return;
 
   const sessionUser = window.__MS_SESSION || null;
-  const authedUserId = sessionUser?.id ? String(sessionUser.id) : null;
+  const haveSession = !!(sessionUser && sessionUser.id);
 
-  if (authedUserId){
-    tools.innerHTML = '<div class="inline-actions"><button id="msFullReport" class="btn">Get my full report</button></div>';
+  if (haveSession){
+    tools.innerHTML =
+      '<div id="summaryActionInner" style="display:block;width:auto;margin:0 auto;">' +
+        '<div class="inline-actions"><button id="msFullReport" class="btn">Get my full report</button></div>' +
+      '</div>';
     $('#msFullReport')?.addEventListener('click', async ()=>{
       const mine = meFrom(sessionUser);
       const pid = mine?.id || mine?.participant_id || myPid || null;
@@ -148,8 +165,8 @@ function renderAction(){
     });
   }else{
     tools.innerHTML =
-      '<div class="inline-actions">' +
-        '<button id="msRegister" class="btn">Register</button>' +
+      '<div id="summaryActionInner" style="display:block;width:auto;margin:0 auto;">' +
+        '<div class="inline-actions"><button id="msRegister" class="btn">Register</button></div>' +
       '</div>';
     $('#msRegister')?.addEventListener('click', ()=>{
       try{
@@ -160,13 +177,19 @@ function renderAction(){
       location.hash = '#/register';
     });
   }
+
+  // match card width and center on desktop
+  sizeActionWrapper();
+  // keep it responsive
+  window.addEventListener('resize', sizeActionWrapper);
 }
 
 // ---------- public API ----------
 export async function mount(opts){
   state = opts?.state || null;
-  container = opts?.container || null;  // #mainCard
+  container = opts?.container || null;
   code = opts?.code || null;
+  isHostFlag = !!opts?.isHost;
   selectedSeat = (typeof opts?.selectedSeat === 'number') ? opts.selectedSeat : null;
 
   myPid = opts?.myPid || null;
@@ -193,6 +216,7 @@ export async function mount(opts){
 
 export async function update(opts){
   if (opts && 'state' in opts) state = opts.state;
+  if (opts && 'isHost' in opts) isHostFlag = !!opts.isHost;
 
   try{
     const sv = await getSelectedSeat();
@@ -200,15 +224,16 @@ export async function update(opts){
   }catch(_){}
 
   renderCard();
-  renderAction();
+  // action button stays; just resize wrapper if container width changed
+  sizeActionWrapper();
 }
 
 export function unmount(){
+  window.removeEventListener('resize', sizeActionWrapper);
   if (container){
     container.style.display = '';
     container.style.flexDirection = '';
     container.innerHTML = '';
   }
-  // Do not clear toolsRow here so we don't remove other host UI accidentally
-  state = null; container = null; code = null; myPid = null; selectedSeat = null;
+  state = null; container = null; code = null; myPid = null; selectedSeat = null; isHostFlag = false;
 }
