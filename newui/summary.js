@@ -4,11 +4,10 @@
 // Bottom row inside card: Prev (left) / Next (right), host only, icons 16x16.
 // Outside the card (as a sibling): one centered button for "my" action.
 //
-// Reused helpers: getSession, msPidKey, jpost from api.js; $, toast from ui.js.
-// No schema changes. No global window.supabase required.
-// Future AI: when ai_summaries is ready, only the edge function changes.
+// Reused helpers: getSession, msPidKey, jpost, resolveGameId from api.js; $, toast from ui.js.
+// No schema changes. Future AI: only the edge function changes to return AI blurbs.
 
-import { jpost, getSession, msPidKey } from './api.js';
+import { jpost, getSession, msPidKey, resolveGameId } from './api.js';
 import { $, toast } from './ui.js';
 
 // ------------- Local state -------------
@@ -48,14 +47,27 @@ function resolveMyParticipant(participants, sessionUser){
   return hit || (participants[0] || null);
 }
 
-// ------------- Edge calls via jpost -------------
-async function fetchView(gameId){
-  // Works for signed-in users and guests (after api.js update below)
-  return jpost('summary', { action: 'get_view', game_id: gameId });
+// Resolve the canonical game_id safely before any server call
+function getGameId(){
+  // prefer explicit state.id if it’s already a UUID
+  if (state && state.id) {
+    try { return resolveGameId(state.id); } catch(_) {}
+  }
+  // try resolving from code or other shapes
+  try { return resolveGameId(state?.game_id || code || null); } catch(_) {}
+  return null;
 }
-async function setSeatOnServer(gameId, seat){
-  // Host-only; server verifies host using JWT when available
-  return jpost('summary', { action: 'select_seat', game_id: gameId, seat_index: seat });
+
+// ------------- Edge calls via jpost -------------
+async function fetchView(){
+  const gid = getGameId();
+  if (!gid){ throw new Error('Missing game id'); }
+  return jpost('summary', { action: 'get_view', game_id: gid });
+}
+async function setSeatOnServer(nextSeat){
+  const gid = getGameId();
+  if (!gid){ throw new Error('Missing game id'); }
+  return jpost('summary', { action: 'select_seat', game_id: gid, seat_index: nextSeat });
 }
 
 // ------------- Rendering -------------
@@ -112,17 +124,21 @@ function renderCard(){
       e.preventDefault();
       const i = Math.max(0, seats.indexOf(seat));
       const ns = seats[(i-1+seats.length)%seats.length];
-      await setSeatOnServer(state.id, ns);
-      view.selected_seat = ns;
-      renderCard();
+      try{
+        await setSeatOnServer(ns);
+        view.selected_seat = ns;
+        renderCard();
+      }catch(err){ toast(err.message || 'Failed'); }
     };
     if (next) next.onclick = async e=>{
       e.preventDefault();
       const i = Math.max(0, seats.indexOf(seat));
       const ns = seats[(i+1)%seats.length];
-      await setSeatOnServer(state.id, ns);
-      view.selected_seat = ns;
-      renderCard();
+      try{
+        await setSeatOnServer(ns);
+        view.selected_seat = ns;
+        renderCard();
+      }catch(err){ toast(err.message || 'Failed'); }
     };
   }
 }
@@ -155,8 +171,7 @@ function renderActionBar(){
         const mine = resolveMyParticipant(view?.participants||[], sessionUser);
         const pid = mine?.id || myPid || null;
         if (!pid) { toast('No participant found'); return; }
-        // Call your existing long-report function directly
-        await jpost('email_full_report', { game_id: state.id, participant_id: pid });
+        await jpost('email_full_report', { game_id: getGameId(), participant_id: pid });
         toast('Report will be emailed to you');
       }catch(_){ toast('Report request received'); }
     };
@@ -172,7 +187,7 @@ function renderActionBar(){
         const mine = resolveMyParticipant(view?.participants||[], window.__MS_SESSION || null);
         const pid = mine?.id || myPid || null;
         localStorage.setItem('ms_attach_payload', JSON.stringify({
-          game_id: state.id,
+          game_id: getGameId(),
           temp_player_id: pid
         }));
       }catch(_){}
@@ -201,20 +216,29 @@ export async function mount(opts){
     window.__MS_SESSION = s?.user || null;
   }catch(_){ window.__MS_SESSION = null; }
 
-  view = await fetchView(state.id);
+  const gid = getGameId();
+  if (!gid){
+    container.innerHTML =
+      '<div class="inline-actions"><h3 style="text-align:center">Game Summary</h3></div>' +
+      '<p class="help">Missing game id.</p>';
+    return;
+  }
+
+  view = await fetchView();
   renderCard();
   renderActionBar();
 
-  // Future AI switch:
-  //  • When ai_summaries is ready, update the edge function get_view to prefer AI rows.
-  //  • This UI will automatically show AI blurbs from view.summaries_short without any change here.
+  // Future AI: only update the edge function to emit AI blurbs; UI will pick them up.
 }
 
 export async function update(opts){
   if (opts && 'state' in opts) state = opts.state;
   if (opts && 'isHost' in opts) isHost = !!opts.isHost;
 
-  view = await fetchView(state.id);
+  const gid = getGameId();
+  if (!gid) return; // avoid bad_request loops
+
+  view = await fetchView();
   renderCard();
   renderActionBar();
 }
