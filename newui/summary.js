@@ -53,10 +53,10 @@ function resolveMyParticipant(participants, sessionUser){
 
 // Edge calls
 async function fetchView(gameId){
-  return jpost('summary_index', { action: 'get_view', game_id: gameId });
+  return jpost('summary', { action: 'get_view', game_id: gameId });
 }
 async function setSeatOnServer(gameId, seat){
-  try{ await jpost('summary_index', { action: 'select_seat', game_id: gameId, seat_index: seat }); }
+  try{ await jpost('summary', { action: 'select_seat', game_id: gameId, seat_index: seat }); }
   catch(_){}
 }
 
@@ -158,7 +158,7 @@ function renderActionBar(){
         const mine = resolveMyParticipant(view?.participants||[], sessionUser);
         const pid = mine?.id || myPid || null;
         if (!pid) { toast('No participant found'); return; }
-        await jpost('email_full_report_index', { game_id: state.id, participant_id: pid });
+        await jpost('email_full_report', { game_id: state.id, participant_id: pid });
         toast('Report will be emailed to you');
       }catch(_){
         toast('Report request received');
