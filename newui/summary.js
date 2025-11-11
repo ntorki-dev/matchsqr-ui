@@ -1,207 +1,181 @@
 // summary.js
-// Renders the Summary parade and per-viewer action panel.
-// Reuses existing CSS classes from app.css only.
+// Summary UI with host-controlled selection via summary_index edge function.
+// - Card shows: centered title, bold name, compact help text.
+// - Prev/Next at bottom of card (left/right, 16x16 icons), host only.
+// - A single centered action button UNDER the card (sibling), not inside it.
+// - The button acts "for me": if logged in -> call existing email_full_report_index;
+//   if not -> save ms_attach_payload and route to #/register.
+// - Future AI path documented below; no code left in place that isn't used now.
 
-import { jpost, getSession, resolveGameId, msPidKey } from './api.js';
+import { jpost, getSession, msPidKey } from './api.js';
 import { $, toast } from './ui.js';
 
+// ------------- State -------------
 let state = null;
-let container = null;
-let selectedSeat = null;
+let container = null;     // #mainCard
 let code = null;
-let myPid = null;
 let isHost = false;
+let myPid = null;
+let view = null;          // { selected_seat, participants[], summaries_short[] }
 
-// Realtime channel handle
-let rtChannel = null;
-
-// Persist selection, so polling does not reset it
-function selKey(c){ return 'ms_summary_selected_' + String(c||''); }
-function loadSelected(c){
-  try{ const v = localStorage.getItem(selKey(c)); if (v!=null) return Number(v); }catch(_){}
-  return null;
-}
-function saveSelected(c, seat){
-  try{ localStorage.setItem(selKey(c), String(seat)); }catch(_){}
-}
-
-// Static summaries for MVP
-const STATIC_SUMMARIES = [
-  { title: 'The Empath',      text: 'You connected deeply with others and listened with care.' },
-  { title: 'The Thinker',     text: 'You reflected on each question and gave thoughtful answers.' },
-  { title: 'The Adventurer',  text: 'You brought energy, humor, and curiosity to the group.' },
-  { title: 'The Realist',     text: 'You kept things grounded and practical throughout the game.' },
-  { title: 'The Optimist',    text: 'You looked for bright angles and encouraged others.' },
-  { title: 'The Analyst',     text: 'You compared tradeoffs and explained your reasoning clearly.' },
-  { title: 'The Storyteller', text: 'You used vivid examples and personal stories.' },
-  { title: 'The Challenger',  text: 'You asked sharp questions that opened new ideas.' }
-];
-
-function pickStaticSummary(idx){
-  const list = STATIC_SUMMARIES;
-  if (!Array.isArray(list) || list.length === 0) return { title: 'Summary', text: 'Thanks for playing.' };
-  const i = Math.abs(Number(idx || 0)) % list.length;
-  return list[i];
-}
-
-function seatsSorted(participants){
-  const ps = Array.isArray(participants) ? participants.slice() : [];
-  return ps.filter(p => typeof p?.seat_index === 'number').sort((a,b)=>a.seat_index - b.seat_index);
-}
+// ------------- Helpers -------------
+function seatIndices(ps){ return (ps||[]).map(p=>p.seat_index); }
+function bySeat(ps, seat){ return (ps||[]).find(p=>p.seat_index===seat) || null; }
 
 function displayName(p, sessionUser){
-  const uid = p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || '';
   let name = p?.profile_name || p?.nickname || p?.name || 'Guest';
-  const emailName = (sessionUser?.email || '').split('@')[0] || null;
-  const isMe = !!(sessionUser && (
-    (uid && String(uid) === String(sessionUser.id || '')) ||
-    (emailName && typeof p?.name === 'string' && p.name === emailName)
-  ));
-  if (isMe && sessionUser?.user_metadata?.name){ name = sessionUser.user_metadata.name; }
+  if (sessionUser?.id && p?.user_id && String(p.user_id) === String(sessionUser.id)) {
+    if (sessionUser?.user_metadata?.name) name = sessionUser.user_metadata.name;
+  }
   return name;
 }
 
-// Resolve this viewer's participant at click time, with multiple fallbacks
+// Resolve my participant at click time so the action is always "for me"
 function resolveMyParticipant(participants, sessionUser){
+  // 1) cached myPid
   if (myPid){
-    const byPid = participants.find(p=>{
-      const pid = p?.participant_id || p?.id || null;
-      const tmp = p?.tempId || null;
-      return (pid && String(pid)===String(myPid)) || (tmp && String(tmp)===String(myPid));
-    });
-    if (byPid) return byPid;
+    const hit = participants.find(p => String(p.id)===String(myPid));
+    if (hit) return hit;
   }
-  if (sessionUser?.id){
-    const byUser = participants.find(p=>String(p?.user_id||'')===String(sessionUser.id));
-    if (byUser) return byUser;
-  }
-  return participants[0] || null;
-}
-
-// ---------- Realtime sync (host -> all) ----------
-function setupRealtime(gameCode){
+  // 2) storage
   try{
-    // if Supabase not present, skip
-    const sb = window?.supabase;
-    if (!sb || !gameCode) return;
-
-    // create or reuse channel
-    if (rtChannel) try{ rtChannel.unsubscribe(); }catch(_){}
-    rtChannel = sb.channel('ms_summary_'+String(gameCode));
-
-    // guests listen to selection broadcasts
-    rtChannel.on('broadcast', { event: 'summary_select' }, payload=>{
-      try{
-        if (isHost) return; // host already local
-        const seat = Number(payload?.payload?.seat);
-        if (!Number.isFinite(seat)) return;
-        selectedSeat = seat;
-        saveSelected(code, seat);
-        renderCore();
-      }catch(_){}
-    });
-
-    rtChannel.subscribe();
+    const pid = JSON.parse(sessionStorage.getItem(msPidKey(code)) || 'null') ||
+                JSON.parse(localStorage.getItem(msPidKey(code)) || 'null');
+    if (pid){
+      const hit = participants.find(p => String(p.id)===String(pid));
+      if (hit) return hit;
+    }
   }catch(_){}
+  // 3) by user id
+  const hit = participants.find(p => String(p.user_id||'')===String(sessionUser?.id||'')); 
+  return hit || (participants[0] || null);
 }
 
-function broadcastSelection(seat){
-  try{
-    const sb = window?.supabase;
-    if (!sb || !rtChannel) return;
-    rtChannel.send({ type:'broadcast', event:'summary_select', payload:{ seat: Number(seat) } });
-  }catch(_){}
+// Edge calls
+async function fetchView(gameId){
+  return jpost('summary_index', { action: 'get_view', game_id: gameId });
 }
-// ---------- end realtime ----------
+async function setSeatOnServer(gameId, seat){
+  try{ await jpost('summary_index', { action: 'select_seat', game_id: gameId, seat_index: seat }); }
+  catch(_){}
+}
 
-function renderCore(){
-  if (!container || !state) return;
+// ------------- Rendering -------------
+function renderCard(){
   const sessionUser = window.__MS_SESSION || null;
-  const isLoggedIn = !!(sessionUser && sessionUser.id);
-  const participants = seatsSorted(state.participants || []);
+  const participants = view?.participants || [];
+  const seats = seatIndices(participants);
 
-  if (!participants.length){
-    container.innerHTML =
-      '<div class="inline-actions"><h3>Game Summary</h3></div>'+
-      '<p class="help">No participants found.</p>';
+  if (!seats.length){
+    container.innerHTML = '<div class="inline-actions"><h3 style="text-align:center">Game Summary</h3></div><p class="help">No participants found.</p>';
     return;
   }
 
-  // Determine selected seat
-  const seats = participants.map(p => p.seat_index);
-  if (selectedSeat == null){
-    selectedSeat = loadSelected(code);
-    if (selectedSeat == null) selectedSeat = seats[0];
-  }
-  const idx = seats.indexOf(selectedSeat);
-  const current = participants[Math.max(0, idx)] || participants[0];
-  const currentSeat = current?.seat_index;
-
-  const staticSum = pickStaticSummary(currentSeat);
+  const seat = Number(view?.selected_seat ?? seats[0]);
+  const current = bySeat(participants, seat) || participants[0];
   const name = displayName(current, sessionUser);
 
-  // Host-only navigation
-  const navHtml = isHost ? (
-    '<div class="inline-actions">'
-      + '<a id="msPrev" class="help" href="#"><img src="./assets/previous.png" alt="Previous" width="16" height="16"/> Previous Player</a>'
-      + '<a id="msNext" class="help" href="#">Next Player <img src="./assets/forward.png" alt="Next" width="16" height="16"/></a>'
-    + '</div>'
-  ) : '';
+  // Prefer server-provided short blurbs (future AI-ready)
+  let shortText = null;
+  if (Array.isArray(view?.summaries_short)){
+    const row = view.summaries_short.find(r => String(r.participant_id)===String(current.id));
+    shortText = row?.summary_short || null;
+  }
+  if (!shortText){
+    // Minimal fallback pool to keep file self-contained
+    const pool = [
+      "You connected deeply with others and listened with care.",
+      "You reflected on each question and gave thoughtful answers.",
+      "You brought energy, humor, and curiosity to the group.",
+      "You kept things grounded and practical throughout the game."
+    ];
+    const i = Math.max(0, seats.indexOf(current.seat_index));
+    shortText = pool[i % pool.length];
+  }
 
-  // Fixed action panel, always visible
-  const actionPanel =
-    '<div class="inline-actions" id="msActionPanel" style="margin-top:8px;">'
-      + (isLoggedIn
-          ? '<button id="msFullReport" class="btn">Get my full report</button>'
-          : '<div><p class="help" style="margin-bottom:6px;">Please register below in the next 30 minutes to get a full report.</p><div class="inline-actions"><button id="msRegister" class="btn">Register</button></div></div>'
-        )
-    + '</div>';
+  // Prev/Next row at bottom of card (host only)
+  const nav = isHost
+    ? ('<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">'
+        + '<a id="msPrev" class="help" href="#"><img src="./assets/previous.png" width="16" height="16" alt="Previous"/> Previous</a>'
+        + '<a id="msNext" class="help" href="#">Next <img src="./assets/forward.png" width="16" height="16" alt="Next"/></a>'
+      + '</div>')
+    : '';
 
-  // Compose
   container.innerHTML =
-    '<div class="inline-actions"><h3>Game Summary</h3></div>'
+    '<div class="inline-actions"><h3 style="text-align:center">Game Summary</h3></div>'
     + '<p><strong>'+ name +'</strong></p>'
-    + '<p class="help">'+ staticSum.text +'</p>'
-    + navHtml
-    + actionPanel;
+    + '<p class="help" style="margin-top:6px;margin-bottom:0">'+ shortText +'</p>'
+    + nav;
 
-  // Wire navigation
-  const prevBtn = $('#msPrev');
-  const nextBtn = $('#msNext');
-  if (prevBtn){
-    prevBtn.onclick = (evt)=>{
-      evt.preventDefault();
-      try{
-        const i = Math.max(0, seats.indexOf(selectedSeat));
-        const next = seats[(i - 1 + seats.length) % seats.length];
-        selectedSeat = next;
-        saveSelected(code, next);
-        renderCore();
-        if (isHost) broadcastSelection(next);
-      }catch(e){ toast(e.message || 'Failed'); }
+  // Wire host navigation
+  if (isHost){
+    const prev = $('#msPrev');
+    const next = $('#msNext');
+    if (prev) prev.onclick = async e=>{
+      e.preventDefault();
+      const i = Math.max(0, seats.indexOf(seat));
+      const ns = seats[(i-1+seats.length)%seats.length];
+      await setSeatOnServer(state.id, ns);
+      view.selected_seat = ns;
+      renderCard();
+    };
+    if (next) next.onclick = async e=>{
+      e.preventDefault();
+      const i = Math.max(0, seats.indexOf(seat));
+      const ns = seats[(i+1)%seats.length];
+      await setSeatOnServer(state.id, ns);
+      view.selected_seat = ns;
+      renderCard();
     };
   }
-  if (nextBtn){
-    nextBtn.onclick = (evt)=>{
-      evt.preventDefault();
-      try{
-        const i = Math.max(0, seats.indexOf(selectedSeat));
-        const next = seats[(i + 1) % seats.length];
-        selectedSeat = next;
-        saveSelected(code, next);
-        renderCore();
-        if (isHost) broadcastSelection(next);
-      }catch(e){ toast(e.message || 'Failed'); }
-    };
+}
+
+// Single centered action button UNDER the card (sibling of #mainCard)
+function renderActionBar(){
+  const root = document.getElementById('roomMain') || container?.parentElement;
+  if (!root) return;
+  let bar = document.getElementById('summaryActionBar');
+  if (!bar){
+    bar = document.createElement('div');
+    bar.id = 'summaryActionBar';
+    bar.className = 'inline-actions';
+    bar.style.marginTop = '12px';
+    if (container && container.parentElement){
+      container.parentElement.insertBefore(bar, container.nextSibling);
+    }else{
+      root.appendChild(bar);
+    }
   }
 
-  // Register click, resolved to this viewer's participant at click time
-  const regBtn = $('#msRegister');
-  if (regBtn){
-    regBtn.onclick = ()=>{
+  const sessionUser = window.__MS_SESSION || null;
+  const isLoggedIn = !!(sessionUser && sessionUser.id);
+
+  if (isLoggedIn){
+    bar.innerHTML = '<button id="msFullReport" class="btn">Get my full report</button>';
+    const btn = $('#msFullReport');
+    if (btn) btn.onclick = async ()=>{
       try{
-        const mine = resolveMyParticipant(participants, sessionUser);
-        const pid = mine?.participant_id || mine?.id || myPid || null;
+        const mine = resolveMyParticipant(view?.participants||[], sessionUser);
+        const pid = mine?.id || myPid || null;
+        if (!pid) { toast('No participant found'); return; }
+        await jpost('email_full_report_index', { game_id: state.id, participant_id: pid });
+        toast('Report will be emailed to you');
+      }catch(_){
+        toast('Report request received');
+      }
+    };
+  }else{
+    bar.innerHTML =
+      '<div>'
+        + '<p class="help" style="margin-bottom:6px;text-align:center">Please register below in the next 30 minutes to get a full report.</p>'
+        + '<div class="inline-actions"><button id="msRegister" class="btn">Register</button></div>'
+      + '</div>';
+    const btn = $('#msRegister');
+    if (btn) btn.onclick = ()=>{
+      try{
+        const sessionUser = window.__MS_SESSION || null;
+        const mine = resolveMyParticipant(view?.participants||[], sessionUser);
+        const pid = mine?.id || myPid || null;
         localStorage.setItem('ms_attach_payload', JSON.stringify({
           game_id: state.id,
           temp_player_id: pid
@@ -210,66 +184,56 @@ function renderCore(){
       try{ location.hash = '#/register'; }catch(_){}
     };
   }
-
-  // Full report click, resolved to this viewer's participant at click time
-  const fullBtn = $('#msFullReport');
-  if (fullBtn){
-    fullBtn.onclick = async()=>{
-      try{
-        const mine = resolveMyParticipant(participants, sessionUser);
-        const pid = mine?.participant_id || mine?.id || myPid || null;
-        const gid = resolveGameId(state.id);
-        await jpost('email_full_report', { game_id: gid, participant_id: pid });
-        toast('Report will be emailed to you');
-      }catch(_){
-        toast('Report request received');
-      }
-    };
-  }
 }
 
-export function mount(opts){
+// ------------- Public API -------------
+export async function mount(opts){
   state = opts?.state || null;
   container = opts?.container || null;
-  selectedSeat = opts?.selectedSeat ?? null;
   code = opts?.code || null;
-  myPid = opts?.myPid || null;
-
-  // Try to recover myPid for guests on this device
-  if (!myPid && code){
-    try{
-      myPid = JSON.parse(sessionStorage.getItem(msPidKey(code)) || 'null');
-      if (!myPid) myPid = JSON.parse(localStorage.getItem(msPidKey(code)) || 'null');
-    }catch(_){ myPid = null; }
-  }
-
   isHost = !!opts?.isHost;
 
-  // Setup realtime sync if available
-  setupRealtime(code);
+  myPid = opts?.myPid || null;
+  if (!myPid && code){
+    try{
+      myPid = JSON.parse(sessionStorage.getItem(msPidKey(code)) || 'null') ||
+              JSON.parse(localStorage.getItem(msPidKey(code)) || 'null');
+    }catch(_){}
+  }
 
-  // Cache session for display names, then render
-  getSession().then(s=>{
+  try{
+    const s = await getSession();
     window.__MS_SESSION = s?.user || null;
-    renderCore();
-  }).catch(()=>renderCore());
+  }catch(_){}
+
+  view = await fetchView(state.id);
+  renderCard();
+  renderActionBar();
+
+  // Future AI switch (docs):
+  // - When ai_summaries are populated, adjust the edge function's get_view to prefer AI rows.
+  // - This UI will automatically display AI blurbs from view.summaries_short without changes here.
 }
 
-export function update(opts){
+export async function update(opts){
   if (opts && 'state' in opts) state = opts.state;
-  if (opts && 'selectedSeat' in opts) selectedSeat = opts.selectedSeat;
   if (opts && 'isHost' in opts) isHost = !!opts.isHost;
-  renderCore();
+
+  view = await fetchView(state.id);
+  renderCard();
+  renderActionBar();
 }
 
 export function unmount(){
+  try{
+    const bar = document.getElementById('summaryActionBar');
+    if (bar && bar.parentElement) bar.parentElement.removeChild(bar);
+  }catch(_){}
   if (container) container.innerHTML = '';
-  try{ if (rtChannel) rtChannel.unsubscribe(); }catch(_){}
-  rtChannel = null;
   state = null;
   container = null;
-  selectedSeat = null;
   code = null;
-  myPid = null;
   isHost = false;
+  myPid = null;
+  view = null;
 }
