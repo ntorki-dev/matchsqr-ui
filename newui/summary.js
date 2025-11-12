@@ -101,7 +101,7 @@ function renderCard() {
   const body =
     '<div>' +
       '<p class="help" style="margin-top:6px;margin-bottom:0"><strong class="help">' + displayName(current, sessionUser) + '.</strong> ' + shortSummaryForSeat(current?.seat_index) + '</p>' +
-      (haveSession ? '' : '<p class="help" style="font-size: 70%;margin:10px 0 0 0"><br> </br>You can register within 30 minutes to receive your full report, or your answers will be deleted.</p>') +
+      (haveSession ? '' : '<p class="help" style="font-size: 50%;margin:10px 0 0 0"><br> </br>You can register within 30 minutes to receive your full report, or your answers will be deleted.</p>') +
     '</div>';
 
   const showNav = !!isHostFlag; // host only; backend is permissive in MVP
