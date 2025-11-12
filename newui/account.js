@@ -17,30 +17,52 @@ function parseHashQuery() {
   const o = {}; for (const [k, v] of p.entries()) o[k] = v; return o;
 }
 
-/** Attach guest session (Option B) after auth */
 async function attachGuestIfPending(sb) {
   try {
     const raw = localStorage.getItem('ms_attach_payload');
     if (!raw) return false;
-    const payload = JSON.parse(raw);
-    if (!payload?.game_id || !payload?.temp_player_id) return false;
 
-    const { data: session } = await sb.auth.getSession();
-    if (!session?.session?.user) return false;
+    const payload = JSON.parse(raw || 'null');
+    if (!payload || !payload.game_id || !payload.temp_player_id) return false;
 
-    const { error } = await sb.functions.invoke('convert_guest_to_user', {
-      body: { game_id: payload.game_id, temp_player_id: payload.temp_player_id },
-    });
-    if (error) {
-      console.warn('convert_guest_to_user error', error);
-      toast('We could not attach your previous session automatically.');
+    // Wait up to ~3s for a real session after login/signup
+    const start = Date.now();
+    let sessionUser = null;
+    do {
+      const { data } = await sb.auth.getSession();
+      sessionUser = data?.session?.user || null;
+      if (sessionUser) break;
+      await new Promise(r => setTimeout(r, 150));
+    } while (Date.now() - start < 3000);
+
+    if (!sessionUser) {
+      console.warn('attachGuestIfPending: no session yet, skip');
       return false;
     }
-    localStorage.removeItem('ms_attach_payload');
-    toast('Your previous session was attached to your account.');
+
+    // Basic UUID sanity check
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(String(payload.game_id)) || !UUID_RE.test(String(payload.temp_player_id))) {
+      console.warn('attachGuestIfPending: payload not UUIDs', payload);
+      return false;
+    }
+
+    const { error } = await sb.functions.invoke('convert_guest_to_user', { body: payload });
+    if (error) {
+      console.warn('convert_guest_to_user error', error);
+      // keep ms_attach_payload so user can retry from Account
+      return false;
+    }
+
+    // Success
+    try { localStorage.removeItem('ms_attach_payload'); } catch {}
     return true;
-  } catch (e) { console.warn('attachGuestIfPending failed', e); return false; }
+  } catch (e) {
+    console.warn('attachGuestIfPending failed', e);
+    return false;
+  }
 }
+
 
 function computeAge(isoDate){
   try{ const d=new Date(isoDate), t=new Date(); let a=t.getFullYear()-d.getFullYear(); const m=t.getMonth()-d.getMonth(); if(m<0||(m===0&&t.getDate()<d.getDate())) a--; return a; }catch{ return NaN; }
