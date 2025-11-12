@@ -332,7 +332,7 @@ body.is-game #answerWide {
 .room-main{
   display:grid;
   grid-template-columns: 1fr auto 1fr;
-  column-gap:12px;
+  column-gap:8px;
   align-items:flex-start;
   justify-items:center;
   width:100%;
