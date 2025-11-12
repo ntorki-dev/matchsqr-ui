@@ -108,7 +108,7 @@ function renderCard() {
   const showNav = !!isHostFlag; // host only; backend is permissive in MVP
   const nav = showNav
     ? ('<div style="display:inline-flex;justify-content:space-between;align-items:center;margin-top:auto;line-height:1;gap:6px;">' +
-         '<a id="msPrev" class="help" href="#"><img src="./assets/previous.png" width="16" height="16" alt="Previous"/> Previous</a>' +
+         '<a id="msPrev" class="help" href="#" style="display:inline-flex;align-items:center;line-height:1;gap:6px;"><img src="./assets/previous.png" width="16" height="16" alt="Previous"/> Previous</a>' +
          '<a id="msNext" class="help" href="#">Next <img src="./assets/forward.png" width="16" height="16" alt="Next"/></a>' +
        '</div>')
     : '';
