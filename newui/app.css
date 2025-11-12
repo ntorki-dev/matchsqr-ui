@@ -86,7 +86,7 @@ button.cta:disabled { opacity:.5; filter:grayscale(1); cursor:not-allowed; }
 .help{font-size:12px}
 
 /* Game room */
-.room-wrap{max-width:860px;margin: 24px auto 0;padding:0 16px
+.room-wrap{max-width:860px;margin: 16px auto 0;padding:0 16px
   background: var(--bg);
 }
 .timer{font-weight:800}
