@@ -176,16 +176,22 @@ function renderAction() {
       '</div>';
 
     $('#msRegister')?.addEventListener('click', () => {
-      try {
-        const mine = meFrom(null);
-        const pid = mine?.id || mine?.participant_id || myPid || null;
-        localStorage.setItem('ms_attach_payload', JSON.stringify({
-          game_id: gameId(),
-          temp_player_id: pid
-        }));
-      } catch(_){}
-      location.hash = '#/register';
-    });
+  try {
+    // Prefer the UUID captured in game.js state
+    const gid = state?.game_id || null;
+    // Participant id for the current user on this game, already computed earlier in your file
+    // If you have a helper like meFrom(sessionUser), use it to get the current participant
+    const mine = (typeof meFrom === 'function') ? meFrom(window.__MS_SESSION || null) : null;
+    const pid = (mine && (mine.id || mine.participant_id)) || myPid || null;
+
+    localStorage.setItem('ms_attach_payload', JSON.stringify({
+      game_id: gid,
+      temp_player_id: pid
+    }));
+  } catch(_) {}
+  location.hash = '#/register';
+});
+
   }
 }
 
