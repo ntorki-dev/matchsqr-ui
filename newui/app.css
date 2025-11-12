@@ -324,7 +324,7 @@ body.is-game #answerWide {
   margin-left: auto;
   margin-right: auto;
   width: 100%;
-  max-width: 476px; /* match #roomMain desktop width */
+  max-width: 240px; /* match #roomMain desktop width */
   box-sizing: border-box;
 }
 
