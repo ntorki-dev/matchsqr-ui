@@ -174,17 +174,23 @@ function renderAction() {
         '<button id="msRegister" class="btn">Register</button>' +
       '</div>';
 
-    $('#msRegister')?.addEventListener('click', () => {
-      try {
-        const mine = meFrom(null);
-        const pid = mine?.id || mine?.participant_id || myPid || null;
-        localStorage.setItem('ms_attach_payload', JSON.stringify({
-          game_id: gameId(),
-          temp_player_id: pid
-        }));
-      } catch(_){}
-      location.hash = '#/register';
-    });
+   $('#msRegister')?.addEventListener('click', () => {
+  try {
+    const mine = meFrom(null);
+    const pid = mine?.id || mine?.participant_id || myPid || null;
+    localStorage.setItem('ms_attach_payload', JSON.stringify({
+      game_id: gameId(),
+      temp_player_id: pid
+    }));
+  } catch(_){}
+  try {
+    // After login / registration, go back to the same game,
+    // which will render the summary again because it is ended.
+    sessionStorage.setItem('__redirect_after_login', `#/game/${code}`);
+  } catch(_){}
+  location.hash = '#/register';
+});
+
   }
 }
 
