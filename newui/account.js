@@ -473,7 +473,7 @@ async function renderProfile(user){
 
 async function renderRegister(){
   const app = document.getElementById('app');
-  const redirectAfter = '#/account';
+  const redirectAfter = sessionStorage.getItem('__redirect_after_login') || '#/account';
   app.innerHTML = `
     <div class="offline-banner"></div>
     <div class="container">
@@ -540,6 +540,7 @@ async function renderRegister(){
 
       await attachGuestIfPending(sb);
       location.hash = redirectAfter;
+      try { sessionStorage.removeItem('__redirect_after_login'); } catch {}
     }catch(e){ toast(e.message || 'Registration failed'); }
   };
 }
