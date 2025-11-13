@@ -25,12 +25,24 @@ async function attachGuestIfPending(sb) {
     const payload = JSON.parse(raw);
     if (!payload?.game_id || !payload?.temp_player_id) return false;
 
-    const { data: session } = await sb.auth.getSession();
-    if (!session?.session?.user) return false;
+    const { data: sessionData } = await sb.auth.getSession();
+const session = sessionData?.session;
+if (!session || !session.user || !session.access_token) {
+  return false;
+}
 
-    const { error } = await sb.functions.invoke('convert_guest_to_user', {
-      body: { game_id: payload.game_id, temp_player_id: payload.temp_player_id },
-    });
+const token = session.access_token;
+
+const { error } = await sb.functions.invoke('convert_guest_to_user', {
+  body: {
+    game_id: payload.game_id,
+    temp_player_id: payload.temp_player_id,
+  },
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+});
+
     if (error) {
       console.warn('convert_guest_to_user error', error);
       toast('We could not attach your previous session automatically.');
