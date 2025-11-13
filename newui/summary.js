@@ -59,7 +59,7 @@ function shortSummaryForSeat(seatIndex) {
   return t[i];
 }
 function gameId() {
-  const cand = state?.id || state?.game_id || state?.game?.id || code || null;
+  const cand = state?.id || state?.game_id || state?.game?.id || null;
   try { return resolveGameId(cand); } catch(_) { return null; }
 }
 
