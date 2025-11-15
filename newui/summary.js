@@ -13,6 +13,7 @@ let code = null;
 let isHostFlag = false;
 let myPid = null;
 let selectedSeat = null;
+let guestGraceMinutes = 30;
 
 // ----- helpers -----
 function seats() {
@@ -68,6 +69,9 @@ async function getSelectedSeat() {
   const gid = gameId();
   if (!gid) return null;
   const out = await jpost('summary', { action: 'get_selected', game_id: gid });
+  if (out && typeof out.guest_grace_minutes === 'number') {
+    guestGraceMinutes = out.guest_grace_minutes;
+  }
   return (out && typeof out.selected_seat === 'number') ? out.selected_seat : null;
 }
 async function setSelectedSeat(seat) {
@@ -100,8 +104,15 @@ function renderCard() {
   const title = '<h4 style="text-align:center;width:100%;">Game Summary</h4>';
   const body =
     '<div>' +
-      '<p class="help" style="margin-top:6px;margin-bottom:0"><strong class="help">' + displayName(current, sessionUser) + '.</strong> ' + shortSummaryForSeat(current?.seat_index) + '</p>' +
-      (haveSession ? '' : '<p class="help" style="font-size: 60%;margin:10px 0 0 0"><br> </br>You can register within 30 minutes to receive your full report, or your answers will be deleted.</p>') +
+      '<p class="help" style="margin-top:6px;margin-bottom:0"><strong class="help">' +
+        displayName(current, sessionUser) + '.</strong> ' +
+        shortSummaryForSeat(current?.seat_index) +
+      '</p>' +
+      (haveSession
+        ? ''
+        : '<p class="help" style="font-size: 60%;margin:10px 0 0 0"><br> </br>You can register within ' +
+          guestGraceMinutes +
+          ' minutes to receive your full report, or your answers will be deleted.</p>') +
     '</div>';
 
   const showNav = !!isHostFlag; // host only; backend is permissive in MVP
@@ -174,23 +185,22 @@ function renderAction() {
         '<button id="msRegister" class="btn">Register</button>' +
       '</div>';
 
-   $('#msRegister')?.addEventListener('click', () => {
-  try {
-    const mine = meFrom(null);
-    const pid = mine?.id || mine?.participant_id || myPid || null;
-    localStorage.setItem('ms_attach_payload', JSON.stringify({
-      game_id: gameId(),
-      temp_player_id: pid
-    }));
-  } catch(_){}
-  try {
-    // After login / registration, go back to the same game,
-    // which will render the summary again because it is ended.
-    sessionStorage.setItem('__redirect_after_login', `#/game/${code}`);
-  } catch(_){}
-  location.hash = '#/register';
-});
-
+    $('#msRegister')?.addEventListener('click', () => {
+      try {
+        const mine = meFrom(null);
+        const pid = mine?.id || mine?.participant_id || myPid || null;
+        localStorage.setItem('ms_attach_payload', JSON.stringify({
+          game_id: gameId(),
+          temp_player_id: pid
+        }));
+      } catch(_){}
+      try {
+        // After login / registration, go back to the same game,
+        // which will render the summary again because it is ended.
+        sessionStorage.setItem('__redirect_after_login', `#/game/${code}`);
+      } catch(_){}
+      location.hash = '#/register';
+    });
   }
 }
 
@@ -242,5 +252,10 @@ export function unmount() {
     container.style.flexDirection = '';
     container.innerHTML = '';
   }
-  state = null; container = null; code = null; myPid = null; selectedSeat = null; isHostFlag = false;
+  state = null;
+  container = null;
+  code = null;
+  myPid = null;
+  selectedSeat = null;
+  isHostFlag = false;
 }
