@@ -19,6 +19,13 @@ a.help:focus {
   text-decoration: none;
 }
 
+button:disabled,
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 
 /* Restore base card styling */
 .card{
