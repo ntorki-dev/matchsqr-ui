@@ -115,13 +115,20 @@ export const API = {
     const pid = JSON.parse(pidRaw);
     return jpost('participant_heartbeat', { code, gameId: gid, id: gid, participant_id: pid });
   },
-  submit_answer(p){
+    submit_answer(p){
     const code=resolveCode(null); const gid=resolveGameId(null);
     const pidRaw = code ? localStorage.getItem(msPidKey(code)) : null;
     const pid = pidRaw ? JSON.parse(pidRaw) : undefined;
     const body = { code, game_id: gid, id: gid, text: p?.text||p?.answer||'', participant_id: pid };
     return jpost('submit_answer', body);
+  },
+
+  // Entitlement or billing helper
+  entitlement_check(payload){
+    return jpost('entitlement_check', payload || {});
   }
+};
+
 };
 
 // ---------- Host inference shared ----------
