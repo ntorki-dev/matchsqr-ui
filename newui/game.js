@@ -382,27 +382,53 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
     
   },
 
-  mountHeaderActions(){
+    mountHeaderActions(){
     const s=this.state;
     const frag=document.createDocumentFragment();
+
+    // Timer element
     const timer=document.createElement('div');
     timer.className='ms-timer';
     timer.id='roomTimer';
     timer.textContent='--:--';
     frag.appendChild(timer);
+
     const role=getRole(this.code);
     const isHost=role==='host';
+
     if (s.status==='running' && isHost){
       const btnExtend=document.createElement('button');
       btnExtend.className='btn secondary ms-extend';
       btnExtend.id='extendBtnHeader';
       btnExtend.textContent='Extend';
-      btnExtend.onclick=()=>{ location.hash='#/billing'; };
-      frag.appendChild(btnExtend);
+
+      // Disabled by default, only enabled in last 10 minutes
+      const t = this.remainingSeconds();
+      const canExtendNow = (t != null && t <= 10 * 60);
+      btnExtend.disabled = !canExtendNow;
+      if (!canExtendNow){
+        btnExtend.title = 'Extend becomes available in the last 10 minutes of the game.';
       }
+
+      btnExtend.onclick = () => {
+        if (btnExtend.disabled) return;
+        const code = this.code || resolveGameId(null) || null;
+        const roomCode = this.code || (typeof this.code === 'string' ? this.code : null);
+        const c = roomCode || (code && String(code)) || null;
+        if (c){
+          location.hash = '#/billing?from=extend&code=' + encodeURIComponent(c);
+        }else{
+          location.hash = '#/billing?from=extend';
+        }
+      };
+
+      frag.appendChild(btnExtend);
+    }
+
     setHeaderActions(frag);
     this.renderTimer();
   },
+
 
 
   // --- ensure and size the wide answer mount under mic/keyboard ---
