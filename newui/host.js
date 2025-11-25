@@ -24,10 +24,10 @@ function renderFreeLimitInfo(remainingSeconds){
   const deadline = Date.now() + remainingSeconds * 1000;
 
   box.innerHTML = `
-    <div class="card host-limit">
-      <h3>Free game limit reached</h3>
+    <div class="help">
+      <strong>Free game limit reached</strong>
       <p>Your next free game will be available in:</p>
-      <div id="hostLimitCountdown" class="host-limit-countdown"></div>
+      <div id="hostLimitCountdown" style="font-weight: bold;"></div>
       <p>You can wait until the timer ends or start a new game now by buying an extra game or subscribing.</p>
       <button class="btn" id="hostGoBilling">Buy extra game or subscribe</button>
     </div>
@@ -104,7 +104,7 @@ export async function render(){
         <img src="./assets/crown.png" alt="crown"/>
         <span>Create Game</span>
       </button>
-      <br></br><br></br>
+      <br></br>
       <div id="hostFreeLimitInfo"></div>
     </div>
   `;
