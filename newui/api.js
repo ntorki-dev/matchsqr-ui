@@ -115,7 +115,7 @@ export const API = {
     const pid = JSON.parse(pidRaw);
     return jpost('participant_heartbeat', { code, gameId: gid, id: gid, participant_id: pid });
   },
-    submit_answer(p){
+      submit_answer(p){
     const code=resolveCode(null); const gid=resolveGameId(null);
     const pidRaw = code ? localStorage.getItem(msPidKey(code)) : null;
     const pid = pidRaw ? JSON.parse(pidRaw) : undefined;
@@ -126,13 +126,14 @@ export const API = {
   // Entitlement or billing helper
   entitlement_check(payload){
     return jpost('entitlement_check', payload || {});
-  }
+  },
 
-   // Extend the current game by 60 minutes (host only)
+  // Extend the current game by 60 minutes (host only)
   extend_game(payload){
     return jpost('extend_game', payload || {});
   }
 };
+
 
 // ---------- Host inference shared ----------
 export async function inferAndPersistHostRole(code, state){
