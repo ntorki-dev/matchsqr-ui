@@ -44,9 +44,7 @@ export async function render(){
   ensureDebugTray();
 
   // Extend current game (only makes sense when we came from an extend flow)
-  $('#extend').onclick = async () => {
-    // For now we only prepare the flow. Actual timer extend endpoint
-    // will be wired in a later step.
+   $('#extend').onclick = async () => {
     if (from !== 'extend'){
       toast('No active game to extend.');
       return;
@@ -57,9 +55,14 @@ export async function render(){
     }
 
     try{
-      // Placeholder: this will later call a dedicated extend endpoint.
-      // For now we just simulate success.
-      toast('Simulated: extension payment complete. (Timer wiring will be added next.)');
+      // Treat this as payment done now, extend this specific game
+      const out = await API.extend_game({ code });
+      const g = out?.game || out || {};
+      if (!g || !g.ends_at){
+        toast('Extension completed, but timer may not have updated.');
+      }else{
+        toast('Game extended by 60 minutes.');
+      }
       // Redirect back to game screen with the same code
       location.hash = '#/game/' + encodeURIComponent(code);
     }catch(e){
