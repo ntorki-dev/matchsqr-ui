@@ -127,6 +127,11 @@ export const API = {
   entitlement_check(payload){
     return jpost('entitlement_check', payload || {});
   }
+
+   // Extend the current game by 60 minutes (host only)
+  extend_game(payload){
+    return jpost('extend_game', payload || {});
+  }
 };
 
 // ---------- Host inference shared ----------
