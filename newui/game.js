@@ -208,7 +208,7 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
       }
     }
   },
-,
+  
   canAnswer(){
     const code=this.code; const pid = JSON.parse(localStorage.getItem(msPidKey(code))||'null');
     const cur = this.state.current_turn && this.state.current_turn.participant_id;
