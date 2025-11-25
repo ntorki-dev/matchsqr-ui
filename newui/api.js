@@ -129,8 +129,6 @@ export const API = {
   }
 };
 
-};
-
 // ---------- Host inference shared ----------
 export async function inferAndPersistHostRole(code, state){
   try{
