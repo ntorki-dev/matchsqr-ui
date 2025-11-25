@@ -3,6 +3,71 @@ import { API, getSession, msGidKey, msPidKey, msRoleKey, hostMarkerKey } from '.
 import { renderHeader, ensureDebugTray, $, toast, shareRoom, participantsListHTML } from './ui.js';
 import { inferAndPersistHostRole } from './api.js';
 
+let hostFreeLimitTimer = null;
+
+function clearFreeLimitInfo(){
+  if (hostFreeLimitTimer){
+    clearInterval(hostFreeLimitTimer);
+    hostFreeLimitTimer = null;
+  }
+  const box = document.getElementById('hostFreeLimitInfo');
+  if (box) box.innerHTML = '';
+}
+
+function renderFreeLimitInfo(remainingSeconds){
+  clearFreeLimitInfo();
+
+  const box = document.getElementById('hostFreeLimitInfo');
+  if (!box) return;
+  if (remainingSeconds <= 0) return;
+
+  const deadline = Date.now() + remainingSeconds * 1000;
+
+  box.innerHTML = `
+    <div class="card host-limit">
+      <h3>Free game limit reached</h3>
+      <p>Your next free game will be available in:</p>
+      <div id="hostLimitCountdown" class="host-limit-countdown"></div>
+      <p>You can wait until the timer ends or start a new game now by buying an extra game or subscribing.</p>
+      <button class="btn" id="hostGoBilling">Buy extra game or subscribe</button>
+    </div>
+  `;
+
+  function updateCountdown(){
+    const now = Date.now();
+    let diff = Math.max(0, Math.floor((deadline - now) / 1000));
+    const totalMinutes = Math.ceil(diff / 60);
+    const days = Math.floor(totalMinutes / (60 * 24));
+    const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+    const minutes = totalMinutes % 60;
+
+    const parts = [];
+    if (days > 0) parts.push(days + ' day' + (days > 1 ? 's' : ''));
+    if (hours > 0) parts.push(hours + ' hour' + (hours > 1 ? 's' : ''));
+    if (minutes > 0 || parts.length === 0) {
+      parts.push(minutes + ' minute' + (minutes !== 1 ? 's' : ''));
+    }
+
+    const target = document.getElementById('hostLimitCountdown');
+    if (target) target.textContent = parts.join(' ');
+
+    if (diff <= 0){
+      clearFreeLimitInfo();
+    }
+  }
+
+  updateCountdown();
+  hostFreeLimitTimer = setInterval(updateCountdown, 1000);
+
+  const btn = document.getElementById('hostGoBilling');
+  if (btn){
+    btn.onclick = () => {
+      location.hash = '#/billing?from=create';
+    };
+  }
+}
+
+
 function clearRememberedRoom(code){
   try{
     localStorage.removeItem('active_room');
@@ -39,9 +104,12 @@ export async function render(){
         <img src="./assets/crown.png" alt="crown"/>
         <span>Create Game</span>
       </button>
+      <br></br><br></br>
+      <div id="hostFreeLimitInfo"></div>
     </div>
   `;
   $('#createGame').onclick = btnCreateGame;
+    clearFreeLimitInfo();
 }
 
 
@@ -125,30 +193,23 @@ export async function render(){
         return;
       }
 
-      if (!check || check.can_proceed !== true){
-        const reason = check?.reason || '';
-        const remaining = typeof check?.remaining_seconds === 'number' ? check.remaining_seconds : null;
+          if (!check || check.can_proceed !== true){
+      const reason = check?.reason || '';
+      const remaining = typeof check?.remaining_seconds === 'number' ? check.remaining_seconds : null;
 
-        if (reason === 'free_window_not_elapsed' && remaining != null){
-          // Convert remaining seconds into a readable message
-          const totalMinutes = Math.ceil(remaining / 60);
-          const days = Math.floor(totalMinutes / (60 * 24));
-          const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-          const minutes = totalMinutes % 60;
-          const parts = [];
-          if (days > 0) parts.push(days + ' day' + (days > 1 ? 's' : ''));
-          if (hours > 0) parts.push(hours + ' hour' + (hours > 1 ? 's' : ''));
-          if (minutes > 0 || parts.length === 0) parts.push(minutes + ' minute' + (minutes !== 1 ? 's' : ''));
-
-          toast('You can start another free game in ' + parts.join(' ') + '.');
-        } else {
-          toast('You cannot create a new game right now.');
-        }
-
-        // Send host to billing to buy extra weekly game or subscribe
-        location.hash = '#/billing?from=create';
-        return;
+      if (reason === 'free_window_not_elapsed' && remaining != null){
+        // Show detailed message and live countdown in the Host screen
+        renderFreeLimitInfo(remaining);
+      } else {
+        // Fallback for any other reason
+        clearFreeLimitInfo();
+        toast('You cannot create a new game right now.');
       }
+
+      // Do not redirect automatically to billing, user can choose from the button in the UI
+      return;
+    }
+
 
       // 2) Entitlement allows game creation, proceed as before
       const data = await API.create_game();
