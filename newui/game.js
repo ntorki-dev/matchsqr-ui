@@ -470,17 +470,6 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
           location.hash = '#/billing?from=extend';
         }
       };
- = () => {
-        if (btnExtend.disabled) return;
-        const code = this.code || resolveGameId(null) || null;
-        const roomCode = this.code || (typeof this.code === 'string' ? this.code : null);
-        const c = roomCode || (code && String(code)) || null;
-        if (c){
-          location.hash = '#/billing?from=extend&code=' + encodeURIComponent(c);
-        }else{
-          location.hash = '#/billing?from=extend';
-        }
-      };
 
       frag.appendChild(btnExtend);
     }
