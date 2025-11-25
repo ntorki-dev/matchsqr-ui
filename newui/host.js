@@ -114,12 +114,48 @@ export async function render(){
 };
 }
 
-  async function btnCreateGame(){
+    async function btnCreateGame(){
     try{
+      // 1) Check entitlements before creating a game
+      let check;
+      try{
+        check = await API.entitlement_check({ action: 'allow_create_game' });
+      }catch(e){
+        toast(e?.message || 'Unable to check game entitlement');
+        return;
+      }
+
+      if (!check || check.can_proceed !== true){
+        const reason = check?.reason || '';
+        const remaining = typeof check?.remaining_seconds === 'number' ? check.remaining_seconds : null;
+
+        if (reason === 'free_window_not_elapsed' && remaining != null){
+          // Convert remaining seconds into a readable message
+          const totalMinutes = Math.ceil(remaining / 60);
+          const days = Math.floor(totalMinutes / (60 * 24));
+          const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+          const minutes = totalMinutes % 60;
+          const parts = [];
+          if (days > 0) parts.push(days + ' day' + (days > 1 ? 's' : ''));
+          if (hours > 0) parts.push(hours + ' hour' + (hours > 1 ? 's' : ''));
+          if (minutes > 0 || parts.length === 0) parts.push(minutes + ' minute' + (minutes !== 1 ? 's' : ''));
+
+          toast('You can start another free game in ' + parts.join(' ') + '.');
+        } else {
+          toast('You cannot create a new game right now.');
+        }
+
+        // Send host to billing to buy extra weekly game or subscribe
+        location.hash = '#/billing?from=create';
+        return;
+      }
+
+      // 2) Entitlement allows game creation, proceed as before
       const data = await API.create_game();
       const code = data?.code || data?.game_code;
       const gid  = data?.id || data?.game_id;
       if (!code || !gid){ toast('Created, but missing code/id'); return; }
+
       try{ sessionStorage.setItem(hostMarkerKey(code), '1'); }catch{}
       // Persist host participant_id when provided by API, to enable answering on host turn
       try{
@@ -127,7 +163,8 @@ export async function render(){
         if (pid) localStorage.setItem(msPidKey(code), JSON.stringify(pid));
       }catch{}
       await renderExisting(code);
-     }catch(e){
+
+    }catch(e){
       if (e && e.status === 409){
         try{
           const c = e?.data?.code || e?.data?.game_code || e?.data?.room_code || e?.data?.active_code || (e?.data?.data && (e.data.data.code||e.data.data.game_code));
@@ -140,6 +177,7 @@ export async function render(){
       renderCreateUI();
     }
   }
+
 
   // Prefill from remembered room, but only show it if server confirms it's lobby or running
   const arRaw = localStorage.getItem('active_room') || sessionStorage.getItem('active_room');
