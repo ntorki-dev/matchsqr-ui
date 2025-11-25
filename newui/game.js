@@ -185,11 +185,30 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
   },
   remainingSeconds(){ if (!this.state.endsAt) return null; const diff=Math.floor((new Date(this.state.endsAt).getTime()-Date.now())/1000); return Math.max(0,diff); },
   renderTimer(){
-    const t=this.remainingSeconds(), el=document.getElementById('roomTimer'); if(!el) return;
-    if (t==null) { el.textContent='--:--'; return; }
-    const m=String(Math.floor(t/60)).padStart(2,'0'), s=String(t%60).padStart(2,'0');
-    el.textContent=m+':'+s;
+    const t=this.remainingSeconds();
+    const el=document.getElementById('roomTimer');
+    if (!el) return;
+
+    if (t==null){
+      el.textContent='--:--';
+    }else{
+      const m=String(Math.floor(t/60)).padStart(2,'0');
+      const s=String(t%60).padStart(2,'0');
+      el.textContent=m+':'+s;
+    }
+
+    // Keep Extend button in sync with remaining time
+    const btnExtend = document.getElementById('extendBtnHeader');
+    if (btnExtend){
+      if (t == null){
+        btnExtend.disabled = true;
+      }else{
+        // Enable only when 10 minutes or less remain
+        btnExtend.disabled = t > 10 * 60;
+      }
+    }
   },
+,
   canAnswer(){
     const code=this.code; const pid = JSON.parse(localStorage.getItem(msPidKey(code))||'null');
     const cur = this.state.current_turn && this.state.current_turn.participant_id;
