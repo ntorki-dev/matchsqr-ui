@@ -429,7 +429,48 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
         btnExtend.title = 'Extend becomes available in the last 10 minutes of the game.';
       }
 
-      btnExtend.onclick = () => {
+            btnExtend.onclick = async () => {
+        if (btnExtend.disabled) return;
+
+        // First check entitlement for extend
+        let check;
+        try{
+          check = await API.entitlement_check({ action: 'extend_game' });
+        }catch(e){
+          toast(e?.message || 'Unable to check extension entitlement');
+          return;
+        }
+
+        if (check && check.can_proceed === true && check.mode === 'subscribed'){
+          // Subscribed host: extend directly
+          try{
+            const code = this.code || null;
+            if (!code){
+              toast('Missing game code to extend');
+              return;
+            }
+            const out = await API.extend_game({ code });
+            const g = out?.game || out || {};
+            if (g && (g.ends_at || g.endsAt)){
+              this.state.endsAt = g.ends_at || g.endsAt;
+            }
+            toast('Game extended by 60 minutes.');
+            await this.refresh();
+          }catch(e){
+            toast(e?.message || 'Failed to extend game');
+          }
+          return;
+        }
+
+        // Not subscribed, or cannot proceed: go to billing for paid extend
+        const roomCode = this.code || (typeof this.code === 'string' ? this.code : null);
+        if (roomCode){
+          location.hash = '#/billing?from=extend&code=' + encodeURIComponent(roomCode);
+        }else{
+          location.hash = '#/billing?from=extend';
+        }
+      };
+ = () => {
         if (btnExtend.disabled) return;
         const code = this.code || resolveGameId(null) || null;
         const roomCode = this.code || (typeof this.code === 'string' ? this.code : null);
