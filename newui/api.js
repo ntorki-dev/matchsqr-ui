@@ -5,6 +5,57 @@
 const CONFIG = window.CONFIG || {};
 export const FUNCTIONS_BASE = (CONFIG.FUNCTIONS_BASE || '').replace(/\/+$/,'');
 
+// ---------- Global loader for user-triggered actions ----------
+let __msActionLoaderCount = 0;
+
+function withActionLoader(label, fn) {
+  const show = window.msShowLoader;
+  const hide = window.msHideLoader;
+
+  // If loader is not wired, just run the action
+  if (typeof show !== 'function' || typeof hide !== 'function') {
+    return fn();
+  }
+
+  __msActionLoaderCount++;
+  try { show(); } catch {}
+
+  const finalize = () => {
+    try {
+      __msActionLoaderCount = Math.max(0, __msActionLoaderCount - 1);
+      if (__msActionLoaderCount === 0) {
+        hide();
+      }
+    } catch {}
+  };
+
+  let result;
+  try {
+    result = fn();
+  } catch (err) {
+    finalize();
+    throw err;
+  }
+
+  // Handle both sync and async results
+  if (!result || typeof result.then !== 'function') {
+    finalize();
+    return result;
+  }
+
+  return result.then(
+    value => {
+      finalize();
+      return value;
+    },
+    err => {
+      finalize();
+      throw err;
+    }
+  );
+}
+
+
 // ---------- Supabase client and session ----------
 export async function ensureClient(){
   if (window.__MS_CLIENT && window.__MS_CLIENT.auth && window.__MS_CLIENT.functions) return window.__MS_CLIENT;
@@ -74,39 +125,58 @@ export async function jget(pathWithQuery){
 
 // ---------- API wrappers ----------
 export const API = {
-  create_game(){ return jpost('create_game', null); },
+    create_game(){
+    return withActionLoader('create_game', () => jpost('create_game', null));
+  },
   get_state(p){ const code=resolveCode(p?.code); if(!code) throw new Error('Missing code'); return jget(`get_state?code=${encodeURIComponent(code)}`); },
-  join_game_guest(p){
-    const code=resolveCode(p?.code)||p?.code; if(!code) throw new Error('Missing code');
+    join_game_guest(p){
+    const code = resolveCode(p?.code) || p?.code;
+    if (!code) throw new Error('Missing code');
     const nickname = p?.nickname || p?.name || '';
     const existingPid = localStorage.getItem(msPidKey(code));
     const body = existingPid ? { code, participant_id: JSON.parse(existingPid) } : { code };
     if (nickname){ body.name = nickname; body.nickname = nickname; }
-    return jpost('join_game_guest', body).then(data=>{
-      const gid = data?.game_id || null;
-      const pid = data?.participant_id || null;
-      if (gid) try{ localStorage.setItem(msGidKey(code), JSON.stringify(gid)); }catch{}
-      if (pid) try{ localStorage.setItem(msPidKey(code), JSON.stringify(pid)); }catch{}
-      saveActiveRoom({ code, id: gid, participant_id: pid });
-      if (data?.is_host) setRole(code,'host'); else setRole(code,'guest');
-      return data;
-    });
+
+    return withActionLoader('join_game_guest', () =>
+      jpost('join_game_guest', body).then(data => {
+        const gid = data?.game_id || null;
+        const pid = data?.participant_id || null;
+        if (gid) try{ localStorage.setItem(msGidKey(code), JSON.stringify(gid)); }catch{}
+        if (pid) try{ localStorage.setItem(msPidKey(code), JSON.stringify(pid)); }catch{}
+        saveActiveRoom({ code, id: gid, participant_id: pid });
+        if (data?.is_host) setRole(code,'host'); else setRole(code,'guest');
+        return data;
+      })
+    );
   },
-  start_game(){
-    const code=resolveCode(null); const gid=resolveGameId(null);
-    if(!code && !gid) throw new Error('Missing game id/code');
-    return jpost('start_game', { code, gameId: gid, id: gid });
+
+    start_game(){
+    const code = resolveCode(null);
+    const gid  = resolveGameId(null);
+    if (!code && !gid) throw new Error('Missing game id/code');
+    return withActionLoader('start_game', () =>
+      jpost('start_game', { code, gameId: gid, id: gid })
+    );
   },
-  next_question(){
-    const code=resolveCode(null); const gid=resolveGameId(null);
-    if(!code && !gid) throw new Error('Missing game id/code');
-    return jpost('next_question', { code, gameId: gid, id: gid });
+
+    next_question(){
+    const code = resolveCode(null);
+    const gid  = resolveGameId(null);
+    if (!code && !gid) throw new Error('Missing game id/code');
+    return withActionLoader('next_question', () =>
+      jpost('next_question', { code, gameId: gid, id: gid })
+    );
   },
-  end_game_and_analyze(){
-    const code=resolveCode(null); const gid=resolveGameId(null);
-    if(!code && !gid) throw new Error('Missing game id/code');
-    return jpost('end_game_and_analyze', { code, gameId: gid, id: gid });
+
+    end_game_and_analyze(){
+    const code = resolveCode(null);
+    const gid  = resolveGameId(null);
+    if (!code && !gid) throw new Error('Missing game id/code');
+    return withActionLoader('end_game_and_analyze', () =>
+      jpost('end_game_and_analyze', { code, gameId: gid, id: gid })
+    );
   },
+
   heartbeat(){ const gid=resolveGameId(null); const code=resolveCode(null); if(!gid && !code) return Promise.resolve({skipped:true}); return jpost('heartbeat', { code, gameId: gid, id: gid }); },
   participant_heartbeat(){
     const code=resolveCode(null); const gid=resolveGameId(null);
@@ -115,22 +185,32 @@ export const API = {
     const pid = JSON.parse(pidRaw);
     return jpost('participant_heartbeat', { code, gameId: gid, id: gid, participant_id: pid });
   },
-      submit_answer(p){
-    const code=resolveCode(null); const gid=resolveGameId(null);
+           submit_answer(p){
+    const code   = resolveCode(null);
+    const gid    = resolveGameId(null);
     const pidRaw = code ? localStorage.getItem(msPidKey(code)) : null;
-    const pid = pidRaw ? JSON.parse(pidRaw) : undefined;
-    const body = { code, game_id: gid, id: gid, text: p?.text||p?.answer||'', participant_id: pid };
-    return jpost('submit_answer', body);
+    const pid    = pidRaw ? JSON.parse(pidRaw) : undefined;
+    const body   = { code, game_id: gid, id: gid, text: p?.text || p?.answer || '', participant_id: pid };
+
+    return withActionLoader('submit_answer', () =>
+      jpost('submit_answer', body)
+    );
   },
+
 
   // Entitlement or billing helper
-  entitlement_check(payload){
-    return jpost('entitlement_check', payload || {});
+   entitlement_check(payload){
+    return withActionLoader('entitlement_check', () =>
+      jpost('entitlement_check', payload || {})
+    );
   },
 
+
   // Extend the current game by 60 minutes (host only)
-  extend_game(payload){
-    return jpost('extend_game', payload || {});
+    extend_game(payload){
+    return withActionLoader('extend_game', () =>
+      jpost('extend_game', payload || {})
+    );
   }
 };
 
