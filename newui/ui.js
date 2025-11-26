@@ -47,6 +47,27 @@ export const $ = (sel, root=document) => root.querySelector(sel);
 export function toast(msg, ms=5000){
   const t=document.createElement('div'); t.className='toast'; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), ms);
 }
+export function showLoader() {
+  try {
+    const el = document.getElementById('msGlobalLoader');
+    if (!el) return;
+    el.classList.remove('hidden');
+  } catch {}
+}
+
+export function hideLoader() {
+  try {
+    const el = document.getElementById('msGlobalLoader');
+    if (!el) return;
+    el.classList.add('hidden');
+  } catch {}
+}
+
+// Expose on window so api.js can use without importing ui.js everywhere
+try {
+  window.msShowLoader = showLoader;
+  window.msHideLoader = hideLoader;
+} catch {}
 
 export function debug(obj){
   try{
