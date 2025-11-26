@@ -12,6 +12,10 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 </head>
 <body>
+    <!-- Global loading overlay -->
+  <div id="msGlobalLoader" class="ms-global-loader hidden" aria-hidden="true">
+    <div class="ms-spinner" aria-label="Loading" role="status"></div>
+  </div>
   <div id="app"></div>
   <script>
     // Diagnostics flags (not loaded from URL; off by default)
