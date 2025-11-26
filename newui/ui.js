@@ -44,7 +44,7 @@ function __msSetCachedUser(user){
 
 export const $ = (sel, root=document) => root.querySelector(sel);
 
-export function toast(msg, ms=2200){
+export function toast(msg, ms=5000){
   const t=document.createElement('div'); t.className='toast'; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), ms);
 }
 
