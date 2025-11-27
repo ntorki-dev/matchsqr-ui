@@ -252,70 +252,60 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
     }catch{}
   },
   
-  // --- seating helpers ---
+  
+    // --- seating helpers ---
   seatOrder(hostId, ppl){
-    const all = Array.isArray(ppl)? [...ppl] : [];
-    const pidOf = p => p?.participant_id || p?.id || null;
-    const uidOf = p => p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || null;
-    const keyOf = p => String(pidOf(p) || uidOf(p) || '');
+    const all = Array.isArray(ppl) ? [...ppl] : [];
 
-    if (!this.ui) this.ui = {};
-    if (!this.ui.seatMap) this.ui.seatMap = {};
-    if (typeof this.ui.nextSeat !== 'number') this.ui.nextSeat = 1;
-
-    const presentKeys = new Set(all.map(keyOf).filter(k=>k));
-
-    let host = null;
-    if (hostId){
-      host = all.find(p=> String(uidOf(p))===String(hostId) || p?.is_host===true || p?.role==='host') || null;
-    }
-    if (!host && all.length>0){
-      host = all.find(p=> p?.is_host===true || p?.role==='host') || all[0];
-    }
-
-    if (host){
-      const hk = keyOf(host) || 'h';
-      this.ui.seatMap[hk] = 0;
-    }
-
-    const occupied = new Set(
-      Object.entries(this.ui.seatMap)
-        .filter(([k,v])=> presentKeys.has(k) && typeof v==='number' && v>=1 && v<=7)
-        .map(([k,v])=> v)
-    );
-
-    const guests = all.filter(p=> p!==host);
-    const lowestFree = () => {
-      for (let s=1; s<=7; s++){
-        if (!occupied.has(s)) return s;
-      }
-      return null;
-    };
-
-    for (const g of guests){
-      const k = keyOf(g);
-      if (!k) continue;
-      let seat = this.ui.seatMap[k];
-      if (seat == null){
-        const free = lowestFree();
-        if (free!=null){
-          this.ui.seatMap[k] = free;
-          occupied.add(free);
-        }
-      }
-    }
-
+    // Primary path - use backend seat_index
     const entries = [];
     for (const p of all){
-      const k = keyOf(p);
-      const seat = this.ui.seatMap[k];
-      if (typeof seat === 'number' && seat <= 7){
-        entries.push({ idx: seat, p });
+      let idx = typeof p.seat_index === 'number' ? p.seat_index : null;
+
+      // Fallback for older data without seat_index
+      if (idx == null){
+        const isHost = p?.role === 'host' || p?.is_host === true;
+        if (isHost) idx = 0;
+      }
+
+      if (typeof idx === 'number' && idx >= 0 && idx <= 7){
+        entries.push({ idx, p });
       }
     }
-    entries.sort((a,b)=>a.idx-b.idx);
+
+    // If still nothing has a seat_index, fall back to a deterministic local order
+    if (!entries.length && all.length){
+      const uidOf = p => p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || null;
+      let host = null;
+      if (hostId){
+        host = all.find(p =>
+          String(uidOf(p) || '') === String(hostId || '') ||
+          p?.is_host === true ||
+          p?.role === 'host'
+        ) || null;
+      }
+      if (!host){
+        host = all.find(p => p?.is_host === true || p?.role === 'host') || all[0];
+      }
+
+      // Host at seat 0
+      entries.push({ idx: 0, p: host });
+
+      // Other players in stable order by id into seats 1..7
+      const others = all.filter(p => p !== host);
+      let seat = 1;
+      others.sort((a,b) => String(a.id || a.participant_id || '').localeCompare(String(b.id || b.participant_id || '')));
+      for (const p of others){
+        if (seat > 7) break;
+        entries.push({ idx: seat, p });
+        seat++;
+      }
+    }
+
+    entries.sort((a,b) => a.idx - b.idx);
     return entries;
   },
+
   renderSeats(){
 
     const s=this.state;
