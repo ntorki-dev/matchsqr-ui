@@ -744,6 +744,22 @@ render(forceFull){
 
 export async function render(ctx){
   const code = ctx?.code || null;
+   // If we are switching to a different game code, reset in-memory state
+  if (Game.code && Game.code !== code) {
+    Game.state = {
+      status: 'lobby',
+      endsAt: null,
+      participants: [],
+      question: null,
+      current_turn: null,
+      host_user_id: null
+    };
+    if (Game.ui) {
+      Game.ui.lastSig = '';
+      Game.ui.ansVisible = false;
+      Game.ui.draft = '';
+    }
+  }
   const app=document.getElementById('app');
   app.innerHTML=
     '<div class="offline-banner">You are offline. Trying to reconnect…</div>'+
