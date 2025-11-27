@@ -744,7 +744,41 @@ render(forceFull){
 
 export async function render(ctx){
   const code = ctx?.code || null;
-   // If we are switching to a different game code, reset in-memory state
+
+  // Guard: only allow players (host or participant) to access the game screen
+  if (!code) {
+    // No code at all, send to generic join
+    location.hash = '#/join';
+    return;
+  }
+
+  let isPlayer = false;
+
+  // Check if we have a participant id stored for this game (guest)
+  try {
+    const pidRaw = localStorage.getItem(msPidKey(code));
+    if (pidRaw) {
+      isPlayer = true;
+    }
+  } catch {}
+
+  // Check if this browser is marked as host for this game
+  if (!isPlayer) {
+    try {
+      const role = getRole(code);
+      if (role === 'host') {
+        isPlayer = true;
+      }
+    } catch {}
+  }
+
+  if (!isPlayer) {
+    // Not a known player in this browser, redirect to join for this code
+    location.hash = '#/join?gameCode=' + encodeURIComponent(code);
+    return;
+  }
+
+  // If we are switching to a different game code, reset in-memory state
   if (Game.code && Game.code !== code) {
     Game.state = {
       status: 'lobby',
@@ -760,11 +794,12 @@ export async function render(ctx){
       Game.ui.draft = '';
     }
   }
+
   const app=document.getElementById('app');
   app.innerHTML=
     '<div class="offline-banner">You are offline. Trying to reconnect…</div>'+
     '<div class="top-actions-row" id="topActionsRow"></div>'+
-      '<div class="room-wrap">'+
+    '<div class="room-wrap">'+
       '<div class="controls-row" id="controlsRow"></div>'+
       '<div id="roomMain">'+
         '<div id="sideLeft"></div>'+
@@ -778,5 +813,5 @@ export async function render(ctx){
   try{ document.body.classList.add('is-game'); }catch{}
   const _ms_onHash = () => { if (!location.hash.startsWith('#/game/')) { try{ document.body.classList.remove('is-game'); }catch{} window.removeEventListener('hashchange', _ms_onHash); } };
   window.addEventListener('hashchange', _ms_onHash);
-if (code){ Game.mount(code); }
+  if (code){ Game.mount(code); }
 }
