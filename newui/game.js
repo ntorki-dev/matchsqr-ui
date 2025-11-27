@@ -773,8 +773,8 @@ export async function render(ctx){
   }
 
   if (!isPlayer) {
-    // Not a known player in this browser, redirect to join for this code
-    location.hash = '#/join?gameCode=' + encodeURIComponent(code);
+    // Not a known player in this browser, redirect to homepage
+    location.hash = '#/';
     return;
   }
 
