@@ -564,37 +564,39 @@ render(forceFull){
       return;
     }
 
-        if (s.status==='running') {
-      try{
-        const tar=document.getElementById('topActionsRow');
-        if (tar){
-          const role=getRole(this.code);
-          const isHost=(role==='host');
+            if (s.status==='running') {
+      if (forceFull) {
+        try{
+          const tar=document.getElementById('topActionsRow');
+          if (tar){
+            const role=getRole(this.code);
+            const isHost=(role==='host');
 
-          if (isHost){
-            // Delegate top bar UI to LevelMenu
-            LevelMenu.mountTopBar({
-              container: tar,
-              mode: this.ui.levelMode || 'auto',
-              level: this.ui.levelSelection || 'simple',
-              onChange: ({ mode, level }) => {
-                this.ui.levelMode = mode;
-                this.ui.levelSelection = level;
-              },
-              onEndGame: async () => {
-                try{
-                  await API.end_game_and_analyze();
-                  await this.refresh();
-                }catch(e){
-                  toast(e.message || 'End failed');
+            if (isHost){
+              LevelMenu.mountTopBar({
+                container: tar,
+                mode: this.ui.levelMode || 'auto',
+                level: this.ui.levelSelection || 'simple',
+                onChange: ({ mode, level }) => {
+                  this.ui.levelMode = mode;
+                  this.ui.levelSelection = level;
+                },
+                onEndGame: async () => {
+                  try{
+                    await API.end_game_and_analyze();
+                    await this.refresh();
+                  }catch(e){
+                    toast(e.message || 'End failed');
+                  }
                 }
-              }
-            });
-          }else{
-            tar.innerHTML = '';
+              });
+            }else{
+              tar.innerHTML = '';
+            }
           }
-        }
-      }catch(_){}
+        }catch(_){}
+      }
+
       this.mountHeaderActions();
 
       if (forceFull){
