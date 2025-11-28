@@ -60,9 +60,18 @@ const Game = {
 
   code:null, poll:null, tick:null, hbH:null, hbG:null,
   state:{ status:'lobby', endsAt:null, participants:[], question:null, current_turn:null, host_user_id:null },
-  ui:{ lastSig:'', ansVisible:false, draft:'' },
+  ui:{
+    lastSig:'',
+    ansVisible:false,
+    draft:'',
+    // level selection UI state
+    levelMode:'auto',          // 'auto' or 'manual'
+    levelSelection:'simple',   // 'simple' | 'medium' | 'deep'
+    sttActive:false,
+    inputTool:null
+  },
 
-  // --- Heartbeat diagnostics state (added) ---
+  // --- Heartbeat diagnostics state (added earlier) ---
   __hb:{ host:{fails:0,lastErr:null,lastStatus:null,lastAt:null}, guest:{fails:0,lastErr:null,lastStatus:null,lastAt:null}, logs:0, maxLogs:10 },
 
   async mount(code){
@@ -124,6 +133,7 @@ const Game = {
     if (this.hbG) { clearInterval(this.hbG); this.hbG=null; }
     const role = getRole(code);
 
+    // Host heartbeat every 20s with resilience
     if (role === 'host' && gid){
       const beatHost = async () => {
         try { await API.heartbeat(); this.__hb.host.fails = 0; }
@@ -141,6 +151,7 @@ const Game = {
         }
       } catch {}
     } else {
+      // Guest heartbeat every 25s with resilience
       const pid = JSON.parse(localStorage.getItem(msPidKey(code))||'null');
       if (pid && gid){
         const beatGuest = async () => {
@@ -153,47 +164,30 @@ const Game = {
     }
   },
 
-  stop(){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  if(this.poll) clearInterval(this.poll); if(this.tick) clearInterval(this.tick); if(this.hbH) clearInterval(this.hbH); if(this.hbG) clearInterval(this.hbG); },
+  stop(){
+    try{
+      const tar=document.getElementById('topActionsRow');
+      if (tar) tar.innerHTML='';
+    }catch(_){}
+    if(this.poll) clearInterval(this.poll);
+    if(this.tick) clearInterval(this.tick);
+    if(this.hbH) clearInterval(this.hbH);
+    if(this.hbG) clearInterval(this.hbG);
+  },
 
   async refresh(){
     try{
       const out=await API.get_state({ code:this.code });
       await inferAndPersistHostRole(this.code, out);
-
       const status = out?.status || out?.phase || 'lobby';
       const endsAt = out?.ends_at || out?.endsAt || null;
       const participants = Array.isArray(out?.participants)? out.participants : (Array.isArray(out?.players)? out.players : []);
       const question = out?.question || null;
       const current_turn = out?.current_turn || null;
       const host_user_id = out?.host_user_id || out?.hostId || null;
-
-      // New: level and auto_switch from backend (backward compatible if missing)
-      const level = out?.level || 'simple';
-      const auto_switch = !!out?.auto_switch;
-
-      const sig = [
-        status,
-        endsAt,
-        question?.id||'',
-        current_turn?.participant_id||'',
-        participants.length,
-        host_user_id||'',
-        level,
-        auto_switch ? 'auto' : 'manual'
-      ].join('|');
-
+      const sig = [status, endsAt, question?.id||'', current_turn?.participant_id||'', participants.length, host_user_id||''].join('|');
       const forceFull = (sig !== this.ui.lastSig);
-
-      this.state = { status, endsAt, participants, question, current_turn, host_user_id, level, auto_switch };
-
-      // Initialize level UI once from backend, then keep host changes in memory
-      if (typeof this.ui.levelMode === 'undefined'){
-        this.ui.levelMode = auto_switch ? 'auto' : 'manual';
-      }
-      if (typeof this.ui.levelSelection === 'undefined'){
-        this.ui.levelSelection = level;
-      }
-
+      this.state = { status, endsAt, participants, question, current_turn, host_user_id };
       await this.backfillPidIfMissing();
       this.render(forceFull);
       this.ui.lastSig = sig;
@@ -201,7 +195,12 @@ const Game = {
     }catch(e){}
   },
 
-  remainingSeconds(){ if (!this.state.endsAt) return null; const diff=Math.floor((new Date(this.state.endsAt).getTime()-Date.now())/1000); return Math.max(0,diff); },
+  remainingSeconds(){
+    if (!this.state.endsAt) return null;
+    const diff=Math.floor((new Date(this.state.endsAt).getTime()-Date.now())/1000);
+    return Math.max(0,diff);
+  },
+
   renderTimer(){
     const t=this.remainingSeconds();
     const el=document.getElementById('roomTimer');
@@ -230,6 +229,7 @@ const Game = {
     const cur = this.state.current_turn && this.state.current_turn.participant_id;
     return pid && cur && String(pid)===String(cur);
   },
+
   async backfillPidIfMissing(){
     const code=this.code;
     let pidRaw = localStorage.getItem(msPidKey(code));
@@ -267,7 +267,6 @@ const Game = {
       }
     }catch{}
   },
-  
   
   // --- seating helpers ---
   seatOrder(hostId, ppl){
@@ -399,116 +398,6 @@ const Game = {
     
   },
 
-  // New: host-only level dropdown next to "End game & analyze"
-  renderLevelMenu(hostBar){
-    try{
-      if (!hostBar) return;
-      const role = getRole(this.code);
-      const isHost = (role === 'host');
-      if (!isHost) return;
-
-      const endBtn = hostBar.querySelector('#endAnalyzeTop');
-      if (!endBtn) return;
-
-      let menuWrap = hostBar.querySelector('.level-menu');
-      if (!menuWrap){
-        menuWrap = document.createElement('div');
-        menuWrap.className = 'level-menu';
-        hostBar.insertBefore(menuWrap, endBtn);
-      } else {
-        menuWrap.innerHTML = '';
-      }
-
-      const mode = this.ui.levelMode || (this.state.auto_switch ? 'auto' : 'manual');
-      const selLevel = this.ui.levelSelection || this.state.level || 'simple';
-
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'level-menu-button';
-      btn.setAttribute('aria-haspopup','listbox');
-
-      const labelSpan = document.createElement('span');
-      labelSpan.className = 'level-menu-label';
-      labelSpan.textContent = 'Level:';
-
-      const valueSpan = document.createElement('span');
-      valueSpan.className = 'level-menu-value';
-
-      const dot = document.createElement('span');
-      dot.className = 'level-menu-dot';
-
-      const arrow = document.createElement('span');
-      arrow.className = 'level-menu-arrow';
-
-      let text = 'Auto';
-      let dotClass = 'dot-auto';
-
-      if (mode === 'manual'){
-        if (selLevel === 'simple'){ text = 'Simple: Icebreaker'; dotClass = 'dot-simple'; }
-        else if (selLevel === 'medium'){ text = 'Medium: Opening up'; dotClass = 'dot-medium'; }
-        else if (selLevel === 'deep'){ text = 'Deep: Honest & real'; dotClass = 'dot-deep'; }
-      }
-
-      dot.classList.add(dotClass);
-      valueSpan.textContent = text;
-
-      btn.appendChild(labelSpan);
-      btn.appendChild(dot);
-      btn.appendChild(valueSpan);
-      btn.appendChild(arrow);
-
-      const list = document.createElement('div');
-      list.className = 'level-menu-list';
-      list.setAttribute('role','listbox');
-      list.hidden = true;
-
-      const options = [
-        { mode:'auto',   level:null,      text:'Auto',                   dotClass:'dot-auto'   },
-        { mode:'manual', level:'simple', text:'Simple: Icebreaker',     dotClass:'dot-simple' },
-        { mode:'manual', level:'medium', text:'Medium: Opening up',     dotClass:'dot-medium' },
-        { mode:'manual', level:'deep',   text:'Deep: Honest & real',    dotClass:'dot-deep'   }
-      ];
-
-      options.forEach(opt=>{
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'level-menu-item';
-        item.setAttribute('role','option');
-        item.dataset.mode = opt.mode;
-        if (opt.level) item.dataset.level = opt.level;
-
-        const d = document.createElement('span');
-        d.className = 'level-menu-dot ' + opt.dotClass;
-
-        const t = document.createElement('span');
-        t.className = 'level-menu-item-text';
-        t.textContent = opt.text;
-
-        item.appendChild(d);
-        item.appendChild(t);
-
-        item.onclick = ()=>{
-          this.ui.levelMode = opt.mode;
-          this.ui.levelSelection = opt.level || this.state.level || 'simple';
-          list.hidden = true;
-          btn.classList.remove('open');
-          this.renderLevelMenu(hostBar);
-        };
-
-        list.appendChild(item);
-      });
-
-      btn.onclick = ()=>{
-        const isOpen = !list.hidden;
-        list.hidden = isOpen;
-        btn.classList.toggle('open', !isOpen);
-      };
-
-      menuWrap.appendChild(btn);
-      menuWrap.appendChild(list);
-    }catch(_e){}
-  },
-
   mountHeaderActions(){
     const s=this.state;
     const frag=document.createDocumentFragment();
@@ -611,22 +500,37 @@ const Game = {
     }catch{}
   },
 
+  // --- main render ---
   render(forceFull){
     const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
-    if (main && main.classList) {
+
+    if (main && main.classList){
       main.classList.remove('card--idle','card--running');
       const st = s.status || 'lobby';
-      if (st === 'running') {
-        main.classList.add('card--running');
-      } else {
-        main.classList.add('card--idle');
-      }
+      if (st === 'running') main.classList.add('card--running');
+      else main.classList.add('card--idle');
     }
 
     if (!main || !controls) return;
-    if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; try{ const aw=document.getElementById('answerWide'); if(aw){ aw.innerHTML=''; } this._ensureAnswerWide(); }catch{} }
-    /* removed legacy in-card timer */
-    if (s.status==='lobby'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
+    if (forceFull){
+      main.innerHTML=''; controls.innerHTML='';
+      if(answer) answer.innerHTML='';
+      if(tools) tools.innerHTML='';
+      if(side) side.innerHTML='';
+      try{
+        const aw=document.getElementById('answerWide');
+        if(aw){ aw.innerHTML=''; }
+        this._ensureAnswerWide();
+      }catch{}
+    }
+
+    if (s.status==='lobby'){
+      try{
+        const tar=document.getElementById('topActionsRow');
+        if (tar) tar.innerHTML='';
+      }catch(_){}
+      clearHeaderActions();
+
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.className='lobby-wrap';
         this.renderSeats();
@@ -656,37 +560,120 @@ const Game = {
         main.appendChild(wrap);
       }else{
         this.renderSeats();
-        const startBtn=$('#startGame'); if (startBtn){ const enough = Array.isArray(s.participants) && s.participants.length>=2; startBtn.disabled=!enough; }
+        const startBtn=$('#startGame');
+        if (startBtn){
+          const enough = Array.isArray(s.participants) && s.participants.length>=2;
+          startBtn.disabled=!enough;
+        }
       }
-      this.renderTimer(); try{ this._adjustAnswerWide(); }catch{}
+      this.renderTimer();
+      try{ this._adjustAnswerWide(); }catch{}
       return;
     }
 
-    if (s.status==='running') { 
-      try{ 
-        const tar=document.getElementById('topActionsRow'); 
-        if (tar){ 
-          const role=getRole(this.code); 
-          const isHost=(role==='host'); 
-          tar.innerHTML = isHost ? '<button id="endAnalyzeTop" class="btn danger">End game & analyze</button>' : ''; 
-          if (isHost){ 
-            document.getElementById('endAnalyzeTop').onclick = async()=>{ 
-              try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } 
-            }; 
+    if (s.status==='running'){
+
+      // Top actions row: level dropdown (host only) + End game & analyze
+      try{
+        const tar=document.getElementById('topActionsRow');
+        if (tar && forceFull){
+          const role=getRole(this.code);
+          const isHost=(role==='host');
+
+          if (isHost){
+            const mode = this.ui.levelMode || 'auto';
+            const lvl  = this.ui.levelSelection || 'simple';
+            let selectedLabel = 'Auto';
+            if (mode === 'manual'){
+              if (lvl === 'medium') selectedLabel = 'Medium';
+              else if (lvl === 'deep') selectedLabel = 'Deep';
+              else selectedLabel = 'Simple';
+            }
+
+            tar.innerHTML =
+              '<div class="top-actions-inner">' +
+                '<div class="level-menu" id="msLevelMenu" data-selected="'+selectedLabel+'">' +
+                  '<button class="level-menu-toggle" type="button">' +
+                    '<span class="level-menu-label">Level:</span>' +
+                    '<span class="level-menu-value">'+selectedLabel+'</span>' +
+                    '<span class="level-menu-icon"></span>' +
+                  '</button>' +
+                  '<ul class="level-menu-list">' +
+                    '<li class="level-menu-item" data-mode="auto" data-level="">Auto</li>' +
+                    '<li class="level-menu-item" data-mode="manual" data-level="simple">Simple</li>' +
+                    '<li class="level-menu-item" data-mode="manual" data-level="medium">Medium</li>' +
+                    '<li class="level-menu-item" data-mode="manual" data-level="deep">Deep</li>' +
+                  '</ul>' +
+                '</div>' +
+                '<button id="endAnalyzeTop" class="btn danger">End game &amp; analyze</button>' +
+              '</div>';
+
+            const menu = document.getElementById('msLevelMenu');
+            const toggle = menu ? menu.querySelector('.level-menu-toggle') : null;
+            const valueSpan = menu ? menu.querySelector('.level-menu-value') : null;
+            const list = menu ? menu.querySelector('.level-menu-list') : null;
+
+            if (menu && toggle && valueSpan && list){
+              toggle.addEventListener('click', (e)=>{
+                e.stopPropagation();
+                const isOpen = menu.classList.contains('is-open');
+                if (isOpen){
+                  menu.classList.remove('is-open');
+                } else {
+                  menu.classList.add('is-open');
+                }
+              });
+
+              list.addEventListener('click', (e)=>{
+                const item = e.target.closest('.level-menu-item');
+                if (!item) return;
+                e.stopPropagation();
+
+                const val = (item.getAttribute('data-level') || '').toLowerCase();
+                const m = item.getAttribute('data-mode') || 'auto';
+
+                if (m === 'auto'){
+                  this.ui.levelMode = 'auto';
+                  this.ui.levelSelection = 'simple';
+                  if (valueSpan) valueSpan.textContent = 'Auto';
+                  menu.setAttribute('data-selected','Auto');
+                } else {
+                  this.ui.levelMode = 'manual';
+                  if (val === 'medium' || val === 'deep') this.ui.levelSelection = val;
+                  else this.ui.levelSelection = 'simple';
+
+                  const label = this.ui.levelSelection.charAt(0).toUpperCase() + this.ui.levelSelection.slice(1);
+                  if (valueSpan) valueSpan.textContent = label;
+                  menu.setAttribute('data-selected', label);
+                }
+
+                menu.classList.remove('is-open');
+              });
+            }
+
+            const endBtn=document.getElementById('endAnalyzeTop');
+            if (endBtn){
+              endBtn.onclick = async()=>{
+                try{
+                  await API.end_game_and_analyze();
+                  await this.refresh();
+                }catch(e){ toast(e.message||"End failed"); }
+              };
+            }
+          } else {
+            tar.innerHTML = '';
           }
-          // New: render level dropdown only when we do a full render to avoid flicker
-          if (isHost && forceFull){
-            this.renderLevelMenu(tar);
-          }
-        } 
-      }catch(_){}  
+        }
+      }catch(_){}
+
       this.mountHeaderActions();
+
       if (forceFull){
         const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
         q.innerHTML = '<h4 style="margin:0 0 8px 0;">'+(s.question?.text || '')+'</h4>';
         main.appendChild(q);
 
-        // New: question level indicator circle on the card (visible to all)
+        // Level indicator circle on the question card
         try{
           if (s.question && s.question.level){
             const card = q.closest ? (q.closest('.card') || q) : q;
@@ -700,24 +687,20 @@ const Game = {
                   card.style.position = 'relative';
                 }
               }
-              indicator.classList.remove(
-                'card-level-simple',
-                'card-level-medium',
-                'card-level-deep',
-                'card-level-auto'
-              );
-              const lvl = s.question.level;
-              if (lvl === 'simple') indicator.classList.add('card-level-simple');
-              else if (lvl === 'medium') indicator.classList.add('card-level-medium');
+              indicator.classList.remove('card-level-simple','card-level-medium','card-level-deep','card-level-auto');
+              const lvl = String(s.question.level).toLowerCase();
+              if (lvl === 'medium') indicator.classList.add('card-level-medium');
               else if (lvl === 'deep') indicator.classList.add('card-level-deep');
-              if (s.auto_switch){
+              else indicator.classList.add('card-level-simple');
+
+              const mode = this.ui.levelMode || 'auto';
+              if (mode === 'auto'){
                 indicator.classList.add('card-level-auto');
               }
             }
           }
-        }catch(_e){}
+        }catch{}
 
-        // Clarification overlay hook
         try {
           if (!this.__clarInit) { initClarificationOverlay(); this.__clarInit = true; }
           const __hostEl = q.closest ? (q.closest('.card') || q) : q;
@@ -726,7 +709,6 @@ const Game = {
           syncClarificationButton();
         } catch(_) {}
 
-        // v10: Show guidance when game is running and there is no active turn
         try{
           const stRunning = (s.status||'') === 'running';
           const activeTurn = !!(s.current_turn && s.current_turn.participant_id);
@@ -739,12 +721,11 @@ const Game = {
 
         this.renderSeats();
 
-        // v8: Toggle Next Card button based on round state (original logic, unchanged)
+        // Next Card button visual state v8
         try{
           const s=this.state; const next=$('#nextCard')||document.getElementById('nextCard');
-          const active = !!(s.current_turn && s.current_turn.participant_id);
-          if (next){ next.disabled = !!active; next.setAttribute('aria-disabled', active ? 'true' : 'false'); }
           if (next){
+            const active = !!(s.current_turn && s.current_turn.participant_id);
             const isButton = next.tagName && next.tagName.toLowerCase() === 'button';
             if (active){
               if (isButton){ next.disabled = true; }
@@ -765,8 +746,41 @@ const Game = {
             }
           }
           if (next){
-            if (active){ next.setAttribute('aria-disabled','true'); next.classList.add('disabled'); next.style.opacity='0.5'; next.style.pointerEvents='none'; next.style.cursor='not-allowed'; }
-            else { next.removeAttribute('aria-disabled'); next.classList.remove('disabled'); next.style.opacity=''; next.style.pointerEvents=''; next.style.cursor=''; }
+            const isButton = next.tagName && next.tagName.toLowerCase() === 'button';
+            const active = !!(s.current_turn && s.current_turn.participant_id);
+            if (active){
+              if (isButton){ next.disabled = true; }
+              next.setAttribute('aria-disabled','true'); next.classList.add('disabled','btn-disabled');
+              try{ next.style.setProperty('opacity','0.5','important'); }catch{}
+              try{ next.style.setProperty('filter','grayscale(1)','important'); }catch{}
+              try{ next.style.setProperty('pointer-events','none','important'); }catch{}
+              try{ next.style.setProperty('cursor','not-allowed','important'); }catch{}
+              try{ next.setAttribute('tabindex','-1'); }catch{}
+            } else {
+              if (isButton){ next.disabled = false; }
+              next.removeAttribute('aria-disabled'); next.classList.remove('disabled','btn-disabled');
+              try{ next.style.setProperty('opacity','', 'important'); }catch{}
+              try{ next.style.setProperty('filter','', 'important'); }catch{}
+              try{ next.style.setProperty('pointer-events','', 'important'); }catch{}
+              try{ next.style.setProperty('cursor','', 'important'); }catch{}
+              try{ next.removeAttribute('tabindex'); }catch{}
+            }
+          }
+          if (next){
+            const active = !!(this.state.current_turn && this.state.current_turn.participant_id);
+            if (active){
+              next.setAttribute('aria-disabled','true');
+              next.classList.add('disabled');
+              next.style.opacity='0.5';
+              next.style.pointerEvents='none';
+              next.style.cursor='not-allowed';
+            } else {
+              next.removeAttribute('aria-disabled');
+              next.classList.remove('disabled');
+              next.style.opacity='';
+              next.style.pointerEvents='';
+              next.style.cursor='';
+            }
           }
         }catch{}
 
@@ -776,6 +790,7 @@ const Game = {
           '<img id="micBtn" class="tool-icon'+((this.ui&&this.ui.inputTool==='mic')?' active':'')+(can?'':' disabled')+'" src="./assets/mic.png" alt="mic"/>'+
           '<img id="kbBtn" class="tool-icon'+((this.ui&&this.ui.inputTool==='kb')?' active':'')+(can?'':' disabled')+'" src="./assets/keyboard.png" alt="keyboard"/>';
         (tools||main).appendChild(actRow);
+
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; console.info && console.info('[MS] mic click');
           if (this.ui && this.ui.sttActive){ try{ this.stopSTT(); }catch{} this.ui.sttActive=false; this.ui.inputTool=null; this.render(true); return; }
           this.ui.ansVisible=true; this.ui.inputTool='mic';
@@ -790,10 +805,12 @@ const Game = {
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.ui.inputTool='kb'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (kb) kb.classList.add('active'); if (mic) mic.classList.remove('active'); this.render(true); };
       }else{
         this.renderSeats();
-        // v8: Toggle Next Card button in update path (original)
         try{
           const s=this.state; const next=$('#nextCard')||document.getElementById('nextCard');
-          if (next){ const active = !!(s.current_turn && s.current_turn.participant_id); next.toggleAttribute('disabled', active); }
+          if (next){
+            const active = !!(s.current_turn && s.current_turn.participant_id);
+            next.toggleAttribute('disabled', active);
+          }
         }catch{}
         const can=this.canAnswer(); const mic=$('#micBtn'); const kb=$('#kbBtn');
         if (mic) mic.classList.toggle('disabled', !can);
@@ -805,67 +822,42 @@ const Game = {
         if (!can) { try{ this.stopSTT(); }catch{} }
       }
 
-      if (this.ui.ansVisible){
-        try{ this._ensureAnswerWide(); }catch{}
-        let ans=$('#msAns');
-        if (!ans){
-          ans=document.createElement('div'); ans.className='answer-card'; ans.id='msAns';
-          const placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn';
-          ans.innerHTML =
-            '<div class="meta">Your answer</div>'+
-            '<textarea id="msBox" class="input" rows="3" placeholder="'+placeholder+'"></textarea>'+
-            '<div class="row actions-row" style="display:flex;justify-content:flex-end">'+
-              '<button id="submitBtn" class="btn"'+(this.canAnswer()?'':' disabled')+'>Submit</button>'+
-            '</div>';
-          (function(){
-            const wide = (typeof Game!=='undefined' && Game._ensureAnswerWide) ? Game._ensureAnswerWide() : null;
-            const mount = wide || (answer||main);
-            mount.appendChild(ans);
-          })();
-          const box=$('#msBox'); if (box){ box.value = this.ui.draft||''; box.addEventListener('input', ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
-          const submit=$('#submitBtn'); if (submit) submit.onclick=async()=>{
-            const box=$('#msBox'); const text=(box.value||'').trim(); if(!text) return;
-            try{ submit.disabled=true; await API.submit_answer({ text }); try{ this.stopSTT(); }catch{} this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} this.ui.ansVisible=false; this.ui.inputTool=null; const mic=$('#micBtn'), kb=$('#kbBtn'); if(mic) mic.classList.remove('active'); if(kb) kb.classList.remove('active'); try{ const an=document.getElementById('msAns'); if(an&&an.parentNode){ an.parentNode.removeChild(an); } }catch{}
-            this.render(true); box.value=''; this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} await this.refresh(); }catch(e){ submit.disabled=false; toast(e.message||'Submit failed'); }
-          };
-        }else{
-          const box=$('#msBox'); if (box){ box.placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn'; box.toggleAttribute('disabled', !this.canAnswer()); }
-          const submit=$('#submitBtn'); if (submit){ submit.toggleAttribute('disabled', !this.canAnswer()); }
-        }
-      }
-
-      const role2=getRole(this.code); const isHost2 = role2==='host';
-      if (isHost2 && forceFull){
+      const role=getRole(this.code); const isHost = role==='host';
+      if (isHost && forceFull){
         controls.innerHTML=
           '<button id="nextCard" class="cta" '+( (s.current_turn && s.current_turn.participant_id) ? 'disabled' : '' )+'>'+'<img src="./assets/next-card.png" alt="Next"/><span>Next Card</span></button>';
-        // Only change: Next Card now sends mode/level, everything else stays the same
         $('#nextCard').onclick=async()=>{
           try{
-            const payload = { code: this.code };
-            const mode = this.ui.levelMode || (this.state.auto_switch ? 'auto' : 'manual');
-            const lvl = this.ui.levelSelection || this.state.level || 'simple';
+            const payload = {};
+            const mode = this.ui.levelMode || 'auto';
             if (mode === 'auto'){
               payload.mode = 'auto';
-            } else {
+            }else{
               payload.mode = 'manual';
-              payload.level = lvl;
+              payload.level = this.ui.levelSelection || 'simple';
             }
             await API.next_question(payload);
             await this.refresh();
-          }catch(e){
-            toast(e.message||'Next failed');
-          }
+          }catch(e){ toast(e.message||'Next failed'); }
         };
-      }else if (!isHost2){ controls.innerHTML=''; }
+      }else if (!isHost){
+        controls.innerHTML='';
+      }
 
-      this.renderTimer(); try{ this._adjustAnswerWide(); }catch{}
+      this.renderTimer();
+      try{ this._adjustAnswerWide(); }catch{}
       return;
     }
 
-    if (s.status==='ended'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
+    if (s.status==='ended'){
+      try{
+        const tar=document.getElementById('topActionsRow');
+        if (tar) tar.innerHTML='';
+      }catch(_){}
+      clearHeaderActions();
       controls.innerHTML='';
       this.renderSeats();
-      const mainEl = document.getElementById('mainCard');
+      const mainCard = document.getElementById('mainCard');
       try{
         const code=this.code;
         let myPid=null; try{ myPid = JSON.parse(localStorage.getItem(msPidKey(code))||'null'); }catch(_){ myPid=null; }
@@ -875,8 +867,10 @@ const Game = {
         const mappedParticipants = entries.map(e=>({ ...e.p, seat_index: e.idx }));
         const stateForSummary = { ...this.state, participants: mappedParticipants };
         const firstSeat = (entries.map(e=>e.idx)[0]||null);
-        Summary.mount({ container: mainEl, state: stateForSummary, selectedSeat: firstSeat, code: this.code, myPid, isHost });
-      }catch(e){ try{ toast(e.message||'Failed to render summary'); }catch(_){} }
+        Summary.mount({ container: mainCard, state: stateForSummary, selectedSeat: firstSeat, code: this.code, myPid, isHost });
+      }catch(e){
+        try{ toast(e.message||'Failed to render summary'); }catch(_){}
+      }
       return;
     }
 
@@ -927,6 +921,8 @@ export async function render(ctx){
       Game.ui.lastSig = '';
       Game.ui.ansVisible = false;
       Game.ui.draft = '';
+      Game.ui.levelMode = 'auto';
+      Game.ui.levelSelection = 'simple';
     }
   }
 
