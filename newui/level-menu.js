@@ -26,8 +26,7 @@ export const LevelMenu = {
       : 'simple';
 
     const label = this._labelFor(mode, level);
-
-        const dotClass = this._dotClassFor(mode, level);
+    const dotClass = this._dotClassFor(mode, level);
 
     container.innerHTML =
       '<div class="top-actions-inner">' +
@@ -60,7 +59,6 @@ export const LevelMenu = {
         '<button id="endAnalyzeTop" class="btn danger">End game &amp; analyze</button>' +
       '</div>';
 
-
     const menu = container.querySelector('#msLevelMenu');
     const toggle = menu ? menu.querySelector('.level-menu-toggle') : null;
     const valueSpan = menu ? menu.querySelector('.level-menu-value') : null;
@@ -89,14 +87,6 @@ export const LevelMenu = {
 
         const value = item.getAttribute('data-value') || (item.textContent || '').trim();
         if (valueSpan) valueSpan.textContent = value;
-                const toggleDot = menu.querySelector('.level-menu-toggle .level-menu-dot');
-        if (toggleDot) {
-          toggleDot.className = 'level-menu-dot ' + this._dotClassFor(newMode, newLevel);
-        }
-
-        items.forEach(i => i.classList.remove('is-selected'));
-        item.classList.add('is-selected');
-        menu.setAttribute('data-selected', value);
 
         const modeAttr = (item.getAttribute('data-mode') || '').toLowerCase();
         const levelAttr = (item.getAttribute('data-level') || '').toLowerCase();
@@ -115,6 +105,16 @@ export const LevelMenu = {
             newLevel = 'simple';
           }
         }
+
+        // update dot inside the toggle button
+        const toggleDot = menu.querySelector('.level-menu-toggle .level-menu-dot');
+        if (toggleDot) {
+          toggleDot.className = 'level-menu-dot ' + LevelMenu._dotClassFor(newMode, newLevel);
+        }
+
+        items.forEach(i => i.classList.remove('is-selected'));
+        item.classList.add('is-selected');
+        menu.setAttribute('data-selected', value);
 
         try {
           if (typeof opts.onChange === 'function') {
@@ -218,7 +218,7 @@ export const LevelMenu = {
     return 'Auto';
   },
 
-    _dotClassFor(mode, level) {
+  _dotClassFor(mode, level) {
     if (mode === 'manual') {
       if (level === 'medium') return 'dot-medium';
       if (level === 'deep') return 'dot-deep';
@@ -226,7 +226,6 @@ export const LevelMenu = {
     }
     return 'dot-auto';
   },
-
 
   _escape(str) {
     if (!str && str !== 0) return '';
