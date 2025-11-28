@@ -165,24 +165,59 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
 
   stop(){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  if(this.poll) clearInterval(this.poll); if(this.tick) clearInterval(this.tick); if(this.hbH) clearInterval(this.hbH); if(this.hbG) clearInterval(this.hbG); },
   async refresh(){
-    try{
-      const out=await API.get_state({ code:this.code });
-      await inferAndPersistHostRole(this.code, out);
-      const status = out?.status || out?.phase || 'lobby';
-      const endsAt = out?.ends_at || out?.endsAt || null;
-      const participants = Array.isArray(out?.participants)? out.participants : (Array.isArray(out?.players)? out.players : []);
-      const question = out?.question || null;
-      const current_turn = out?.current_turn || null;
-      const host_user_id = out?.host_user_id || out?.hostId || null;
-      const sig = [status, endsAt, question?.id||'', current_turn?.participant_id||'', participants.length, host_user_id||''].join('|');
-      const forceFull = (sig !== this.ui.lastSig);
-      this.state = { status, endsAt, participants, question, current_turn, host_user_id };
-      await this.backfillPidIfMissing();
-      this.render(forceFull);
-      this.ui.lastSig = sig;
-      this.startHeartbeats();
-    }catch(e){}
-  },
+  try{
+    const out = await API.get_state({ code: this.code });
+    await inferAndPersistHostRole(this.code, out);
+
+    const status = out?.status || out?.phase || 'lobby';
+    const endsAt = out?.ends_at || out?.endsAt || null;
+    const participants = Array.isArray(out?.participants)
+      ? out.participants
+      : (Array.isArray(out?.players) ? out.players : []);
+    const question = out?.question || null;
+    const current_turn = out?.current_turn || null;
+    const host_user_id = out?.host_user_id || out?.hostId || null;
+
+    // New: level and auto_switch from backend
+    const level = out?.level || 'simple';
+    const auto_switch = !!out?.auto_switch;
+
+    // Include level and mode in the signature so UI re-renders correctly
+    const sig = [
+      status,
+      endsAt,
+      question?.id || '',
+      current_turn?.participant_id || '',
+      participants.length,
+      host_user_id || '',
+      level,
+      auto_switch ? 'auto' : 'manual'
+    ].join('|');
+
+    const forceFull = (sig !== this.ui.lastSig);
+
+    this.state = {
+      status,
+      endsAt,
+      participants,
+      question,
+      current_turn,
+      host_user_id,
+      level,
+      auto_switch
+    };
+
+    // Initialize UI mode from backend state
+    this.ui.levelMode = auto_switch ? 'auto' : 'manual';
+    this.ui.levelSelection = level;
+
+    await this.backfillPidIfMissing();
+    this.render(forceFull);
+    this.ui.lastSig = sig;
+    this.startHeartbeats();
+  }catch(e){}
+},
+
   remainingSeconds(){ if (!this.state.endsAt) return null; const diff=Math.floor((new Date(this.state.endsAt).getTime()-Date.now())/1000); return Math.max(0,diff); },
   renderTimer(){
     const t=this.remainingSeconds();
@@ -390,6 +425,117 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
     });
     
   },
+    renderLevelMenu(hostBar){
+    try{
+      if (!hostBar) return;
+      const role = getRole(this.code);
+      const isHost = (role === 'host');
+      if (!isHost) return;
+
+      const endBtn = hostBar.querySelector('#endAnalyzeTop');
+      if (!endBtn) return;
+
+      // Container to the left of End button
+      let menuWrap = hostBar.querySelector('.level-menu');
+      if (!menuWrap){
+        menuWrap = document.createElement('div');
+        menuWrap.className = 'level-menu';
+        hostBar.insertBefore(menuWrap, endBtn);
+      } else {
+        menuWrap.innerHTML = '';
+      }
+
+      const mode = this.ui.levelMode || (this.state.auto_switch ? 'auto' : 'manual');
+      const selLevel = this.ui.levelSelection || this.state.level || 'simple';
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'level-menu-button';
+      btn.setAttribute('aria-haspopup','listbox');
+
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'level-menu-label';
+      labelSpan.textContent = 'Level:';
+
+      const valueSpan = document.createElement('span');
+      valueSpan.className = 'level-menu-value';
+
+      const dot = document.createElement('span');
+      dot.className = 'level-menu-dot';
+
+      const arrow = document.createElement('span');
+      arrow.className = 'level-menu-arrow';
+
+      let text = 'Auto';
+      let dotClass = 'dot-auto';
+
+      if (mode === 'manual'){
+        if (selLevel === 'simple'){ text = 'Simple: Icebreaker'; dotClass = 'dot-simple'; }
+        else if (selLevel === 'medium'){ text = 'Medium: Opening up'; dotClass = 'dot-medium'; }
+        else if (selLevel === 'deep'){ text = 'Deep: Honest & real'; dotClass = 'dot-deep'; }
+      }
+
+      dot.classList.add(dotClass);
+      valueSpan.textContent = text;
+
+      btn.appendChild(labelSpan);
+      btn.appendChild(dot);
+      btn.appendChild(valueSpan);
+      btn.appendChild(arrow);
+
+      const list = document.createElement('div');
+      list.className = 'level-menu-list';
+      list.setAttribute('role','listbox');
+      list.hidden = true;
+
+      const options = [
+        { mode:'auto',   level:null,      text:'Auto',                   dotClass:'dot-auto'   },
+        { mode:'manual', level:'simple', text:'Simple: Icebreaker',     dotClass:'dot-simple' },
+        { mode:'manual', level:'medium', text:'Medium: Opening up',     dotClass:'dot-medium' },
+        { mode:'manual', level:'deep',   text:'Deep: Honest & real',    dotClass:'dot-deep'   }
+      ];
+
+      options.forEach(opt=>{
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'level-menu-item';
+        item.setAttribute('role','option');
+        item.dataset.mode = opt.mode;
+        if (opt.level) item.dataset.level = opt.level;
+
+        const d = document.createElement('span');
+        d.className = 'level-menu-dot ' + opt.dotClass;
+
+        const t = document.createElement('span');
+        t.className = 'level-menu-item-text';
+        t.textContent = opt.text;
+
+        item.appendChild(d);
+        item.appendChild(t);
+
+        item.onclick = ()=>{
+          this.ui.levelMode = opt.mode;
+          this.ui.levelSelection = opt.level || this.state.level || 'simple';
+          list.hidden = true;
+          btn.classList.remove('open');
+          // Re-render menu to reflect new state, backend change is done on Next Card
+          this.renderLevelMenu(hostBar);
+        };
+
+        list.appendChild(item);
+      });
+
+      btn.onclick = ()=>{
+        const isOpen = !list.hidden;
+        list.hidden = isOpen;
+        btn.classList.toggle('open', !isOpen);
+      };
+
+      menuWrap.appendChild(btn);
+      menuWrap.appendChild(list);
+    }catch(_e){}
+  },
+
 
     mountHeaderActions(){
     const s=this.state;
@@ -554,11 +700,46 @@ render(forceFull){
       return;
     }
 
-    if (s.status==='running') { try{ const tar=document.getElementById('topActionsRow'); if (tar){ const role=getRole(this.code); const isHost=(role==='host'); tar.innerHTML = isHost ? '<button id="endAnalyzeTop" class="btn danger">End game & analyze</button>' : ''; if (isHost){ document.getElementById('endAnalyzeTop').onclick = async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } }; } } }catch(_){}  this.mountHeaderActions();
+    if (s.status==='running') { try{ const tar=document.getElementById('topActionsRow'); if (tar){ const role=getRole(this.code); const isHost=(role==='host'); tar.innerHTML = isHost ? '<button id="endAnalyzeTop" class="btn danger">End game & analyze</button>' : ''; if (isHost){ document.getElementById('endAnalyzeTop').onclick = async()=>{ try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } }; } } this.renderLevelMenu(tar);}catch(_){}  this.mountHeaderActions();
       if (forceFull){
         const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
         q.innerHTML = '<h4 style="margin:0 0 8px 0;">'+(s.question?.text || '')+'</h4>';
         main.appendChild(q);
+		
+		  // Question level indicator circle (top-right of card)
+  try{
+    if (s.question && s.question.level){
+      const card = q.closest ? (q.closest('.card') || q) : q;
+      if (card){
+        let indicator = card.querySelector('.card-level-indicator');
+        if (!indicator){
+          indicator = document.createElement('div');
+          indicator.className = 'card-level-indicator';
+          card.appendChild(indicator);
+          if (!card.style.position || card.style.position === 'static'){
+            card.style.position = 'relative';
+          }
+        }
+
+        indicator.classList.remove(
+          'card-level-simple',
+          'card-level-medium',
+          'card-level-deep',
+          'card-level-auto'
+        );
+
+        const lvl = s.question.level;
+        if (lvl === 'simple') indicator.classList.add('card-level-simple');
+        else if (lvl === 'medium') indicator.classList.add('card-level-medium');
+        else if (lvl === 'deep') indicator.classList.add('card-level-deep');
+
+        if (s.auto_switch){
+          indicator.classList.add('card-level-auto'); // white border in auto mode
+        }
+      }
+    }
+  }catch(_e){}
+
         
         // Clarification overlay hook (bottom-right "?" + small over-card panel)
         try {
@@ -701,7 +882,26 @@ render(forceFull){
       if (isHost && forceFull){
         controls.innerHTML=
           '<button id="nextCard" class="cta" '+( (s.current_turn && s.current_turn.participant_id) ? 'disabled' : '' )+'>'+'<img src="./assets/next-card.png" alt="Next"/><span>Next Card</span></button>';
-        $('#nextCard').onclick=async()=>{ try{ await API.next_question(); await this.refresh(); }catch(e){ toast(e.message||'Next failed'); } };
+          $('#nextCard').onclick = async () => {
+    try{
+      const payload = { code: this.code };
+      const mode = this.ui.levelMode || (this.state.auto_switch ? 'auto' : 'manual');
+      const lvl = this.ui.levelSelection || this.state.level || 'simple';
+
+      if (mode === 'auto'){
+        payload.mode = 'auto';
+      } else {
+        payload.mode = 'manual';
+        payload.level = lvl;
+      }
+
+      await API.next_question(payload);
+      await this.refresh();
+    }catch(e){
+      toast(e?.message || 'Next failed');
+    }
+  };
+
       }else if (!isHost){ controls.innerHTML=''; }
 
       this.renderTimer(); try{ this._adjustAnswerWide(); }catch{}
