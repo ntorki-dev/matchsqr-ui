@@ -159,14 +159,26 @@ export const API = {
     );
   },
 
-    next_question(){
-    const code = resolveCode(null);
-    const gid  = resolveGameId(null);
-    if (!code && !gid) throw new Error('Missing game id/code');
-    return withActionLoader('next_question', () =>
-      jpost('next_question', { code, gameId: gid, id: gid })
-    );
-  },
+    next_question(opts){
+  const code = resolveCode(null);
+  const gid  = resolveGameId(null);
+  if (!code && !gid) throw new Error('Missing game id/code');
+
+  const payload = { code, gameId: gid, id: gid };
+
+  if (opts && (opts.mode === 'auto' || opts.mode === 'manual')) {
+    payload.mode = opts.mode;
+  }
+
+  if (opts && (opts.level === 'simple' || opts.level === 'medium' || opts.level === 'deep')) {
+    payload.level = opts.level;
+  }
+
+  return withActionLoader('next_question', () =>
+    jpost('next_question', payload)
+  );
+},
+
 
     end_game_and_analyze(){
     const code = resolveCode(null);
