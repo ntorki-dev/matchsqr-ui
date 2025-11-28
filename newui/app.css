@@ -489,10 +489,12 @@ body.is-game #answerWide {
   .top-actions-row .btn{ padding:6px 9px; font-size:12px; }
 }
 
-@media (max-width: 380px){
-  .top-actions-row .btn{ padding:6px 9px; font-size:12px; }
+.top-actions-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
 }
-
 
 
 /* === Participant initials circle above names ===
@@ -756,6 +758,36 @@ body.is-game #answerWide {
 .level-menu-item .level-menu-item-text {
   white-space: nowrap;
 }
+
+.level-menu-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.level-menu-dot.dot-auto {
+  background-color: #ffffff;
+  border: 1px solid #ccc;
+}
+
+.level-menu-dot.dot-simple {
+  background-color: #67B7FF;
+}
+
+.level-menu-dot.dot-medium {
+  background-color: #FF8C42;
+}
+
+.level-menu-dot.dot-deep {
+  background-color: #E74C3C;
+}
+
+/* Small spacing between dot and text inside the selected button */
+.level-menu-toggle .level-menu-dot {
+  margin-right: 4px;
+}
+
 
 /* Mobile tweaks if needed */
 @media (max-width: 600px) {
