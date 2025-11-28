@@ -752,28 +752,29 @@ render(forceFull){
         }
       }
 
-      const role=getRole(this.code); const isHost = role==='host';
+            const role=getRole(this.code); const isHost = role==='host';
       if (isHost && forceFull){
         controls.innerHTML=
           '<button id="nextCard" class="cta" '+( (s.current_turn && s.current_turn.participant_id) ? 'disabled' : '' )+'>'+'<img src="./assets/next-card.png" alt="Next"/><span>Next Card</span></button>';
-                $('#nextCard').onclick=async()=>{
-          try{
-            const payload = {};
-            const mode = this.ui.levelMode || 'auto';
-            if (mode === 'auto'){
-              payload.mode = 'auto';
-            }else{
-              payload.mode = 'manual';
-              payload.level = this.ui.levelSelection || 'simple';
-            }
-            await API.next_question(payload);
-            await this.refresh();
-          }catch(e){
-            toast(e.message||'Next failed');
+
+        const self = this;
+        $('#nextCard').onclick = async () => {
+          try {
+            const mode  = (self.ui && (self.ui.levelMode === 'manual' || self.ui.levelMode === 'auto'))
+              ? self.ui.levelMode
+              : 'auto';
+            const level = (self.ui && (self.ui.levelSelection === 'simple' || self.ui.levelSelection === 'medium' || self.ui.levelSelection === 'deep'))
+              ? self.ui.levelSelection
+              : null;
+
+            await API.next_question({ mode, level });
+            await self.refresh();
+          } catch (e) {
+            toast(e?.message || 'Next failed');
           }
         };
-
       }else if (!isHost){ controls.innerHTML=''; }
+
 
       this.renderTimer(); try{ this._adjustAnswerWide(); }catch{}
       return;
