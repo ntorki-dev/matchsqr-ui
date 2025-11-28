@@ -670,7 +670,8 @@ body.is-game #answerWide {
   position: relative;
 }
 
-.level-menu-button {
+/* Main clickable button, matches your previous button look */
+.level-menu-toggle {
   border: 1px solid #d0d0c0;
   background-color: #f3f0e0;
   border-radius: 999px;
@@ -690,32 +691,8 @@ body.is-game #answerWide {
   white-space: nowrap;
 }
 
-.level-menu-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-/* Dot colors */
-.level-menu-dot.dot-auto {
-  background-color: #ffffff;
-  border: 1px solid #ccc;
-}
-
-.level-menu-dot.dot-simple {
-  background-color: #67B7FF;
-}
-
-.level-menu-dot.dot-medium {
-  background-color: #FF8C42;
-}
-
-.level-menu-dot.dot-deep {
-  background-color: #E74C3C;
-}
-
-.level-menu-arrow {
+/* Arrow icon */
+.level-menu-icon {
   width: 10px;
   height: 10px;
   border-radius: 50%;
@@ -723,7 +700,7 @@ body.is-game #answerWide {
   position: relative;
 }
 
-.level-menu-arrow::after {
+.level-menu-icon::after {
   content: "";
   position: absolute;
   left: 50%;
@@ -735,7 +712,8 @@ body.is-game #answerWide {
   transform: translate(-50%, -40%) rotate(45deg);
 }
 
-.level-menu-button.open .level-menu-arrow::after {
+/* Rotate arrow when menu is open */
+.level-menu.is-open .level-menu-icon::after {
   transform: translate(-50%, -60%) rotate(225deg);
 }
 
@@ -750,6 +728,12 @@ body.is-game #answerWide {
   box-shadow: 0 4px 10px rgba(0,0,0,0.12);
   min-width: 160px;
   z-index: 50;
+  display: none; /* hidden by default */
+}
+
+/* Show list only when JS adds .is-open to .level-menu */
+.level-menu.is-open .level-menu-list {
+  display: block;
 }
 
 .level-menu-item {
@@ -775,7 +759,7 @@ body.is-game #answerWide {
 
 /* Mobile tweaks if needed */
 @media (max-width: 600px) {
-  .level-menu-button {
+  .level-menu-toggle {
     font-size: 11px;
     padding: 3px 8px;
   }
@@ -784,3 +768,4 @@ body.is-game #answerWide {
     min-width: 140px;
   }
 }
+
