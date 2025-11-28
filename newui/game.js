@@ -95,30 +95,25 @@ const Game = {
       b.lastAt = Date.now();
       if (this.__hb.logs < this.__hb.maxLogs){
         this.__hb.logs++;
-        // Rate-limited, concise console signal
         console.warn(`[HB:${role}] heartbeat failed (#${b.fails})`, { status:b.lastStatus, msg:b.lastErr });
       }
 
-      // One-time lightweight session refresh then retry once after 1s
       try { await getSession(); } catch(_) {}
       await new Promise(r=>setTimeout(r, 1000));
 
       try {
         await fn();
-        // recovered
         b.fails = 0; b.lastStatus = 200; b.lastErr = null;
         if (this.__hb.logs < this.__hb.maxLogs){
           this.__hb.logs++;
           console.warn(`[HB:${role}] heartbeat recovered`);
         }
       } catch(e2){
-        // keep failure count, let the regular interval try again next tick
         if (this.__hb.logs < this.__hb.maxLogs){
           this.__hb.logs++;
           console.warn(`[HB:${role}] retry failed, will back off naturally`, { msg: e2?.message || String(e2) });
         }
       }
-      // Expose minimal debug surface for manual inspection if needed
       try { window.__HB_DEBUG = this.__hb; } catch {}
     } catch {}
   },
@@ -129,20 +124,16 @@ const Game = {
     if (this.hbG) { clearInterval(this.hbG); this.hbG=null; }
     const role = getRole(code);
 
-    // Host heartbeat every 20s with resilience
     if (role === 'host' && gid){
       const beatHost = async () => {
         try { await API.heartbeat(); this.__hb.host.fails = 0; }
         catch(e){ await this._onHeartbeatFail('host', e, API.heartbeat); }
       };
       this.hbH = setInterval(beatHost, 20000);
-      // fire immediately
       beatHost();
 
-      // Best-effort final beat on page exit
       const finalBeat = () => { try { API.heartbeat(); } catch(_) {} };
       try {
-        // Avoid multiple listeners if startHeartbeats runs again
         if (!this.__finalBeatInstalled){
           window.addEventListener('pagehide', finalBeat, { capture:true });
           window.addEventListener('beforeunload', finalBeat, { capture:true });
@@ -150,7 +141,6 @@ const Game = {
         }
       } catch {}
     } else {
-      // Guest heartbeat every 25s with resilience
       const pid = JSON.parse(localStorage.getItem(msPidKey(code))||'null');
       if (pid && gid){
         const beatGuest = async () => {
@@ -167,51 +157,40 @@ const Game = {
 
   async refresh(){
     try{
-      const out = await API.get_state({ code: this.code });
+      const out=await API.get_state({ code:this.code });
       await inferAndPersistHostRole(this.code, out);
 
       const status = out?.status || out?.phase || 'lobby';
       const endsAt = out?.ends_at || out?.endsAt || null;
-      const participants = Array.isArray(out?.participants)
-        ? out.participants
-        : (Array.isArray(out?.players) ? out.players : []);
+      const participants = Array.isArray(out?.participants)? out.participants : (Array.isArray(out?.players)? out.players : []);
       const question = out?.question || null;
       const current_turn = out?.current_turn || null;
       const host_user_id = out?.host_user_id || out?.hostId || null;
 
-      // New: level and auto_switch from backend
+      // New: level and auto_switch from backend (backward compatible if missing)
       const level = out?.level || 'simple';
       const auto_switch = !!out?.auto_switch;
 
       const sig = [
         status,
         endsAt,
-        question?.id || '',
-        current_turn?.participant_id || '',
+        question?.id||'',
+        current_turn?.participant_id||'',
         participants.length,
-        host_user_id || '',
+        host_user_id||'',
         level,
         auto_switch ? 'auto' : 'manual'
       ].join('|');
 
       const forceFull = (sig !== this.ui.lastSig);
 
-      this.state = {
-        status,
-        endsAt,
-        participants,
-        question,
-        current_turn,
-        host_user_id,
-        level,
-        auto_switch
-      };
+      this.state = { status, endsAt, participants, question, current_turn, host_user_id, level, auto_switch };
 
-      // Initialise UI mode/selection only once, then let host changes persist in memory
-      if (typeof this.ui.levelMode === 'undefined') {
+      // Initialize level UI once from backend, then keep host changes in memory
+      if (typeof this.ui.levelMode === 'undefined'){
         this.ui.levelMode = auto_switch ? 'auto' : 'manual';
       }
-      if (typeof this.ui.levelSelection === 'undefined') {
+      if (typeof this.ui.levelSelection === 'undefined'){
         this.ui.levelSelection = level;
       }
 
@@ -236,13 +215,11 @@ const Game = {
       el.textContent=m+':'+s;
     }
 
-    // Keep Extend button in sync with remaining time
     const btnExtend = document.getElementById('extendBtnHeader');
     if (btnExtend){
       if (t == null){
         btnExtend.disabled = true;
       }else{
-        // Enable only when 10 minutes or less remain
         btnExtend.disabled = t > 10 * 60;
       }
     }
@@ -296,12 +273,10 @@ const Game = {
   seatOrder(hostId, ppl){
     const all = Array.isArray(ppl) ? [...ppl] : [];
 
-    // Primary path - use backend seat_index
     const entries = [];
     for (const p of all){
       let idx = typeof p.seat_index === 'number' ? p.seat_index : null;
 
-      // Fallback for older data without seat_index
       if (idx == null){
         const isHost = p?.role === 'host' || p?.is_host === true;
         if (isHost) idx = 0;
@@ -312,7 +287,6 @@ const Game = {
       }
     }
 
-    // If still nothing has a seat_index, fall back to a deterministic local order
     if (!entries.length && all.length){
       const uidOf = p => p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || null;
       let host = null;
@@ -327,10 +301,8 @@ const Game = {
         host = all.find(p => p?.is_host === true || p?.role === 'host') || all[0];
       }
 
-      // Host at seat 0
       entries.push({ idx: 0, p: host });
 
-      // Other players in stable order by id into seats 1..7
       const others = all.filter(p => p !== host);
       let seat = 1;
       others.sort((a,b) => String(a.id || a.participant_id || '').localeCompare(String(b.id || b.participant_id || '')));
@@ -348,7 +320,6 @@ const Game = {
   renderSeats(){
 
     const s=this.state;
-    // Ensure containers exist
     let leftEl = document.getElementById('sideLeft');
     let rightEl = document.getElementById('sideRight');
     const mainCard = document.getElementById('mainCard');
@@ -398,12 +369,11 @@ const Game = {
       return name;
     };
 
-    // NEW: helper to compute initials from the display name
     const makeInitials = (name) => {
       if (!name || typeof name !== 'string') return 'G';
       const trimmed = name.trim();
       if (!trimmed) return 'G';
-      const chars = Array.from(trimmed); // handles Unicode properly
+      const chars = Array.from(trimmed);
       const first = (chars[0] || '').toLocaleUpperCase();
       const second = (chars[1] || '').toLocaleUpperCase();
       return second ? (first + second) : first;
@@ -418,7 +388,6 @@ const Game = {
 
       const nameOnly = displayName(p);
       const initials = makeInitials(nameOnly);
-      // Initials, optional crown for host, then name
       const crownHtml = (role==='host') ? '<img class="seat-crown" src="./assets/crown.png" alt="host" width="16" height="16">' : '';
       el.innerHTML = '<div class="seat-initials">'+ initials +'</div>'+
                      crownHtml +
@@ -430,6 +399,7 @@ const Game = {
     
   },
 
+  // New: host-only level dropdown next to "End game & analyze"
   renderLevelMenu(hostBar){
     try{
       if (!hostBar) return;
@@ -543,7 +513,6 @@ const Game = {
     const s=this.state;
     const frag=document.createDocumentFragment();
 
-    // Timer element
     const timer=document.createElement('div');
     timer.className='ms-timer';
     timer.id='roomTimer';
@@ -559,7 +528,6 @@ const Game = {
       btnExtend.id='extendBtnHeader';
       btnExtend.textContent='Extend';
 
-      // Disabled by default, only enabled in last 10 minutes
       const t = this.remainingSeconds();
       const canExtendNow = (t != null && t <= 10 * 60);
       btnExtend.disabled = !canExtendNow;
@@ -570,7 +538,6 @@ const Game = {
       btnExtend.onclick = async () => {
         if (btnExtend.disabled) return;
 
-        // First check entitlement for extend
         let check;
         try{
           check = await API.entitlement_check({ action: 'extend_game' });
@@ -580,7 +547,6 @@ const Game = {
         }
 
         if (check && check.can_proceed === true && check.mode === 'subscribed'){
-          // Subscribed host: extend directly
           try{
             const code = this.code || null;
             if (!code){
@@ -600,7 +566,6 @@ const Game = {
           return;
         }
 
-        // Not subscribed, or cannot proceed: go to billing for paid extend
         const roomCode = this.code || (typeof this.code === 'string' ? this.code : null);
         if (roomCode){
           location.hash = '#/billing?from=extend&code=' + encodeURIComponent(roomCode);
@@ -616,7 +581,6 @@ const Game = {
     this.renderTimer();
   },
 
-  // --- ensure and size the wide answer mount under mic/keyboard ---
   _ensureAnswerWide(){
     try{
       const tools = document.getElementById('toolsRow');
@@ -647,10 +611,8 @@ const Game = {
     }catch{}
   },
 
-  // --- align arbitrary rows to #roomMain width for consistent centering (mobile-safe) ---
   render(forceFull){
     const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
-    // Toggle card visual state classes without changing layout or content
     if (main && main.classList) {
       main.classList.remove('card--idle','card--running');
       const st = s.status || 'lobby';
@@ -663,7 +625,7 @@ const Game = {
 
     if (!main || !controls) return;
     if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; try{ const aw=document.getElementById('answerWide'); if(aw){ aw.innerHTML=''; } this._ensureAnswerWide(); }catch{} }
-/* removed legacy in-card timer */
+    /* removed legacy in-card timer */
     if (s.status==='lobby'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.className='lobby-wrap';
@@ -700,35 +662,31 @@ const Game = {
       return;
     }
 
-    if (s.status==='running') {
-      try{
-        const tar=document.getElementById('topActionsRow');
-        if (tar){
-          const role=getRole(this.code);
-          const isHost=(role==='host');
-          tar.innerHTML = isHost ? '<button id="endAnalyzeTop" class="btn danger">End game & analyze</button>' : '';
-          if (isHost){
-            document.getElementById('endAnalyzeTop').onclick = async()=>{
-              try{
-                await API.end_game_and_analyze();
-                await this.refresh();
-              }catch(e){ toast(e.message||"End failed"); }
-            };
+    if (s.status==='running') { 
+      try{ 
+        const tar=document.getElementById('topActionsRow'); 
+        if (tar){ 
+          const role=getRole(this.code); 
+          const isHost=(role==='host'); 
+          tar.innerHTML = isHost ? '<button id="endAnalyzeTop" class="btn danger">End game & analyze</button>' : ''; 
+          if (isHost){ 
+            document.getElementById('endAnalyzeTop').onclick = async()=>{ 
+              try{ await API.end_game_and_analyze(); await this.refresh(); }catch(e){ toast(e.message||"End failed"); } 
+            }; 
           }
-          if (forceFull){
+          // New: render level dropdown only when we do a full render to avoid flicker
+          if (isHost && forceFull){
             this.renderLevelMenu(tar);
           }
-        }
+        } 
       }catch(_){}  
-
       this.mountHeaderActions();
-
       if (forceFull){
         const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
         q.innerHTML = '<h4 style="margin:0 0 8px 0;">'+(s.question?.text || '')+'</h4>';
         main.appendChild(q);
 
-        // Question level indicator circle (top-right of card)
+        // New: question level indicator circle on the card (visible to all)
         try{
           if (s.question && s.question.level){
             const card = q.closest ? (q.closest('.card') || q) : q;
@@ -742,19 +700,16 @@ const Game = {
                   card.style.position = 'relative';
                 }
               }
-
               indicator.classList.remove(
                 'card-level-simple',
                 'card-level-medium',
                 'card-level-deep',
                 'card-level-auto'
               );
-
               const lvl = s.question.level;
               if (lvl === 'simple') indicator.classList.add('card-level-simple');
               else if (lvl === 'medium') indicator.classList.add('card-level-medium');
               else if (lvl === 'deep') indicator.classList.add('card-level-deep');
-
               if (s.auto_switch){
                 indicator.classList.add('card-level-auto');
               }
@@ -762,7 +717,7 @@ const Game = {
           }
         }catch(_e){}
 
-        // Clarification overlay hook (bottom-right "?" + small over-card panel)
+        // Clarification overlay hook
         try {
           if (!this.__clarInit) { initClarificationOverlay(); this.__clarInit = true; }
           const __hostEl = q.closest ? (q.closest('.card') || q) : q;
@@ -784,13 +739,13 @@ const Game = {
 
         this.renderSeats();
 
-        // v8: Toggle Next Card button based on round state
+        // v8: Toggle Next Card button based on round state (original logic, unchanged)
         try{
           const s=this.state; const next=$('#nextCard')||document.getElementById('nextCard');
-          if (next){ const active = !!(s.current_turn && s.current_turn.participant_id); next.disabled = !!active; next.setAttribute('aria-disabled', active ? 'true' : 'false'); }
+          const active = !!(s.current_turn && s.current_turn.participant_id);
+          if (next){ next.disabled = !!active; next.setAttribute('aria-disabled', active ? 'true' : 'false'); }
           if (next){
             const isButton = next.tagName && next.tagName.toLowerCase() === 'button';
-            const active = !!(s.current_turn && s.current_turn.participant_id);
             if (active){
               if (isButton){ next.disabled = true; }
               next.setAttribute('aria-disabled','true'); next.classList.add('disabled','btn-disabled');
@@ -809,6 +764,10 @@ const Game = {
               try{ next.removeAttribute('tabindex'); }catch{}
             }
           }
+          if (next){
+            if (active){ next.setAttribute('aria-disabled','true'); next.classList.add('disabled'); next.style.opacity='0.5'; next.style.pointerEvents='none'; next.style.cursor='not-allowed'; }
+            else { next.removeAttribute('aria-disabled'); next.classList.remove('disabled'); next.style.opacity=''; next.style.pointerEvents=''; next.style.cursor=''; }
+          }
         }catch{}
 
         const actRow=document.createElement('div'); actRow.id='msActRow'; actRow.className='kb-mic-row';
@@ -817,7 +776,6 @@ const Game = {
           '<img id="micBtn" class="tool-icon'+((this.ui&&this.ui.inputTool==='mic')?' active':'')+(can?'':' disabled')+'" src="./assets/mic.png" alt="mic"/>'+
           '<img id="kbBtn" class="tool-icon'+((this.ui&&this.ui.inputTool==='kb')?' active':'')+(can?'':' disabled')+'" src="./assets/keyboard.png" alt="keyboard"/>';
         (tools||main).appendChild(actRow);
-        // v7: mic starts STT within click gesture BEFORE re-render; toggles off if already listening
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; console.info && console.info('[MS] mic click');
           if (this.ui && this.ui.sttActive){ try{ this.stopSTT(); }catch{} this.ui.sttActive=false; this.ui.inputTool=null; this.render(true); return; }
           this.ui.ansVisible=true; this.ui.inputTool='mic';
@@ -826,14 +784,13 @@ const Game = {
           const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} }
         };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; try{ this.stopSTT(); }catch{} this.ui.ansVisible=true; this.ui.inputTool='kb'; this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
-        // v5 override: toggle mic STT and stop STT on keyboard
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; if (this.ui && this.ui.sttActive){ try{ this.stopSTT(); }catch{} this.ui.sttActive=false; this.render(true); return; } this.ui.ansVisible=true; this.ui.inputTool='mic'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (mic) mic.classList.add('active'); if (kb) kb.classList.remove('active'); this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } try{ this.startSTT(); }catch{} };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; try{ this.stopSTT(); }catch{} this.ui.ansVisible=true; this.ui.inputTool='kb'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (kb) kb.classList.add('active'); if (mic) mic.classList.remove('active'); this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.ui.inputTool='mic'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (mic) mic.classList.add('active'); if (kb) kb.classList.remove('active'); this.render(true); };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.ui.inputTool='kb'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (kb) kb.classList.add('active'); if (mic) mic.classList.remove('active'); this.render(true); };
       }else{
         this.renderSeats();
-        // v8: Toggle Next Card button in update path
+        // v8: Toggle Next Card button in update path (original)
         try{
           const s=this.state; const next=$('#nextCard')||document.getElementById('nextCard');
           if (next){ const active = !!(s.current_turn && s.current_turn.participant_id); next.toggleAttribute('disabled', active); }
@@ -848,30 +805,58 @@ const Game = {
         if (!can) { try{ this.stopSTT(); }catch{} }
       }
 
-      const role=getRole(this.code); const isHost = role==='host';
-      if (isHost && forceFull){
+      if (this.ui.ansVisible){
+        try{ this._ensureAnswerWide(); }catch{}
+        let ans=$('#msAns');
+        if (!ans){
+          ans=document.createElement('div'); ans.className='answer-card'; ans.id='msAns';
+          const placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn';
+          ans.innerHTML =
+            '<div class="meta">Your answer</div>'+
+            '<textarea id="msBox" class="input" rows="3" placeholder="'+placeholder+'"></textarea>'+
+            '<div class="row actions-row" style="display:flex;justify-content:flex-end">'+
+              '<button id="submitBtn" class="btn"'+(this.canAnswer()?'':' disabled')+'>Submit</button>'+
+            '</div>';
+          (function(){
+            const wide = (typeof Game!=='undefined' && Game._ensureAnswerWide) ? Game._ensureAnswerWide() : null;
+            const mount = wide || (answer||main);
+            mount.appendChild(ans);
+          })();
+          const box=$('#msBox'); if (box){ box.value = this.ui.draft||''; box.addEventListener('input', ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
+          const submit=$('#submitBtn'); if (submit) submit.onclick=async()=>{
+            const box=$('#msBox'); const text=(box.value||'').trim(); if(!text) return;
+            try{ submit.disabled=true; await API.submit_answer({ text }); try{ this.stopSTT(); }catch{} this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} this.ui.ansVisible=false; this.ui.inputTool=null; const mic=$('#micBtn'), kb=$('#kbBtn'); if(mic) mic.classList.remove('active'); if(kb) kb.classList.remove('active'); try{ const an=document.getElementById('msAns'); if(an&&an.parentNode){ an.parentNode.removeChild(an); } }catch{}
+            this.render(true); box.value=''; this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} await this.refresh(); }catch(e){ submit.disabled=false; toast(e.message||'Submit failed'); }
+          };
+        }else{
+          const box=$('#msBox'); if (box){ box.placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn'; box.toggleAttribute('disabled', !this.canAnswer()); }
+          const submit=$('#submitBtn'); if (submit){ submit.toggleAttribute('disabled', !this.canAnswer()); }
+        }
+      }
+
+      const role2=getRole(this.code); const isHost2 = role2==='host';
+      if (isHost2 && forceFull){
         controls.innerHTML=
           '<button id="nextCard" class="cta" '+( (s.current_turn && s.current_turn.participant_id) ? 'disabled' : '' )+'>'+'<img src="./assets/next-card.png" alt="Next"/><span>Next Card</span></button>';
-        $('#nextCard').onclick = async () => {
+        // Only change: Next Card now sends mode/level, everything else stays the same
+        $('#nextCard').onclick=async()=>{
           try{
             const payload = { code: this.code };
             const mode = this.ui.levelMode || (this.state.auto_switch ? 'auto' : 'manual');
             const lvl = this.ui.levelSelection || this.state.level || 'simple';
-
             if (mode === 'auto'){
               payload.mode = 'auto';
             } else {
               payload.mode = 'manual';
               payload.level = lvl;
             }
-
             await API.next_question(payload);
             await this.refresh();
           }catch(e){
-            toast(e?.message || 'Next failed');
+            toast(e.message||'Next failed');
           }
         };
-      }else if (!isHost){ controls.innerHTML=''; }
+      }else if (!isHost2){ controls.innerHTML=''; }
 
       this.renderTimer(); try{ this._adjustAnswerWide(); }catch{}
       return;
@@ -879,16 +864,13 @@ const Game = {
 
     if (s.status==='ended'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
       controls.innerHTML='';
-      // Render seats around the card
       this.renderSeats();
-      // Mount the new Summary module inside the main card
       const mainEl = document.getElementById('mainCard');
       try{
         const code=this.code;
         let myPid=null; try{ myPid = JSON.parse(localStorage.getItem(msPidKey(code))||'null'); }catch(_){ myPid=null; }
         const role=getRole(this.code);
         const isHost = role==='host';
-        // Compute deterministic seat indexes even after end
         const entries = this.seatOrder(this.state.host_user_id, this.state.participants||[]);
         const mappedParticipants = entries.map(e=>({ ...e.p, seat_index: e.idx }));
         const stateForSummary = { ...this.state, participants: mappedParticipants };
@@ -904,16 +886,13 @@ const Game = {
 export async function render(ctx){
   const code = ctx?.code || null;
 
-  // Guard: only allow players (host or participant) to access the game screen
   if (!code) {
-    // No code at all, send to generic join
     location.hash = '#/join';
     return;
   }
 
   let isPlayer = false;
 
-  // Check if we have a participant id stored for this game (guest)
   try {
     const pidRaw = localStorage.getItem(msPidKey(code));
     if (pidRaw) {
@@ -921,7 +900,6 @@ export async function render(ctx){
     }
   } catch {}
 
-  // Check if this browser is marked as host for this game
   if (!isPlayer) {
     try {
       const role = getRole(code);
@@ -932,12 +910,10 @@ export async function render(ctx){
   }
 
   if (!isPlayer) {
-    // Not a known player in this browser, redirect to homepage
     location.hash = '#/';
     return;
   }
 
-  // If we are switching to a different game code, reset in-memory state
   if (Game.code && Game.code !== code) {
     Game.state = {
       status: 'lobby',
