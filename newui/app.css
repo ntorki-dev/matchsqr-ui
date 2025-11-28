@@ -494,6 +494,7 @@ body.is-game #answerWide {
   align-items: center;
   justify-content: space-between;
   width: 100%;
+  gap: 8px;
 }
 
 
@@ -722,7 +723,7 @@ body.is-game #answerWide {
 /* Dropdown list */
 .level-menu-list {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + 2px);
   left: 0;
   padding: 4px 0;
   background-color: #fdfbf0;
