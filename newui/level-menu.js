@@ -27,23 +27,39 @@ export const LevelMenu = {
 
     const label = this._labelFor(mode, level);
 
+        const dotClass = this._dotClassFor(mode, level);
+
     container.innerHTML =
       '<div class="top-actions-inner">' +
         '<div class="level-menu" id="msLevelMenu" data-selected="' + this._escape(label) + '">' +
           '<button class="level-menu-toggle" type="button">' +
             '<span class="level-menu-label">Level:</span>' +
+            '<span class="level-menu-dot ' + this._escape(dotClass) + '"></span>' +
             '<span class="level-menu-value">' + this._escape(label) + '</span>' +
             '<span class="level-menu-icon"></span>' +
           '</button>' +
           '<ul class="level-menu-list">' +
-            '<li class="level-menu-item" data-mode="auto" data-level="" data-value="Auto">Auto</li>' +
-            '<li class="level-menu-item" data-mode="manual" data-level="simple" data-value="Simple: Icebreaker">Simple: Icebreaker</li>' +
-            '<li class="level-menu-item" data-mode="manual" data-level="medium" data-value="Medium: Opening up">Medium: Opening up</li>' +
-            '<li class="level-menu-item" data-mode="manual" data-level="deep" data-value="Deep: Honest &amp; real">Deep: Honest &amp; real</li>' +
+            '<li class="level-menu-item" data-mode="auto" data-level="" data-value="Auto">' +
+              '<span class="level-menu-dot dot-auto"></span>' +
+              '<span class="level-menu-item-text">Auto</span>' +
+            '</li>' +
+            '<li class="level-menu-item" data-mode="manual" data-level="simple" data-value="Simple: Icebreaker">' +
+              '<span class="level-menu-dot dot-simple"></span>' +
+              '<span class="level-menu-item-text">Simple: Icebreaker</span>' +
+            '</li>' +
+            '<li class="level-menu-item" data-mode="manual" data-level="medium" data-value="Medium: Opening up">' +
+              '<span class="level-menu-dot dot-medium"></span>' +
+              '<span class="level-menu-item-text">Medium: Opening up</span>' +
+            '</li>' +
+            '<li class="level-menu-item" data-mode="manual" data-level="deep" data-value="Deep: Honest &amp; real">' +
+              '<span class="level-menu-dot dot-deep"></span>' +
+              '<span class="level-menu-item-text">Deep: Honest &amp; real</span>' +
+            '</li>' +
           '</ul>' +
         '</div>' +
         '<button id="endAnalyzeTop" class="btn danger">End game &amp; analyze</button>' +
       '</div>';
+
 
     const menu = container.querySelector('#msLevelMenu');
     const toggle = menu ? menu.querySelector('.level-menu-toggle') : null;
@@ -73,6 +89,11 @@ export const LevelMenu = {
 
         const value = item.getAttribute('data-value') || (item.textContent || '').trim();
         if (valueSpan) valueSpan.textContent = value;
+                const toggleDot = menu.querySelector('.level-menu-toggle .level-menu-dot');
+        if (toggleDot) {
+          toggleDot.className = 'level-menu-dot ' + this._dotClassFor(newMode, newLevel);
+        }
+
         items.forEach(i => i.classList.remove('is-selected'));
         item.classList.add('is-selected');
         menu.setAttribute('data-selected', value);
@@ -196,6 +217,16 @@ export const LevelMenu = {
     }
     return 'Auto';
   },
+
+    _dotClassFor(mode, level) {
+    if (mode === 'manual') {
+      if (level === 'medium') return 'dot-medium';
+      if (level === 'deep') return 'dot-deep';
+      return 'dot-simple';
+    }
+    return 'dot-auto';
+  },
+
 
   _escape(str) {
     if (!str && str !== 0) return '';
