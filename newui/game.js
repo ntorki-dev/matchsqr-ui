@@ -607,12 +607,23 @@ render(forceFull){
 		        // Level indicator circle on the question card
         try{
           const card = q.closest ? (q.closest('.card') || q) : q;
-          LevelMenu.updateIndicator({
-            cardElement: card,
-            questionLevel: s.question && s.question.level,
-            mode: this.ui.levelMode || 'auto'
-          });
-        }catch(_){}
+          try {
+  const role = getRole(this.code);
+  const isHost = (role === 'host');
+
+  // Host uses real mode, guests always treated as manual (no border)
+  const modeForIndicator = isHost
+    ? ((this.ui && (this.ui.levelMode === 'manual' || this.ui.levelMode === 'auto'))
+        ? this.ui.levelMode
+        : 'auto')
+    : 'manual';
+
+  LevelMenu.updateIndicator({
+    cardElement: q,
+    questionLevel: s.question && s.question.level,
+    mode: modeForIndicator
+  });
+} catch (_) {}
 
         
         // Clarification overlay hook (bottom-right "?" + small over-card panel)
