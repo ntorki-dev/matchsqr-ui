@@ -3,6 +3,8 @@ import { API, msPidKey, resolveGameId, getRole, setRole, draftKey, hostMarkerKey
 import { renderHeader, ensureDebugTray, $, toast, setHeaderActions, clearHeaderActions } from './ui.js';
 import * as Summary from './summary.js';
 import { initClarificationOverlay, setHostElement, setClarification, syncClarificationButton } from './clarification-overlay.js';
+import { LevelMenu } from './level-menu.js';
+
 
 const Game = {
   
@@ -58,20 +60,19 @@ const Game = {
     this.ui.sttActive = false;
   },
 
-  code:null, poll:null, tick:null, hbH:null, hbG:null,
+code:null, poll:null, tick:null, hbH:null, hbG:null,
   state:{ status:'lobby', endsAt:null, participants:[], question:null, current_turn:null, host_user_id:null },
-  ui:{
+    ui:{
     lastSig:'',
     ansVisible:false,
     draft:'',
-    // level selection UI state
-    levelMode:'auto',          // 'auto' or 'manual'
-    levelSelection:'simple',   // 'simple' | 'medium' | 'deep'
-    sttActive:false,
-    inputTool:null
+    // Level selector state
+    levelMode:'auto',        // 'auto' or 'manual'
+    levelSelection:'simple'  // 'simple' | 'medium' | 'deep'
   },
 
-  // --- Heartbeat diagnostics state (added earlier) ---
+
+  // --- Heartbeat diagnostics state (added) ---
   __hb:{ host:{fails:0,lastErr:null,lastStatus:null,lastAt:null}, guest:{fails:0,lastErr:null,lastStatus:null,lastAt:null}, logs:0, maxLogs:10 },
 
   async mount(code){
@@ -104,25 +105,30 @@ const Game = {
       b.lastAt = Date.now();
       if (this.__hb.logs < this.__hb.maxLogs){
         this.__hb.logs++;
+        // Rate-limited, concise console signal
         console.warn(`[HB:${role}] heartbeat failed (#${b.fails})`, { status:b.lastStatus, msg:b.lastErr });
       }
 
+      // One-time lightweight session refresh then retry once after 1s
       try { await getSession(); } catch(_) {}
       await new Promise(r=>setTimeout(r, 1000));
 
       try {
         await fn();
+        // recovered
         b.fails = 0; b.lastStatus = 200; b.lastErr = null;
         if (this.__hb.logs < this.__hb.maxLogs){
           this.__hb.logs++;
           console.warn(`[HB:${role}] heartbeat recovered`);
         }
       } catch(e2){
+        // keep failure count, let the regular interval try again next tick
         if (this.__hb.logs < this.__hb.maxLogs){
           this.__hb.logs++;
           console.warn(`[HB:${role}] retry failed, will back off naturally`, { msg: e2?.message || String(e2) });
         }
       }
+      // Expose minimal debug surface for manual inspection if needed
       try { window.__HB_DEBUG = this.__hb; } catch {}
     } catch {}
   },
@@ -140,10 +146,13 @@ const Game = {
         catch(e){ await this._onHeartbeatFail('host', e, API.heartbeat); }
       };
       this.hbH = setInterval(beatHost, 20000);
+      // fire immediately
       beatHost();
 
+      // Best-effort final beat on page exit
       const finalBeat = () => { try { API.heartbeat(); } catch(_) {} };
       try {
+        // Avoid multiple listeners if startHeartbeats runs again
         if (!this.__finalBeatInstalled){
           window.addEventListener('pagehide', finalBeat, { capture:true });
           window.addEventListener('beforeunload', finalBeat, { capture:true });
@@ -164,17 +173,7 @@ const Game = {
     }
   },
 
-  stop(){
-    try{
-      const tar=document.getElementById('topActionsRow');
-      if (tar) tar.innerHTML='';
-    }catch(_){}
-    if(this.poll) clearInterval(this.poll);
-    if(this.tick) clearInterval(this.tick);
-    if(this.hbH) clearInterval(this.hbH);
-    if(this.hbG) clearInterval(this.hbG);
-  },
-
+  stop(){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  if(this.poll) clearInterval(this.poll); if(this.tick) clearInterval(this.tick); if(this.hbH) clearInterval(this.hbH); if(this.hbG) clearInterval(this.hbG); },
   async refresh(){
     try{
       const out=await API.get_state({ code:this.code });
@@ -194,13 +193,7 @@ const Game = {
       this.startHeartbeats();
     }catch(e){}
   },
-
-  remainingSeconds(){
-    if (!this.state.endsAt) return null;
-    const diff=Math.floor((new Date(this.state.endsAt).getTime()-Date.now())/1000);
-    return Math.max(0,diff);
-  },
-
+  remainingSeconds(){ if (!this.state.endsAt) return null; const diff=Math.floor((new Date(this.state.endsAt).getTime()-Date.now())/1000); return Math.max(0,diff); },
   renderTimer(){
     const t=this.remainingSeconds();
     const el=document.getElementById('roomTimer');
@@ -214,11 +207,13 @@ const Game = {
       el.textContent=m+':'+s;
     }
 
+    // Keep Extend button in sync with remaining time
     const btnExtend = document.getElementById('extendBtnHeader');
     if (btnExtend){
       if (t == null){
         btnExtend.disabled = true;
       }else{
+        // Enable only when 10 minutes or less remain
         btnExtend.disabled = t > 10 * 60;
       }
     }
@@ -229,7 +224,6 @@ const Game = {
     const cur = this.state.current_turn && this.state.current_turn.participant_id;
     return pid && cur && String(pid)===String(cur);
   },
-
   async backfillPidIfMissing(){
     const code=this.code;
     let pidRaw = localStorage.getItem(msPidKey(code));
@@ -268,14 +262,17 @@ const Game = {
     }catch{}
   },
   
-  // --- seating helpers ---
+  
+    // --- seating helpers ---
   seatOrder(hostId, ppl){
     const all = Array.isArray(ppl) ? [...ppl] : [];
 
+    // Primary path - use backend seat_index
     const entries = [];
     for (const p of all){
       let idx = typeof p.seat_index === 'number' ? p.seat_index : null;
 
+      // Fallback for older data without seat_index
       if (idx == null){
         const isHost = p?.role === 'host' || p?.is_host === true;
         if (isHost) idx = 0;
@@ -286,6 +283,7 @@ const Game = {
       }
     }
 
+    // If still nothing has a seat_index, fall back to a deterministic local order
     if (!entries.length && all.length){
       const uidOf = p => p?.user_id || p?.auth_user_id || p?.owner_id || p?.userId || p?.uid || null;
       let host = null;
@@ -300,8 +298,10 @@ const Game = {
         host = all.find(p => p?.is_host === true || p?.role === 'host') || all[0];
       }
 
+      // Host at seat 0
       entries.push({ idx: 0, p: host });
 
+      // Other players in stable order by id into seats 1..7
       const others = all.filter(p => p !== host);
       let seat = 1;
       others.sort((a,b) => String(a.id || a.participant_id || '').localeCompare(String(b.id || b.participant_id || '')));
@@ -319,6 +319,7 @@ const Game = {
   renderSeats(){
 
     const s=this.state;
+    // Ensure containers exist
     let leftEl = document.getElementById('sideLeft');
     let rightEl = document.getElementById('sideRight');
     const mainCard = document.getElementById('mainCard');
@@ -328,12 +329,12 @@ const Game = {
         if (!leftEl){
           leftEl = document.createElement('div');
           leftEl.id = 'sideLeft';
-          roomMain.insertBefore(leftEl, mainCard);
+                    roomMain.insertBefore(leftEl, mainCard);
         }
         if (!rightEl){
           rightEl = document.createElement('div');
           rightEl.id = 'sideRight';
-          if (mainCard.nextSibling){
+                    if (mainCard.nextSibling){
             roomMain.insertBefore(rightEl, mainCard.nextSibling);
           }else{
             roomMain.appendChild(rightEl);
@@ -368,11 +369,12 @@ const Game = {
       return name;
     };
 
+    // NEW: helper to compute initials from the display name
     const makeInitials = (name) => {
       if (!name || typeof name !== 'string') return 'G';
       const trimmed = name.trim();
       if (!trimmed) return 'G';
-      const chars = Array.from(trimmed);
+      const chars = Array.from(trimmed); // handles Unicode properly
       const first = (chars[0] || '').toLocaleUpperCase();
       const second = (chars[1] || '').toLocaleUpperCase();
       return second ? (first + second) : first;
@@ -387,6 +389,7 @@ const Game = {
 
       const nameOnly = displayName(p);
       const initials = makeInitials(nameOnly);
+      // Initials, optional crown for host, then name
       const crownHtml = (role==='host') ? '<img class="seat-crown" src="./assets/crown.png" alt="host" width="16" height="16">' : '';
       el.innerHTML = '<div class="seat-initials">'+ initials +'</div>'+
                      crownHtml +
@@ -398,10 +401,11 @@ const Game = {
     
   },
 
-  mountHeaderActions(){
+    mountHeaderActions(){
     const s=this.state;
     const frag=document.createDocumentFragment();
 
+    // Timer element
     const timer=document.createElement('div');
     timer.className='ms-timer';
     timer.id='roomTimer';
@@ -417,6 +421,7 @@ const Game = {
       btnExtend.id='extendBtnHeader';
       btnExtend.textContent='Extend';
 
+      // Disabled by default, only enabled in last 10 minutes
       const t = this.remainingSeconds();
       const canExtendNow = (t != null && t <= 10 * 60);
       btnExtend.disabled = !canExtendNow;
@@ -424,9 +429,10 @@ const Game = {
         btnExtend.title = 'Extend becomes available in the last 10 minutes of the game.';
       }
 
-      btnExtend.onclick = async () => {
+            btnExtend.onclick = async () => {
         if (btnExtend.disabled) return;
 
+        // First check entitlement for extend
         let check;
         try{
           check = await API.entitlement_check({ action: 'extend_game' });
@@ -436,6 +442,7 @@ const Game = {
         }
 
         if (check && check.can_proceed === true && check.mode === 'subscribed'){
+          // Subscribed host: extend directly
           try{
             const code = this.code || null;
             if (!code){
@@ -455,6 +462,7 @@ const Game = {
           return;
         }
 
+        // Not subscribed, or cannot proceed: go to billing for paid extend
         const roomCode = this.code || (typeof this.code === 'string' ? this.code : null);
         if (roomCode){
           location.hash = '#/billing?from=extend&code=' + encodeURIComponent(roomCode);
@@ -470,6 +478,9 @@ const Game = {
     this.renderTimer();
   },
 
+
+
+  // --- ensure and size the wide answer mount under mic/keyboard ---
   _ensureAnswerWide(){
     try{
       const tools = document.getElementById('toolsRow');
@@ -500,37 +511,24 @@ const Game = {
     }catch{}
   },
 
-  // --- main render ---
-  render(forceFull){
+  // --- align arbitrary rows to #roomMain width for consistent centering (mobile-safe) ---
+render(forceFull){
     const s=this.state; const main=$('#mainCard'); const controls=$('#controlsRow'); const answer=$('#answerRow'); const tools=$('#toolsRow'); const side=$('#sideLeft');
-
-    if (main && main.classList){
+    // Toggle card visual state classes without changing layout or content
+    if (main && main.classList) {
       main.classList.remove('card--idle','card--running');
       const st = s.status || 'lobby';
-      if (st === 'running') main.classList.add('card--running');
-      else main.classList.add('card--idle');
+      if (st === 'running') {
+        main.classList.add('card--running');
+      } else {
+        main.classList.add('card--idle');
+      }
     }
 
     if (!main || !controls) return;
-    if (forceFull){
-      main.innerHTML=''; controls.innerHTML='';
-      if(answer) answer.innerHTML='';
-      if(tools) tools.innerHTML='';
-      if(side) side.innerHTML='';
-      try{
-        const aw=document.getElementById('answerWide');
-        if(aw){ aw.innerHTML=''; }
-        this._ensureAnswerWide();
-      }catch{}
-    }
-
-    if (s.status==='lobby'){
-      try{
-        const tar=document.getElementById('topActionsRow');
-        if (tar) tar.innerHTML='';
-      }catch(_){}
-      clearHeaderActions();
-
+    if (forceFull){ main.innerHTML=''; controls.innerHTML=''; if(answer) answer.innerHTML=''; if(tools) tools.innerHTML=''; if(side) side.innerHTML=''; try{ const aw=document.getElementById('answerWide'); if(aw){ aw.innerHTML=''; } this._ensureAnswerWide(); }catch{} }
+/* removed legacy in-card timer */
+    if (s.status==='lobby'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
       if (forceFull){
         const wrap=document.createElement('div'); wrap.id='msLobby'; wrap.className='lobby-wrap';
         this.renderSeats();
@@ -560,147 +558,62 @@ const Game = {
         main.appendChild(wrap);
       }else{
         this.renderSeats();
-        const startBtn=$('#startGame');
-        if (startBtn){
-          const enough = Array.isArray(s.participants) && s.participants.length>=2;
-          startBtn.disabled=!enough;
-        }
+        const startBtn=$('#startGame'); if (startBtn){ const enough = Array.isArray(s.participants) && s.participants.length>=2; startBtn.disabled=!enough; }
       }
-      this.renderTimer();
-      try{ this._adjustAnswerWide(); }catch{}
+      this.renderTimer(); try{ this._adjustAnswerWide(); }catch{}
       return;
     }
 
-    if (s.status==='running'){
-
-      // Top actions row: level dropdown (host only) + End game & analyze
+        if (s.status==='running') {
       try{
         const tar=document.getElementById('topActionsRow');
-        if (tar && forceFull){
+        if (tar){
           const role=getRole(this.code);
           const isHost=(role==='host');
 
           if (isHost){
-            const mode = this.ui.levelMode || 'auto';
-            const lvl  = this.ui.levelSelection || 'simple';
-            let selectedLabel = 'Auto';
-            if (mode === 'manual'){
-              if (lvl === 'medium') selectedLabel = 'Medium';
-              else if (lvl === 'deep') selectedLabel = 'Deep';
-              else selectedLabel = 'Simple';
-            }
-
-            tar.innerHTML =
-              '<div class="top-actions-inner">' +
-                '<div class="level-menu" id="msLevelMenu" data-selected="'+selectedLabel+'">' +
-                  '<button class="level-menu-toggle" type="button">' +
-                    '<span class="level-menu-label">Level:</span>' +
-                    '<span class="level-menu-value">'+selectedLabel+'</span>' +
-                    '<span class="level-menu-icon"></span>' +
-                  '</button>' +
-                  '<ul class="level-menu-list">' +
-                    '<li class="level-menu-item" data-mode="auto" data-level="">Auto</li>' +
-                    '<li class="level-menu-item" data-mode="manual" data-level="simple">Simple</li>' +
-                    '<li class="level-menu-item" data-mode="manual" data-level="medium">Medium</li>' +
-                    '<li class="level-menu-item" data-mode="manual" data-level="deep">Deep</li>' +
-                  '</ul>' +
-                '</div>' +
-                '<button id="endAnalyzeTop" class="btn danger">End game &amp; analyze</button>' +
-              '</div>';
-
-            const menu = document.getElementById('msLevelMenu');
-            const toggle = menu ? menu.querySelector('.level-menu-toggle') : null;
-            const valueSpan = menu ? menu.querySelector('.level-menu-value') : null;
-            const list = menu ? menu.querySelector('.level-menu-list') : null;
-
-            if (menu && toggle && valueSpan && list){
-              toggle.addEventListener('click', (e)=>{
-                e.stopPropagation();
-                const isOpen = menu.classList.contains('is-open');
-                if (isOpen){
-                  menu.classList.remove('is-open');
-                } else {
-                  menu.classList.add('is-open');
-                }
-              });
-
-              list.addEventListener('click', (e)=>{
-                const item = e.target.closest('.level-menu-item');
-                if (!item) return;
-                e.stopPropagation();
-
-                const val = (item.getAttribute('data-level') || '').toLowerCase();
-                const m = item.getAttribute('data-mode') || 'auto';
-
-                if (m === 'auto'){
-                  this.ui.levelMode = 'auto';
-                  this.ui.levelSelection = 'simple';
-                  if (valueSpan) valueSpan.textContent = 'Auto';
-                  menu.setAttribute('data-selected','Auto');
-                } else {
-                  this.ui.levelMode = 'manual';
-                  if (val === 'medium' || val === 'deep') this.ui.levelSelection = val;
-                  else this.ui.levelSelection = 'simple';
-
-                  const label = this.ui.levelSelection.charAt(0).toUpperCase() + this.ui.levelSelection.slice(1);
-                  if (valueSpan) valueSpan.textContent = label;
-                  menu.setAttribute('data-selected', label);
-                }
-
-                menu.classList.remove('is-open');
-              });
-            }
-
-            const endBtn=document.getElementById('endAnalyzeTop');
-            if (endBtn){
-              endBtn.onclick = async()=>{
+            // Delegate top bar UI to LevelMenu
+            LevelMenu.mountTopBar({
+              container: tar,
+              mode: this.ui.levelMode || 'auto',
+              level: this.ui.levelSelection || 'simple',
+              onChange: ({ mode, level }) => {
+                this.ui.levelMode = mode;
+                this.ui.levelSelection = level;
+              },
+              onEndGame: async () => {
                 try{
                   await API.end_game_and_analyze();
                   await this.refresh();
-                }catch(e){ toast(e.message||"End failed"); }
-              };
-            }
-          } else {
+                }catch(e){
+                  toast(e.message || 'End failed');
+                }
+              }
+            });
+          }else{
             tar.innerHTML = '';
           }
         }
       }catch(_){}
-
       this.mountHeaderActions();
 
       if (forceFull){
         const q=document.createElement('div'); q.id='msQ'; q.className='question-block';
         q.innerHTML = '<h4 style="margin:0 0 8px 0;">'+(s.question?.text || '')+'</h4>';
         main.appendChild(q);
-
-        // Level indicator circle on the question card
+		
+		        // Level indicator circle on the question card
         try{
-          if (s.question && s.question.level){
-            const card = q.closest ? (q.closest('.card') || q) : q;
-            if (card){
-              let indicator = card.querySelector('.card-level-indicator');
-              if (!indicator){
-                indicator = document.createElement('div');
-                indicator.className = 'card-level-indicator';
-                card.appendChild(indicator);
-                if (!card.style.position || card.style.position === 'static'){
-                  card.style.position = 'relative';
-                }
-              }
-              indicator.classList.remove('card-level-simple','card-level-medium','card-level-deep','card-level-auto');
-              const lvl = String(s.question.level).toLowerCase();
-              if (lvl === 'medium') indicator.classList.add('card-level-medium');
-              else if (lvl === 'deep') indicator.classList.add('card-level-deep');
-              else indicator.classList.add('card-level-simple');
+          const card = q.closest ? (q.closest('.card') || q) : q;
+          LevelMenu.updateIndicator({
+            cardElement: card,
+            questionLevel: s.question && s.question.level,
+            mode: this.ui.levelMode || 'auto'
+          });
+        }catch(_){}
 
-              const mode = this.ui.levelMode || 'auto';
-              if (mode === 'auto'){
-                indicator.classList.add('card-level-auto');
-              }
-            }
-          }
-        }catch{}
-
+        
+        // Clarification overlay hook (bottom-right "?" + small over-card panel)
         try {
           if (!this.__clarInit) { initClarificationOverlay(); this.__clarInit = true; }
           const __hostEl = q.closest ? (q.closest('.card') || q) : q;
@@ -708,7 +621,7 @@ const Game = {
           setClarification((s.question && s.question.clarification) ? String(s.question.clarification) : '');
           syncClarificationButton();
         } catch(_) {}
-
+// v10: Show guidance when game is running and there is no active turn
         try{
           const stRunning = (s.status||'') === 'running';
           const activeTurn = !!(s.current_turn && s.current_turn.participant_id);
@@ -721,11 +634,11 @@ const Game = {
 
         this.renderSeats();
 
-        // Next Card button visual state v8
+        // v8: Toggle Next Card button based on round state
         try{
           const s=this.state; const next=$('#nextCard')||document.getElementById('nextCard');
+          if (next){ const active = !!(s.current_turn && s.current_turn.participant_id); next.disabled = !!active; next.setAttribute('aria-disabled', active ? 'true' : 'false'); }
           if (next){
-            const active = !!(s.current_turn && s.current_turn.participant_id);
             const isButton = next.tagName && next.tagName.toLowerCase() === 'button';
             if (active){
               if (isButton){ next.disabled = true; }
@@ -747,7 +660,6 @@ const Game = {
           }
           if (next){
             const isButton = next.tagName && next.tagName.toLowerCase() === 'button';
-            const active = !!(s.current_turn && s.current_turn.participant_id);
             if (active){
               if (isButton){ next.disabled = true; }
               next.setAttribute('aria-disabled','true'); next.classList.add('disabled','btn-disabled');
@@ -767,20 +679,8 @@ const Game = {
             }
           }
           if (next){
-            const active = !!(this.state.current_turn && this.state.current_turn.participant_id);
-            if (active){
-              next.setAttribute('aria-disabled','true');
-              next.classList.add('disabled');
-              next.style.opacity='0.5';
-              next.style.pointerEvents='none';
-              next.style.cursor='not-allowed';
-            } else {
-              next.removeAttribute('aria-disabled');
-              next.classList.remove('disabled');
-              next.style.opacity='';
-              next.style.pointerEvents='';
-              next.style.cursor='';
-            }
+            if (active){ next.setAttribute('aria-disabled','true'); next.classList.add('disabled'); next.style.opacity='0.5'; next.style.pointerEvents='none'; next.style.cursor='not-allowed'; }
+            else { next.removeAttribute('aria-disabled'); next.classList.remove('disabled'); next.style.opacity=''; next.style.pointerEvents=''; next.style.cursor=''; }
           }
         }catch{}
 
@@ -790,7 +690,7 @@ const Game = {
           '<img id="micBtn" class="tool-icon'+((this.ui&&this.ui.inputTool==='mic')?' active':'')+(can?'':' disabled')+'" src="./assets/mic.png" alt="mic"/>'+
           '<img id="kbBtn" class="tool-icon'+((this.ui&&this.ui.inputTool==='kb')?' active':'')+(can?'':' disabled')+'" src="./assets/keyboard.png" alt="keyboard"/>';
         (tools||main).appendChild(actRow);
-
+        // v7: mic starts STT within click gesture BEFORE re-render; toggles off if already listening
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; console.info && console.info('[MS] mic click');
           if (this.ui && this.ui.sttActive){ try{ this.stopSTT(); }catch{} this.ui.sttActive=false; this.ui.inputTool=null; this.render(true); return; }
           this.ui.ansVisible=true; this.ui.inputTool='mic';
@@ -799,18 +699,17 @@ const Game = {
           const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} }
         };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; try{ this.stopSTT(); }catch{} this.ui.ansVisible=true; this.ui.inputTool='kb'; this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
+        // v5 override: toggle mic STT and stop STT on keyboard
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; if (this.ui && this.ui.sttActive){ try{ this.stopSTT(); }catch{} this.ui.sttActive=false; this.render(true); return; } this.ui.ansVisible=true; this.ui.inputTool='mic'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (mic) mic.classList.add('active'); if (kb) kb.classList.remove('active'); this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } try{ this.startSTT(); }catch{} };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; try{ this.stopSTT(); }catch{} this.ui.ansVisible=true; this.ui.inputTool='kb'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (kb) kb.classList.add('active'); if (mic) mic.classList.remove('active'); this.render(true); const box=$('#msBox'); if (box){ try{ box.focus(); box.setSelectionRange(box.value.length, box.value.length);}catch{} } };
         $('#micBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.ui.inputTool='mic'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (mic) mic.classList.add('active'); if (kb) kb.classList.remove('active'); this.render(true); };
         $('#kbBtn').onclick=()=>{ if (!this.canAnswer()) return; this.ui.ansVisible=true; this.ui.inputTool='kb'; const mic=$('#micBtn'), kb=$('#kbBtn'); if (kb) kb.classList.add('active'); if (mic) mic.classList.remove('active'); this.render(true); };
       }else{
         this.renderSeats();
+        // v8: Toggle Next Card button in update path
         try{
           const s=this.state; const next=$('#nextCard')||document.getElementById('nextCard');
-          if (next){
-            const active = !!(s.current_turn && s.current_turn.participant_id);
-            next.toggleAttribute('disabled', active);
-          }
+          if (next){ const active = !!(s.current_turn && s.current_turn.participant_id); next.toggleAttribute('disabled', active); }
         }catch{}
         const can=this.canAnswer(); const mic=$('#micBtn'); const kb=$('#kbBtn');
         if (mic) mic.classList.toggle('disabled', !can);
@@ -822,11 +721,40 @@ const Game = {
         if (!can) { try{ this.stopSTT(); }catch{} }
       }
 
+      if (this.ui.ansVisible){
+        try{ this._ensureAnswerWide(); }catch{}
+        let ans=$('#msAns');
+        if (!ans){
+          ans=document.createElement('div'); ans.className='answer-card'; ans.id='msAns';
+          const placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn';
+          ans.innerHTML =
+            '<div class="meta">Your answer</div>'+
+            '<textarea id="msBox" class="input" rows="3" placeholder="'+placeholder+'"></textarea>'+
+            '<div class="row actions-row" style="display:flex;justify-content:flex-end">'+
+              '<button id="submitBtn" class="btn"'+(this.canAnswer()?'':' disabled')+'>Submit</button>'+
+            '</div>';
+          (function(){
+            const wide = (typeof Game!=='undefined' && Game._ensureAnswerWide) ? Game._ensureAnswerWide() : null;
+            const mount = wide || (answer||main);
+            mount.appendChild(ans);
+          })();
+          const box=$('#msBox'); if (box){ box.value = this.ui.draft||''; box.addEventListener('input', ()=>{ this.ui.draft=box.value; try{ localStorage.setItem(draftKey(this.code), this.ui.draft); }catch{} }); }
+          const submit=$('#submitBtn'); if (submit) submit.onclick=async()=>{
+            const box=$('#msBox'); const text=(box.value||'').trim(); if(!text) return;
+            try{ submit.disabled=true; await API.submit_answer({ text }); try{ this.stopSTT(); }catch{} this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} this.ui.ansVisible=false; this.ui.inputTool=null; const mic=$('#micBtn'), kb=$('#kbBtn'); if(mic) mic.classList.remove('active'); if(kb) kb.classList.remove('active'); try{ const an=document.getElementById('msAns'); if(an&&an.parentNode){ an.parentNode.removeChild(an); } }catch{}
+            this.render(true); box.value=''; this.ui.draft=''; try{ localStorage.removeItem(draftKey(this.code)); }catch{} await this.refresh(); }catch(e){ submit.disabled=false; toast(e.message||'Submit failed'); }
+          };
+        }else{
+          const box=$('#msBox'); if (box){ box.placeholder = this.canAnswer()? 'Type here...' : 'Wait for your turn'; box.toggleAttribute('disabled', !this.canAnswer()); }
+          const submit=$('#submitBtn'); if (submit){ submit.toggleAttribute('disabled', !this.canAnswer()); }
+        }
+      }
+
       const role=getRole(this.code); const isHost = role==='host';
       if (isHost && forceFull){
         controls.innerHTML=
           '<button id="nextCard" class="cta" '+( (s.current_turn && s.current_turn.participant_id) ? 'disabled' : '' )+'>'+'<img src="./assets/next-card.png" alt="Next"/><span>Next Card</span></button>';
-        $('#nextCard').onclick=async()=>{
+                $('#nextCard').onclick=async()=>{
           try{
             const payload = {};
             const mode = this.ui.levelMode || 'auto';
@@ -838,41 +766,37 @@ const Game = {
             }
             await API.next_question(payload);
             await this.refresh();
-          }catch(e){ toast(e.message||'Next failed'); }
+          }catch(e){
+            toast(e.message||'Next failed');
+          }
         };
-      }else if (!isHost){
-        controls.innerHTML='';
-      }
 
-      this.renderTimer();
-      try{ this._adjustAnswerWide(); }catch{}
+      }else if (!isHost){ controls.innerHTML=''; }
+
+      this.renderTimer(); try{ this._adjustAnswerWide(); }catch{}
       return;
     }
 
-    if (s.status==='ended'){
-      try{
-        const tar=document.getElementById('topActionsRow');
-        if (tar) tar.innerHTML='';
-      }catch(_){}
-      clearHeaderActions();
-      controls.innerHTML='';
-      this.renderSeats();
-      const mainCard = document.getElementById('mainCard');
-      try{
-        const code=this.code;
-        let myPid=null; try{ myPid = JSON.parse(localStorage.getItem(msPidKey(code))||'null'); }catch(_){ myPid=null; }
-        const role=getRole(this.code);
-        const isHost = role==='host';
-        const entries = this.seatOrder(this.state.host_user_id, this.state.participants||[]);
-        const mappedParticipants = entries.map(e=>({ ...e.p, seat_index: e.idx }));
-        const stateForSummary = { ...this.state, participants: mappedParticipants };
-        const firstSeat = (entries.map(e=>e.idx)[0]||null);
-        Summary.mount({ container: mainCard, state: stateForSummary, selectedSeat: firstSeat, code: this.code, myPid, isHost });
-      }catch(e){
-        try{ toast(e.message||'Failed to render summary'); }catch(_){}
-      }
-      return;
-    }
+    if (s.status==='ended'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
+  controls.innerHTML='';
+  // Render seats around the card
+  this.renderSeats();
+  // Mount the new Summary module inside the main card
+  const main = document.getElementById('mainCard');
+  try{
+    const code=this.code;
+    let myPid=null; try{ myPid = JSON.parse(localStorage.getItem(msPidKey(code))||'null'); }catch(_){ myPid=null; }
+    const role=getRole(this.code);
+    const isHost = role==='host';
+    // Compute deterministic seat indexes even after end
+    const entries = this.seatOrder(this.state.host_user_id, this.state.participants||[]);
+    const mappedParticipants = entries.map(e=>({ ...e.p, seat_index: e.idx }));
+    const stateForSummary = { ...this.state, participants: mappedParticipants };
+    const firstSeat = (entries.map(e=>e.idx)[0]||null);
+    Summary.mount({ container: main, state: stateForSummary, selectedSeat: firstSeat, code: this.code, myPid, isHost });
+  }catch(e){ try{ toast(e.message||'Failed to render summary'); }catch(_){} }
+  return;
+}
 
   }
 };
@@ -880,13 +804,16 @@ const Game = {
 export async function render(ctx){
   const code = ctx?.code || null;
 
+  // Guard: only allow players (host or participant) to access the game screen
   if (!code) {
+    // No code at all, send to generic join
     location.hash = '#/join';
     return;
   }
 
   let isPlayer = false;
 
+  // Check if we have a participant id stored for this game (guest)
   try {
     const pidRaw = localStorage.getItem(msPidKey(code));
     if (pidRaw) {
@@ -894,6 +821,7 @@ export async function render(ctx){
     }
   } catch {}
 
+  // Check if this browser is marked as host for this game
   if (!isPlayer) {
     try {
       const role = getRole(code);
@@ -904,10 +832,12 @@ export async function render(ctx){
   }
 
   if (!isPlayer) {
+    // Not a known player in this browser, redirect to homepage
     location.hash = '#/';
     return;
   }
 
+  // If we are switching to a different game code, reset in-memory state
   if (Game.code && Game.code !== code) {
     Game.state = {
       status: 'lobby',
@@ -921,8 +851,6 @@ export async function render(ctx){
       Game.ui.lastSig = '';
       Game.ui.ansVisible = false;
       Game.ui.draft = '';
-      Game.ui.levelMode = 'auto';
-      Game.ui.levelSelection = 'simple';
     }
   }
 
