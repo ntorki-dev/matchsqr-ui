@@ -682,7 +682,7 @@ body.is-game #answerWide {
   font-size: 11px;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
   cursor: pointer;
   height: 40px;
 }
