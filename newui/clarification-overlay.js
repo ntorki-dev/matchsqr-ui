@@ -58,14 +58,14 @@ function ensureButton() {
     btnEl.style.position = 'absolute';
     btnEl.style.right = '10px';
     btnEl.style.bottom = '10px';
-    btnEl.style.width = '28px';
-    btnEl.style.height = '28px';
+    btnEl.style.width = '18px';
+    btnEl.style.height = '18px';
     btnEl.style.borderRadius = '50%';
     btnEl.style.border = '2px solid rgba(255,255,255,0.95)';
     btnEl.style.background = 'transparent';              // <— transparent background
     btnEl.style.color = '#ffffff';                       // white glyph
     btnEl.style.fontWeight = '700';
-    btnEl.style.lineHeight = '26px';
+    btnEl.style.lineHeight = '16px';
     btnEl.style.textAlign = 'center';
     btnEl.style.cursor = 'pointer';
     btnEl.style.zIndex = '5';
@@ -110,7 +110,7 @@ function openOverlay() {
   Object.assign(panel.style, {
     maxWidth: '420px',
     width: '80%',
-    maxHeight: '45%',
+    maxHeight: '50%',
     overflow: 'auto',
     padding: '20px 20px 12px 20px',
     position: 'relative',
