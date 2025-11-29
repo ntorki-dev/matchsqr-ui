@@ -106,7 +106,7 @@ button.cta:disabled { opacity:.5; filter:grayscale(1); cursor:not-allowed; }
 .btn{background:var(--green);color:#fff;border:0;border-radius:10px;padding:12px 16px;font-weight:700;cursor:pointer}
 .btn.secondary{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0}
 .btn.warn{background:#ffb020;color:#3a2a00}
-.btn.danger{background:#e05252; height:30px}
+.btn.danger{background:#e05252; height:40px}
 
 /* Mic/Keyboard image-only controls */
 .kb-mic-row {
@@ -682,9 +682,9 @@ body.is-game #answerWide {
   font-size: 11px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
   cursor: pointer;
-  height: 30px;
+  height: 40px;
 }
 
 .level-menu-label {
@@ -697,8 +697,8 @@ body.is-game #answerWide {
 
 /* Arrow icon */
 .level-menu-icon {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   border: 1px solid #888;
   position: relative;
