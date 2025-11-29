@@ -606,24 +606,11 @@ render(forceFull){
 		
 		        // Level indicator circle on the question card
                 // Question level indicator circle (host vs guest mode)
-        try {
-          const roleLevel = getRole(this.code);
-          const isHostLevel = (roleLevel === 'host');
-
-          // Host uses real mode (auto/manual), guests always treated as manual (no border)
-          const modeForIndicator = isHostLevel
-            ? (
-                this.ui &&
-                (this.ui.levelMode === 'manual' || this.ui.levelMode === 'auto')
-                  ? this.ui.levelMode
-                  : 'auto'
-              )
-            : 'manual';
-
+       try {
           LevelMenu.updateIndicator({
             cardElement: q,
             questionLevel: s.question && s.question.level,
-            mode: modeForIndicator
+            mode: 'auto'  
           });
         } catch (_) {}
 
