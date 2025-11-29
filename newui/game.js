@@ -608,10 +608,10 @@ render(forceFull){
                 // Question level indicator circle (host vs guest mode)
        try {
           LevelMenu.updateIndicator({
-            cardElement: q,
-            questionLevel: s.question && s.question.level,
-            mode: 'auto'  
-          });
+		  cardElement: (document.getElementById('mainCard') || q),
+		  questionLevel: s.question && s.question.level,
+		  mode: (this.ui && this.ui.levelMode) || 'auto'
+		});
         } catch (_) {}
 
 
