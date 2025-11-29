@@ -166,48 +166,49 @@ export const LevelMenu = {
    * @param {'auto'|'manual'} opts.mode
    */
   updateIndicator(opts) {
-    const card = opts && opts.cardElement;
-    if (!card) return;
+  const card = opts && opts.cardElement;
+  if (!card) return;
 
-    const lvlRaw = opts && opts.questionLevel;
-    if (!lvlRaw) {
-      const old = card.querySelector('.card-level-indicator');
-      if (old && old.parentNode) old.parentNode.removeChild(old);
-      return;
+  const lvlRaw = opts && opts.questionLevel;
+  if (!lvlRaw) {
+    const old = card.querySelector('.card-level-indicator');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    return;
+  }
+
+  const level = String(lvlRaw).toLowerCase();
+  let indicator = card.querySelector('.card-level-indicator');
+  if (!indicator) {
+    indicator = document.createElement('div');
+    indicator.className = 'card-level-indicator';
+    card.appendChild(indicator);
+
+    const style = card.style;
+    if (!style.position || style.position === 'static') {
+      style.position = 'relative';
     }
+  }
 
-    const level = String(lvlRaw).toLowerCase();
-    let indicator = card.querySelector('.card-level-indicator');
-    if (!indicator) {
-      indicator = document.createElement('div');
-      indicator.className = 'card-level-indicator';
-      card.appendChild(indicator);
-      const style = card.style;
-      if (!style.position || style.position === 'static') {
-        style.position = 'relative';
-      }
-    }
+  // Always remove all level-related classes
+  indicator.classList.remove(
+    'card-level-simple',
+    'card-level-medium',
+    'card-level-deep',
+    'card-level-auto'
+  );
 
-    indicator.classList.remove(
-      'card-level-simple',
-      'card-level-medium',
-      'card-level-deep',
-      'card-level-auto'
-    );
+  // Apply color only based on question level
+  if (level === 'medium') {
+    indicator.classList.add('card-level-medium');
+  } else if (level === 'deep') {
+    indicator.classList.add('card-level-deep');
+  } else {
+    indicator.classList.add('card-level-simple');
+  }
 
-    if (level === 'medium') {
-      indicator.classList.add('card-level-medium');
-    } else if (level === 'deep') {
-      indicator.classList.add('card-level-deep');
-    } else {
-      indicator.classList.add('card-level-simple');
-    }
+  // Note: we ignore auto/manual mode here on purpose.
+},
 
-    const mode = (opts && opts.mode === 'manual') ? 'manual' : 'auto';
-    if (mode === 'auto') {
-      indicator.classList.add('card-level-auto');
-    }
-  },
 
   _labelFor(mode, level) {
     if (mode === 'manual') {
