@@ -671,6 +671,7 @@ body.is-game #answerWide {
   align-items: center;
   margin-right: 8px;
   position: relative;
+   height: 40px;
 }
 
 /* Main clickable button, matches your previous button look */
@@ -723,7 +724,7 @@ body.is-game #answerWide {
 /* Dropdown list */
 .level-menu-list {
   position: absolute;
-  top: calc(100% + 2px);
+  top: 100%;
   left: 0;
   padding: 4px 0;
   background-color: #fdfbf0;
