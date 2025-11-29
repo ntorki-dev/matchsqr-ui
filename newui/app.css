@@ -733,7 +733,7 @@ body.is-game #answerWide {
   box-shadow: 0 4px 10px rgba(0,0,0,0.12);
   min-width: 160px;
   z-index: 50;
-  margin: 0;
+  margin: 1px;
   display: none; /* hidden by default */
 }
 
