@@ -685,6 +685,8 @@ body.is-game #answerWide {
   gap: 6px;
   cursor: pointer;
   height: 40px;
+  margin: 0;
+  line-height: 1.2;
 }
 
 .level-menu-label {
