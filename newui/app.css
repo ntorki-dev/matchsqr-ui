@@ -685,7 +685,6 @@ body.is-game #answerWide {
   gap: 6px;
   cursor: pointer;
   height: 40px;
-  margin: 0;
   line-height: 1.2;
 }
 
@@ -734,6 +733,7 @@ body.is-game #answerWide {
   box-shadow: 0 4px 10px rgba(0,0,0,0.12);
   min-width: 160px;
   z-index: 50;
+  margin: 0;
   display: none; /* hidden by default */
 }
 
