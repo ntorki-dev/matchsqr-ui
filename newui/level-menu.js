@@ -170,6 +170,10 @@ export const LevelMenu = {
   if (!card) return;
 
   const lvlRaw = opts && opts.questionLevel;
+  // Normalize mode, default to 'auto' if missing
+  const modeRaw = opts && opts.mode;
+  const mode = modeRaw === 'manual' ? 'manual' : 'auto';
+
   if (!lvlRaw) {
     const old = card.querySelector('.card-level-indicator');
     if (old && old.parentNode) old.parentNode.removeChild(old);
@@ -198,16 +202,20 @@ export const LevelMenu = {
   );
 
   // Apply color only based on question level
-  if (level === 'medium') {
-    indicator.classList.add('card-level-medium');
-  } else if (level === 'deep') {
-    indicator.classList.add('card-level-deep');
-  } else {
-    indicator.classList.add('card-level-simple');
-  }
+if (level === 'medium') {
+  indicator.classList.add('card-level-medium');
+} else if (level === 'deep') {
+  indicator.classList.add('card-level-deep');
+} else {
+  indicator.classList.add('card-level-simple');
+}
 
-  // Note: we ignore auto/manual mode here on purpose.
+// In auto mode, add the white border
+if (mode === 'auto') {
+  indicator.classList.add('card-level-auto');
+}
 },
+
 
 
   _labelFor(mode, level) {
