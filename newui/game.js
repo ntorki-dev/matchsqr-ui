@@ -80,7 +80,24 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
     this.code=code;
     try{ this.ui.draft = localStorage.getItem(draftKey(code)) || ''; }catch{ this.ui.draft=''; }
     try{ if (sessionStorage.getItem(hostMarkerKey(code))==='1'){ setRole(code, 'host'); sessionStorage.removeItem(hostMarkerKey(code)); } }catch{}
-    await this.refresh();
+        // Reset any previous game view so old summaries do not flash
+    this.state = {
+      status: 'lobby',
+      endsAt: null,
+      participants: [],
+      question: null,
+      current_turn: null,
+      host_user_id: null,
+      // keep current mode if valid, otherwise default to auto
+      levelMode:
+        (this.state && (this.state.levelMode === 'manual' || this.state.levelMode === 'auto'))
+          ? this.state.levelMode
+          : 'auto'
+    };
+    this.render(true);
+    this.ui.lastSig = '';
+
+	await this.refresh();
     this.startPolling();
     this.startTick();
     this.startHeartbeats();
@@ -195,30 +212,10 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
       const forceFull = (sig !== this.ui.lastSig);
       this.state = { status, endsAt, participants, question, current_turn, host_user_id, levelMode };
       await this.backfillPidIfMissing();
-            this.render(forceFull);
+      this.render(forceFull);
       this.ui.lastSig = sig;
       this.startHeartbeats();
-    }catch(e){
-      // If we were showing a finished game and the refresh fails,
-      // clear the old summary so we do not keep stale UI
-      try {
-        const prevStatus = this.state && this.state.status;
-        if (prevStatus === 'ended') {
-          this.state = {
-            status: 'lobby',
-            endsAt: null,
-            participants: [],
-            question: null,
-            current_turn: null,
-            host_user_id: null,
-            // keep levelMode if present, otherwise default to auto
-            levelMode: (this.state && this.state.levelMode) || 'auto'
-          };
-          this.render(true);
-          this.ui.lastSig = '';
-        }
-      } catch(_) {}
-    }
+    }catch(e){}
   },
 
   remainingSeconds(){ if (!this.state.endsAt) return null; const diff=Math.floor((new Date(this.state.endsAt).getTime()-Date.now())/1000); return Math.max(0,diff); },
