@@ -184,13 +184,16 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
       const question = out?.question || null;
       const current_turn = out?.current_turn || null;
       const host_user_id = out?.host_user_id || out?.hostId || null;
-		// Sync question level mode from backend so host and guests see the same mode
-	      if (typeof out?.auto_switch === 'boolean') {
-	        this.ui.levelMode = out.auto_switch ? 'auto' : 'manual';
-	      }
-      const sig = [status, endsAt, question?.id||'', current_turn?.participant_id||'', participants.length, host_user_id||''].join('|');
+		    const levelMode =
+      typeof out?.auto_switch === 'boolean'
+        ? (out.auto_switch ? 'auto' : 'manual')
+        : (this.state && (this.state.levelMode === 'manual' || this.state.levelMode === 'auto')
+            ? this.state.levelMode
+            : 'auto');
+
+	  const sig = [status, endsAt, question?.id||'', current_turn?.participant_id||'', participants.length, host_user_id||''].join('|');
       const forceFull = (sig !== this.ui.lastSig);
-      this.state = { status, endsAt, participants, question, current_turn, host_user_id };
+      this.state = { status, endsAt, participants, question, current_turn, host_user_id, levelMode };
       await this.backfillPidIfMissing();
       this.render(forceFull);
       this.ui.lastSig = sig;
@@ -614,7 +617,11 @@ render(forceFull){
           LevelMenu.updateIndicator({
 		  cardElement: (document.getElementById('mainCard') || q),
 		  questionLevel: s.question && s.question.level,
-		  mode: (this.ui && this.ui.levelMode) || 'auto'
+		              mode:
+              (this.state && (this.state.levelMode === 'manual' || this.state.levelMode === 'auto'))
+                ? this.state.levelMode
+                : ((this.ui && this.ui.levelMode) || 'auto')
+
 		});
         } catch (_) {}
 
