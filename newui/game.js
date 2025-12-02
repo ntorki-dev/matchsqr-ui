@@ -622,7 +622,7 @@ render(forceFull){
       return;
     }
 
-            if (s.status==='running') {
+            if (s.status==='running' || s.status==='grace') {
       if (forceFull) {
         try{
           const tar=document.getElementById('topActionsRow');
@@ -868,7 +868,7 @@ render(forceFull){
         // Message in help style, centered
         const msg = document.createElement('p');
         msg.className = 'help';
-        msg.textContent = 'Time is up. The host can extend the game or end and analyze.';
+        msg.textContent = 'Time is up. The host can extend the game or end the game to analyze the answers.';
         msg.style.textAlign = 'center';
         wrap.appendChild(msg);
 
