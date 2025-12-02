@@ -530,6 +530,24 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
       };
 
       frag.appendChild(btnExtend);
+
+      // In grace, also show an End & analyze button in the header
+      if (s.status === 'grace'){
+        const btnEnd = document.createElement('button');
+        btnEnd.className = 'btn danger ms-end';
+        btnEnd.id = 'endAnalyzeBtnHeader';
+        btnEnd.textContent = 'End & analyze';
+        btnEnd.onclick = async () => {
+          try{
+            btnEnd.disabled = true;
+            await API.end_game_and_analyze({ code: this.code });
+            await this.refresh();
+          }catch(e){
+            btnEnd.disabled = false;
+            toast(e?.message || 'Failed to end and analyze');
+          }
+        };
+        frag.appendChild(btnEnd);;
     }
 
     setHeaderActions(frag);
