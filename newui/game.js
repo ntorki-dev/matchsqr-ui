@@ -530,25 +530,6 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
       };
 
       frag.appendChild(btnExtend);
-
-      // In grace, also show an End & analyze button in the header
-      if (s.status === 'grace'){
-        const btnEnd = document.createElement('button');
-        btnEnd.className = 'btn danger ms-end';
-        btnEnd.id = 'endAnalyzeBtnHeader';
-        btnEnd.textContent = 'End & analyze';
-        btnEnd.onclick = async () => {
-          try{
-            btnEnd.disabled = true;
-            await API.end_game_and_analyze({ code: this.code });
-            await this.refresh();
-          }catch(e){
-            btnEnd.disabled = false;
-            toast(e?.message || 'Failed to end and analyze');
-          }
-        };
-        frag.appendChild(btnEnd);;
-    }
 	}
 
     setHeaderActions(frag);
@@ -867,46 +848,69 @@ render(forceFull){
       return;
     }
 // Grace period: main time is over, host can extend or end and analyze
-    if (s.status==='grace'){
-      // Clear any top-level actions bar (LevelMenu etc)
-      try{
-        const tar = document.getElementById('topActionsRow');
-        if (tar) tar.innerHTML = '';
-      }catch(_){}
-
-      // Mount header timer and Extend button for host
-      this.mountHeaderActions();
-
-      if (forceFull){
-        // No tools or answer input in grace
-        this.renderSeats();
-
-        const wrap = document.createElement('div');
-        wrap.className = 'grace-wrap';
-
-        // Message in help style, centered
-        const msg = document.createElement('p');
-        msg.className = 'help';
-        msg.textContent = 'Time is up. The host can extend the game or end the game to analyze the answers.';
-        msg.style.textAlign = 'center';
-        wrap.appendChild(msg);
-
-        // Grace countdown, bold and centered
-        const timer = document.createElement('div');
-        timer.id = 'graceTimer';
-        timer.className = 'help';
-        timer.style.textAlign = 'center';
-        timer.style.fontWeight = 'bold';
-        // Initial text, will be updated by renderTimer()
-        timer.textContent = '00:00';
-        wrap.appendChild(timer);
-
-        if (main) main.appendChild(wrap);
+if (s.status==='grace'){
+  // Top actions row: show an End & analyze button in the same place as before (for host only)
+  try{
+    const tar = document.getElementById('topActionsRow');
+    if (tar){
+      tar.innerHTML = '';
+      const role = getRole(this.code);
+      const isHost = (role === 'host');
+      if (isHost){
+        const btnEnd = document.createElement('button');
+        btnEnd.className = 'btn danger ms-end';
+        btnEnd.id = 'endAnalyzeTop';
+        btnEnd.textContent = 'End & analyze';
+        btnEnd.onclick = async () => {
+          try{
+            btnEnd.disabled = true;
+            // Pass code explicitly, edge function now accepts code or id
+            await API.end_game_and_analyze({ code: this.code });
+            await this.refresh();
+          }catch(e){
+            btnEnd.disabled = false;
+            toast(e?.message || 'Failed to end and analyze');
+          }
+        };
+        tar.appendChild(btnEnd);
       }
-
-      this.renderTimer();
-      return;
     }
+  }catch(_){}
+
+  // Header: timer + Extend
+  this.mountHeaderActions();
+
+  if (forceFull){
+    // No tools or answer input in grace
+    this.renderSeats();
+
+    const wrap = document.createElement('div');
+    wrap.className = 'grace-wrap';
+
+    // Message in help style, centered
+    const msg = document.createElement('p');
+    msg.className = 'help';
+    msg.textContent = 'Time is up. The host can extend the game or end the game to analyze the answers.';
+    msg.style.textAlign = 'center';
+    wrap.appendChild(msg);
+
+    // Grace countdown, bold and centered
+    const timer = document.createElement('div');
+    timer.id = 'graceTimer';
+    timer.className = 'help';
+    timer.style.textAlign = 'center';
+    timer.style.fontWeight = 'bold';
+    // Initial text, will be updated by renderTimer()
+    timer.textContent = '00:00';
+    wrap.appendChild(timer);
+
+    if (main) main.appendChild(wrap);
+  }
+
+  this.renderTimer();
+  return;
+}
+
 	
     if (s.status==='ended'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
   controls.innerHTML='';
