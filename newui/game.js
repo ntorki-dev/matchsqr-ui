@@ -622,7 +622,7 @@ render(forceFull){
       return;
     }
 
-            if (s.status==='running' || s.status==='grace') {
+            if (s.status==='running') {
       if (forceFull) {
         try{
           const tar=document.getElementById('topActionsRow');
