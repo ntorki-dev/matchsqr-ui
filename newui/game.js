@@ -219,17 +219,36 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
   },
 
   remainingSeconds(){ if (!this.state.endsAt) return null; const diff=Math.floor((new Date(this.state.endsAt).getTime()-Date.now())/1000); return Math.max(0,diff); },
-  renderTimer(){
-    const t=this.remainingSeconds();
-    const el=document.getElementById('roomTimer');
+ renderTimer(){
+    const t = this.remainingSeconds();
+    const el = document.getElementById('roomTimer');
     if (!el) return;
 
-    if (t==null){
-      el.textContent='--:--';
-    }else{
-      const m=String(Math.floor(t/60)).padStart(2,'0');
-      const s=String(t%60).padStart(2,'0');
-      el.textContent=m+':'+s;
+    const status = (this.state && this.state.status) || 'lobby';
+
+    // Header timer behavior:
+    // - Running: show normal mm:ss
+    // - Grace: always show 00:00 in the header
+    if (status === 'grace') {
+      el.textContent = '00:00';
+    } else if (t == null){
+      el.textContent = '--:--';
+    } else {
+      const m = String(Math.floor(t / 60)).padStart(2, '0');
+      const s = String(t % 60).padStart(2, '0');
+      el.textContent = m + ':' + s;
+    }
+
+    // Grace countdown inside the card (if present)
+    const graceEl = document.getElementById('graceTimer');
+    if (graceEl){
+      if (t == null || t <= 0){
+        graceEl.textContent = '00:00';
+      } else {
+        const gm = String(Math.floor(t / 60)).padStart(2, '0');
+        const gs = String(t % 60).padStart(2, '0');
+        graceEl.textContent = gm + ':' + gs;
+      }
     }
 
     // Keep Extend button in sync with remaining time
@@ -238,8 +257,13 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
       if (t == null){
         btnExtend.disabled = true;
       }else{
-        // Enable only when 10 minutes or less remain
-        btnExtend.disabled = t > 10 * 60;
+        if (status === 'grace'){
+          // In grace, enable as long as there is time left
+          btnExtend.disabled = t <= 0;
+        }else{
+          // In running, enable only when 10 minutes or less remain
+          btnExtend.disabled = t > 10 * 60;
+        }
       }
     }
   },
@@ -440,16 +464,25 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
     const role=getRole(this.code);
     const isHost=role==='host';
 
-    if (s.status==='running' && isHost){
+        if ((s.status==='running' || s.status==='grace') && isHost){
       const btnExtend=document.createElement('button');
       btnExtend.className='btn secondary ms-extend';
       btnExtend.id='extendBtnHeader';
       btnExtend.textContent='Extend';
 
       // Disabled by default, only enabled in last 10 minutes
+      // Initial enable state depends on status:
+      // - running: only in last 10 minutes
+      // - grace: any time while there is grace time left
       const t = this.remainingSeconds();
-      const canExtendNow = (t != null && t <= 10 * 60);
+      let canExtendNow = false;
+      if (s.status === 'grace'){
+        canExtendNow = (t != null && t > 0);
+      }else{
+        canExtendNow = (t != null && t <= 10 * 60);
+      }
       btnExtend.disabled = !canExtendNow;
+
       if (!canExtendNow){
         btnExtend.title = 'Extend becomes available in the last 10 minutes of the game.';
       }
@@ -814,7 +847,48 @@ render(forceFull){
       this.renderTimer(); try{ this._adjustAnswerWide(); }catch{}
       return;
     }
+// Grace period: main time is over, host can extend or end and analyze
+    if (s.status==='grace'){
+      // Clear any top-level actions bar (LevelMenu etc)
+      try{
+        const tar = document.getElementById('topActionsRow');
+        if (tar) tar.innerHTML = '';
+      }catch(_){}
 
+      // Mount header timer and Extend button for host
+      this.mountHeaderActions();
+
+      if (forceFull){
+        // No tools or answer input in grace
+        this.renderSeats();
+
+        const wrap = document.createElement('div');
+        wrap.className = 'grace-wrap';
+
+        // Message in help style, centered
+        const msg = document.createElement('p');
+        msg.className = 'help';
+        msg.textContent = 'Time is up. The host can extend the game or end and analyze.';
+        msg.style.textAlign = 'center';
+        wrap.appendChild(msg);
+
+        // Grace countdown, bold and centered
+        const timer = document.createElement('div');
+        timer.id = 'graceTimer';
+        timer.className = 'help';
+        timer.style.textAlign = 'center';
+        timer.style.fontWeight = 'bold';
+        // Initial text, will be updated by renderTimer()
+        timer.textContent = '00:00';
+        wrap.appendChild(timer);
+
+        if (main) main.appendChild(wrap);
+      }
+
+      this.renderTimer();
+      return;
+    }
+	
     if (s.status==='ended'){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  clearHeaderActions();
   controls.innerHTML='';
   // Render seats around the card
