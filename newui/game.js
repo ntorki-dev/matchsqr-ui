@@ -549,6 +549,7 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
         };
         frag.appendChild(btnEnd);;
     }
+	}
 
     setHeaderActions(frag);
     this.renderTimer();
