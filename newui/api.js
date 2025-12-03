@@ -210,7 +210,7 @@ export const API = {
   },
 
 
-  // Entitlement or billing helper
+   // Entitlement or billing helper
    entitlement_check(payload){
     return withActionLoader('entitlement_check', () =>
       jpost('entitlement_check', payload || {})
@@ -223,8 +223,19 @@ export const API = {
     return withActionLoader('extend_game', () =>
       jpost('extend_game', payload || {})
     );
+  },
+
+  // Move current game from running to grace when time is up (host only)
+  enter_grace(payload){
+    const code = resolveCode(payload && payload.code);
+    const gid  = resolveGameId(null);
+    if (!code && !gid) throw new Error('Missing game id/code');
+    return withActionLoader('enter_grace', () =>
+      jpost('enter_grace', { code, gameId: gid, id: gid })
+    );
   }
 };
+
 
 
 // ---------- Host inference shared ----------
