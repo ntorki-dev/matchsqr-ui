@@ -719,7 +719,7 @@ body.is-game #answerWide {
 
 /* Rotate arrow when menu is open */
 .level-menu.is-open .level-menu-icon::after {
-  transform: rotate(180deg);
+  transform: translate(-50%, -40%) rotate(45deg);
 }
 
 /* Dropdown list */
