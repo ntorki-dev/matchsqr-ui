@@ -698,28 +698,28 @@ body.is-game #answerWide {
 
 /* Arrow icon */
 .level-menu-icon {
+  flex-shrink: 0;
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 1px solid #888;
+  background: #d6d5e2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 150ms ease;
   position: relative;
 }
-
-.level-menu-icon::after {
+.level-menu-icon::before {
   content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 5px;
-  height: 5px;
-  border-right: 1px solid #555;
-  border-bottom: 1px solid #555;
-  transform: translate(-50%, -40%) rotate(45deg);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid #474070;
 }
+
 
 /* Rotate arrow when menu is open */
 .level-menu.is-open .level-menu-icon::after {
-  transform: translate(-50%, -60%) rotate(225deg);
+  transform: rotate(180deg);
 }
 
 /* Dropdown list */
