@@ -193,32 +193,57 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
   },
 
   stop(){ try{ const tar=document.getElementById('topActionsRow'); if (tar) tar.innerHTML=''; }catch(_){}  if(this.poll) clearInterval(this.poll); if(this.tick) clearInterval(this.tick); if(this.hbH) clearInterval(this.hbH); if(this.hbG) clearInterval(this.hbG); },
-  async refresh(){
+   async refresh(){
+    // Capture the game code at the start of the call
+    const codeAtCall = this.code;
+    if (!codeAtCall) return;
+
     try{
-      const out=await API.get_state({ code:this.code });
+      const out = await API.get_state({ code: codeAtCall });
+
+      // If the user switched to another game while this request was in flight, ignore this response
+      if (!this.code || this.code !== codeAtCall) {
+        return;
+      }
+
       await inferAndPersistHostRole(this.code, out);
       const status = out?.status || out?.phase || 'lobby';
       const endsAt = out?.ends_at || out?.endsAt || null;
-      const participants = Array.isArray(out?.participants)? out.participants : (Array.isArray(out?.players)? out.players : []);
+      const participants = Array.isArray(out?.participants)
+        ? out.participants
+        : (Array.isArray(out?.players) ? out.players : []);
       const question = out?.question || null;
       const current_turn = out?.current_turn || null;
       const host_user_id = out?.host_user_id || out?.hostId || null;
-		    const levelMode =
-      typeof out?.auto_switch === 'boolean'
-        ? (out.auto_switch ? 'auto' : 'manual')
-        : (this.state && (this.state.levelMode === 'manual' || this.state.levelMode === 'auto')
-            ? this.state.levelMode
-            : 'auto');
 
-	  const sig = [status, endsAt, question?.id||'', current_turn?.participant_id||'', participants.length, host_user_id||''].join('|');
+      const levelMode =
+        typeof out?.auto_switch === 'boolean'
+          ? (out.auto_switch ? 'auto' : 'manual')
+          : (this.state && (this.state.levelMode === 'manual' || this.state.levelMode === 'auto')
+              ? this.state.levelMode
+              : 'auto');
+
+      const sig = [
+        status,
+        endsAt,
+        question?.id || '',
+        current_turn?.participant_id || '',
+        participants.length,
+        host_user_id || ''
+      ].join('|');
+
       const forceFull = (sig !== this.ui.lastSig);
+
       this.state = { status, endsAt, participants, question, current_turn, host_user_id, levelMode };
       await this.backfillPidIfMissing();
       this.render(forceFull);
       this.ui.lastSig = sig;
       this.startHeartbeats();
-    }catch(e){}
+    }catch(e){
+      // keep your existing silent catch
+    }
   },
+
 
   remainingSeconds(){ if (!this.state.endsAt) return null; const diff=Math.floor((new Date(this.state.endsAt).getTime()-Date.now())/1000); return Math.max(0,diff); },
  renderTimer(){
