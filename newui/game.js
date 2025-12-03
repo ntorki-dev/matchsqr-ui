@@ -68,7 +68,7 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
     draft:'',
     // Level selector state
     levelMode:'auto',        // 'auto' or 'manual'
-    levelSelection:'simple'  // 'simple' | 'medium' | 'deep'
+    levelSelection:'simple',  // 'simple' | 'medium' | 'deep'
 	graceRequested:false
   },
 
