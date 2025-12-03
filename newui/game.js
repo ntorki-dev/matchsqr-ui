@@ -69,6 +69,7 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
     // Level selector state
     levelMode:'auto',        // 'auto' or 'manual'
     levelSelection:'simple'  // 'simple' | 'medium' | 'deep'
+	graceRequested:false
   },
 
 
@@ -96,6 +97,7 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
     };
     this.render(true);
     this.ui.lastSig = '';
+	this.ui.graceRequested = false;
 
 	await this.refresh();
     this.startPolling();
@@ -225,6 +227,29 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
     if (!el) return;
 
     const status = (this.state && this.state.status) || 'lobby';
+
+	const role = getRole(this.code);
+    const isHost = (role === 'host');
+
+    // When host timer hits zero in running state, request grace once
+    if (
+      status === 'running' &&
+      isHost &&
+      t === 0 &&
+      this.ui &&
+      !this.ui.graceRequested
+    ){
+      this.ui.graceRequested = true;
+      (async () => {
+        try{
+          await API.enter_grace({ code: this.code });
+          await this.refresh();
+        }catch(e){
+          this.ui.graceRequested = false;
+          try { toast(e?.message || 'Unable to switch to grace period'); } catch {}
+        }
+      })();
+    }
 
     // Header timer behavior:
     // - Running: show normal mm:ss
@@ -986,6 +1011,7 @@ export async function render(ctx){
       Game.ui.lastSig = '';
       Game.ui.ansVisible = false;
       Game.ui.draft = '';
+	  Game.ui.graceRequested = false;
     }
   }
 
