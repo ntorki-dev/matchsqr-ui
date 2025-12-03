@@ -719,6 +719,10 @@ body.is-game #answerWide {
 
 /* Rotate arrow when menu is open */
 .level-menu.is-open .level-menu-icon::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
   transform: translate(-50%, -40%) rotate(45deg);
 }
 
