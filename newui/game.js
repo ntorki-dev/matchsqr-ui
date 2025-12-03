@@ -228,28 +228,29 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
 
     const status = (this.state && this.state.status) || 'lobby';
 
-	const role = getRole(this.code);
-    const isHost = (role === 'host');
-
-    // When host timer hits zero in running state, request grace once
-    if (
-      status === 'running' &&
-      isHost &&
-      t === 0 &&
-      this.ui &&
-      !this.ui.graceRequested
-    ){
-      this.ui.graceRequested = true;
-      (async () => {
-        try{
-          await API.enter_grace({ code: this.code });
-          await this.refresh();
-        }catch(e){
-          this.ui.graceRequested = false;
-          try { toast(e?.message || 'Unable to switch to grace period'); } catch {}
-        }
-      })();
-    }
+	 // If host and game is running, when timer hits exactly 0, request grace once
+    try{
+      const role = getRole(this.code);
+      const isHost = (role === 'host');
+      if (
+        status === 'running' &&
+        isHost &&
+        t === 0 &&
+        this.ui &&
+        !this.ui.graceRequested
+      ){
+        this.ui.graceRequested = true;
+        (async () => {
+          try{
+            await API.enter_grace({ code: this.code });
+            await this.refresh();
+          }catch(e){
+            this.ui.graceRequested = false;
+            try { toast(e?.message || 'Unable to switch to grace period'); } catch {}
+          }
+        })();
+      }
+    }catch(_){}
 
     // Header timer behavior:
     // - Running: show normal mm:ss
