@@ -5,7 +5,7 @@
 // - Host-only navigation: uses opts.isHost. Backend is permissive (JWT OFF).
 
 import { jpost, getSession, msPidKey, resolveGameId } from './api.js';
-import { $, toast } from './ui.js';
+import { $, toast, escapeHtml } from './ui.js';
 
 let state = null;
 let container = null;   // #mainCard
@@ -102,11 +102,13 @@ function renderCard() {
   const current = bySeat(seat) || bySeat(seatList[0]);
 
   const title = '<h4 style="text-align:center;width:100%;">Game Summary</h4>';
+  const safeName = escapeHtml(displayName(current, sessionUser) + '.');
   const body =
     '<div>' +
       '<p class="help" style="margin-top:6px;margin-bottom:0"><strong class="help">' +
-        displayName(current, sessionUser) + '.</strong> ' +
-        shortSummaryForSeat(current?.seat_index) +
+         safeName +
+    '</strong> ' +
+      shortSummaryForSeat(current?.seat_index) +
       '</p>' +
       (haveSession
         ? ''
