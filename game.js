@@ -488,15 +488,34 @@ code:null, poll:null, tick:null, hbH:null, hbG:null,
       if (pid) el.dataset.pid = String(pid);
 
       const nameOnly = displayName(p);
-      const initials = makeInitials(nameOnly);
-      // Initials, optional crown for host, then name
-      const crownHtml = (role==='host') ? '<img class="seat-crown" src="./assets/crown.png" alt="host" width="16" height="16">' : '';
-      el.innerHTML = '<div class="seat-initials">'+ initials +'</div>'+
-                     crownHtml +
-                     '<div class="seat-name">'+ nameOnly +'</div>';
+const initials = makeInitials(nameOnly);
 
-      if (leftIdx.has(idx)) L.appendChild(el);
-      if (rightIdx.has(idx)) R.appendChild(el);
+// Initials
+const initialsDiv = document.createElement('div');
+initialsDiv.className = 'seat-initials';
+initialsDiv.textContent = initials;
+el.appendChild(initialsDiv);
+
+// Optional crown for host
+if (role === 'host') {
+  const crownImg = document.createElement('img');
+  crownImg.className = 'seat-crown';
+  crownImg.src = './assets/crown.png';
+  crownImg.alt = 'host';
+  crownImg.width = 16;
+  crownImg.height = 16;
+  el.appendChild(crownImg);
+}
+
+// Name
+const nameDiv = document.createElement('div');
+nameDiv.className = 'seat-name';
+nameDiv.textContent = nameOnly;
+el.appendChild(nameDiv);
+
+if (leftIdx.has(idx)) L.appendChild(el);
+if (rightIdx.has(idx)) R.appendChild(el);
+
     });
     
   },
