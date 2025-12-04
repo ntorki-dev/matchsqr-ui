@@ -4,6 +4,17 @@ import { getSession } from './api.js';
 // Anti-flash helpers: tiny cache of last known user
 const AUTH_CACHE_KEY = 'ms_lastKnownUser';
 
+export function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+
 // Lazy bind to api.getProfileName without altering bundling
 async function __msFetchProfileName(userId){
   try{
@@ -89,7 +100,7 @@ export async function renderHeader(){
   const rightInitial = (()=>{
     if (cached && cached.id){
       const name = (cached?.name) || (cached?.user_metadata?.full_name) || (cached?.user_metadata?.name) || 'Account';
-      return `<a class="avatar-link" href="#/account" title="${name}"><img class="avatar" src="${cached.user_metadata?.avatar_url || './assets/profile.png'}" alt="profile"/></a>
+      return `<a class="avatar-link" href="#/account" title="Account"><img class="avatar" src="./assets/profile.png" alt="profile"/></a>
               <a class="btn-help" href="#/help" aria-label="Help">?</a>`;
     }
     // neutral placeholder to preserve layout, hidden from view
@@ -116,7 +127,7 @@ export async function renderHeader(){
       if (user){
         const name = (user?.user_metadata?.full_name) || (user?.user_metadata?.name) || (function(){ try { return (__msGetCachedUser && __msGetCachedUser())?.name || null; } catch(_){ return null; } })() || 'Account';
         right.innerHTML = `
-          <a class="avatar-link" href="#/account" title="${name}"><img class="avatar" src="${user.user_metadata?.avatar_url || './assets/profile.png'}" alt="profile"/></a>
+          <a class="avatar-link" href="#/account" title="Account"><img class="avatar" src="./assets/profile.png" alt="profile"/></a>
           <a class="btn-help" href="#/help" aria-label="Help">?</a>`;
       }else{
         right.innerHTML = `<a class="btn-login" href="#/login">Login</a>
